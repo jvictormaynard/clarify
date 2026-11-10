@@ -36,6 +36,31 @@ for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophone
   });
 }
 
+test("responsive operations: saving text allows navigation and preserves edits typed during the save", async ({ page }) => {
+  await openStyleReview(page);
+  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
+  await prompt.fill("First text revision.");
+  let release!: () => void;
+  let started!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { started = resolve; });
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method === "save") { started(); await held; }
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await entered;
+    await expect(prompt).toBeEnabled();
+    await prompt.fill("Newer unsaved revision.");
+    await navigate(page, "Dicionário");
+    await expect(page.getByRole("textbox", { name: "Novo termo", exact: true })).toBeVisible();
+  } finally { release(); }
+  await openStyleReview(page);
+  await expect(prompt).toHaveValue("Newer unsaved revision.");
+  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeVisible();
+});
+
 test("contextual actions wait for the requested workflow before saving", async ({ page }) => {
   await page.getByText("Instruções da transcrição", { exact: true }).click();
   await page.getByRole("textbox", { name: "Instruções da transcrição", exact: true }).fill("Dictation draft");

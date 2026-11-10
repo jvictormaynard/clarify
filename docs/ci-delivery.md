@@ -1,9 +1,10 @@
 # Validation and delivery
 
-`CI` is the validation entry point. Pull requests to `main` run affected tasks.
-Every push to `main` requires the full standard set. Exact merged PR evidence can
-satisfy selected components under the rules below. Daily runs at 03:17 UTC and
-manual runs add extended checks, including the disposable installer lifecycle.
+`CI` is the validation entry point. Pull requests and pushes to `main` run affected
+tasks and their consumers. Exact merged PR evidence can satisfy selected components
+under the rules below. Daily runs at 03:17 UTC and default manual runs validate
+every component, including the disposable installer lifecycle. Manual `scope`
+can select complete `desktop` or `mobile` validation without publishing.
 Contribution-branch pushes do not start a duplicate run. Validation does not
 publish a desktop or mobile release. Fork PRs need no signing or provider keys.
 
@@ -24,23 +25,34 @@ artifact ID and GitHub SHA-256 digest. It checks the producer attempt again afte
 reading the artifact. It does not depend on the run's `pull_requests` array or
 confuse the run's PR head SHA with the tested synthetic merge SHA.
 
-Planning uncertainty runs ordinary main CI. The main aggregate reauthenticates
+Planning uncertainty runs full CI. The main aggregate reauthenticates
 the same artifact and recomputes the original plan minus verified coverage;
 authentication failure or a changed selection fails the aggregate. Policy always
-runs fresh. Mobile and iOS also run fresh so internal TestFlight proof still
+runs fresh. Selected mobile and iOS tasks also run fresh so internal TestFlight proof still
 contains the required native jobs and steps in the main run. Installer remains
 fresh, and package remains fresh when installer needs its main-SHA artifact.
-No artifact transfer or release evidence contract changes are included.
+After verification, main emits a schema-2 coverage receipt in
+`ci-proof-<run>-<attempt>`. It binds the exact Git source, successful direct tasks
+and authenticated reused tasks to the canonical producer. Release consumers
+authenticate its immutable artifact digest and current successful run attempt.
+They require the full target coverage from `ci.tasks.release_jobs`, plus policy
+and the aggregate. A green affected run with an untested component cannot authorize
+that component's release. Missing or expired receipts fail closed. Main receipts
+are retained for 30 days; reusable PR receipts retain their two-day lifetime.
 
 CI control changes (including `ci/`, workflows/actions, scripts, policy tests and
 shared classifier inputs) disable reuse for the integration. Bootstrap therefore runs
-ordinary main CI. Direct pushes, squash/rebase integrations, changed base,
-foreign/fork PRs, absent or expired artifacts, scheduled and manual runs also
-use ordinary CI. Main runs never emit reusable evidence. Hosted validation of
+full CI when they affect the selector or top-level graph. Direct pushes,
+squash/rebase integrations, changed base, foreign/fork PRs and absent or expired
+artifacts use the affected plan without PR reuse. Scheduled and manual runs do
+not reuse PR proof. Main coverage receipts cannot substitute
+for reusable PR proof. Hosted validation of
 the workflow and artifact transport remains separate from local fake-API tests.
 
-Reviewed release-intent data and version/build metadata can use the same evidence
-rules. They do not change the CI mechanism or relax release authorization.
+Changed release-intent data selects the complete target component using the tested
+Git blob. Desktop version metadata also selects full desktop coverage. Other
+changed consumers remain selected. The planner reports selecting paths and a full
+fallback reason; reuse diagnostics report a bounded error class without private URLs.
 
 ## Optional Bitrise macOS capacity
 
@@ -85,8 +97,8 @@ Component runners own collection and assertions.
 
 The full standard set includes every task except `installer`. An affected
 installer change requires that task on its PR. Required native Windows and iOS
-coverage stays in CI. Main requires every standard component, including
-components not selected by PR CI.
+coverage stays in CI when its contract is affected, in full validation, and in
+the corresponding release scope.
 Containing-app UI validation runs regular and compact iPhone profiles in separate
 required matrix jobs with distinct evidence artifacts. Each keeps its 60-minute
 budget and runs native text-input regressions; the iOS aggregate requires both
@@ -154,7 +166,8 @@ checked on 8 November 2026. Clarify keeps its Python planner as the shared owner
 for local commands and CI. A change to that planner or the top-level CI graph
 requires the complete validation set because it changes the selection rules.
 
-Renderer changes select Settings unit, browser and Electron checks without the
+Settings page content and page-specific styles select unit and browser checks.
+Other renderer changes select Settings unit, browser and Electron checks without the
 Python/Qt or portable EXE jobs. Electron host changes select `desktop_shell`.
 The Python Electron adapter also selects Python/Qt checks. Shared inputs keep
 their existing client dependents. Packaging inputs select the shell and EXE jobs.
@@ -166,7 +179,8 @@ Native builds use `scripts/build-desktop.ps1 -Python <path> -SkipInstall` after
 `npm ci`. The output is the complete app in `dist/desktop-shell`; inventory keeps
 `Clarify-settings.sbom.json` and `Clarify-settings-NOTICES.txt` in `dist/`.
 The portable build embeds that directory through `-DesktopShellDirectory`.
-The package job does not repeat the Electron suite from the required shell lane.
+The browser action does not repeat the independent Settings unit lane. The package
+job does not repeat the Electron suite from the required shell lane.
 Release candidates run native packaged smoke after building their shell.
 Electron downloads are cached by exact runtime version, platform and
 architecture. Browser-only jobs skip the unused Electron binary download.
@@ -203,6 +217,8 @@ are selected. The component guides describe their platform setup. Then run:
 
 ```sh
 python scripts/ci.py --plan
+python scripts/ci.py --quick --plan
+python scripts/ci.py --quick
 python scripts/ci.py
 python scripts/ci.py --full
 python scripts/ci.py --task settings_unit
@@ -210,13 +226,25 @@ python scripts/ci.py --task desktop_shell
 python scripts/ci.py --task python --shard 1/2
 ```
 
-The npm aliases are `ci:plan`, `ci` and `ci:full`. `--base` defaults to
+Use `--quick` for routine local feedback. It checks changed Python files, focused
+unit/policy cases, affected headless frontend checks and applicable instruction or
+workflow contracts. It runs commands serially and starts no browser, Qt shell,
+packaging, service or mobile export. It includes committed and dirty changes.
+Its report uses `scope=quick`, leaves `ci_status=unverified` and lists complete
+`ci_required` obligations. Exit 0 proves only the quick scope. Focused reproduction
+and visible-client evidence remain necessary when the changed behavior needs them.
+Complete affected validation runs in remote CI; use the ordinary local command
+only when that broader local work is needed.
+
+The npm aliases are `ci:plan`, `ci:quick`, `ci` and `ci:full`. `--base` defaults to
 `origin/main`. Local planning includes committed, staged, unstaged and untracked
 paths from its merge base. Invalid references fail even with `--full`. The
 command never fetches, installs dependencies or publishes.
 
 JSON reports record each check, status and duration. `--timeout` limits the run;
-`--check-timeout` limits each command. Defaults are 3600 and 1800 seconds.
+`--check-timeout` limits each command. Defaults are 3600 and 1800 seconds;
+quick defaults are 300 and 120 seconds. A timeout fails the check and stops its
+owned descendants; it does not turn missing evidence into success.
 Cancellation and timeout stop owned descendants. Missing tools and platform or
 service requirements remain `unexecuted`. Exit 0 means passed, 1 means failed,
 and 2 means selected gates remain open. A local Windows result cannot prove

@@ -1,0 +1,11 @@
+name: Pinned installed-keyboard fixture toolchain
+description: Install and verify the Ruby generator used by native keyboard acceptance.
+runs:
+  using: composite
+  steps:
+    - name: Install xcodeproj
+      shell: bash
+      run: gem install xcodeproj --version 1.27.0 --no-document --user-install
+    - name: Verify xcodeproj
+      shell: bash
+      run: ruby -e 'gem "xcodeproj", "= 1.27.0"; require "xcodeproj"; abort "Expected xcodeproj 1.27.0" unless Xcodeproj::VERSION == "1.27.0"'
