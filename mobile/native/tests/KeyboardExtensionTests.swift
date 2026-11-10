@@ -232,6 +232,7 @@ final class KeyboardExtensionTests: XCTestCase {
         "startedUTC": started, "endedUTC": ended, "startedUptime": startedUptime, "endedUptime": endedUptime,
         "sourceAXFrame": ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height],
         "syntheticResult": app.textFields["composer"].value as? String ?? "",
+        "hostCaret": app.staticTexts["input-caret"].value as? String ?? "unavailable",
         "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
       let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
       trace.name = "\(name)-\(phase)-action-trace"; trace.lifetime = .keepAlways; add(trace)
@@ -255,6 +256,44 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertTrue(capital.waitForExistence(timeout: 5), "The space shortcut must restore sentence capitals")
     try perform("after-double-space", frame: capital.frame) { capital.tap() }
     expectText("1QQQQeq. Q", in: app)
+    func caret() throws -> Int {
+      let raw = try XCTUnwrap(app.staticTexts["input-caret"].value as? String)
+      let offsets = try JSONDecoder().decode([String: Int].self, from: Data(raw.utf8))
+      let start = try XCTUnwrap(offsets["start"])
+      XCTAssertEqual(start, offsets["end"], "Cursor movement must leave a collapsed insertion point")
+      return start
+    }
+    let original = "1QQQQeq. Q"
+    XCTAssertEqual(try caret(), original.utf16.count)
+    try perform("space-held", frame: spaceFrame) { spaceCoordinate.press(forDuration: 0.6) }
+    expectText(original, in: app)
+    XCTAssertEqual(try caret(), original.utf16.count, "Holding without dragging must not move the cursor")
+    try perform("cursor-left", frame: spaceFrame) {
+      spaceCoordinate.press(forDuration: 0.6, thenDragTo: spaceCoordinate.withOffset(CGVector(dx: -80, dy: 0)))
+    }
+    expectText(original, in: app)
+    let left = try caret()
+    XCTAssertGreaterThanOrEqual(left, 0); XCTAssertLessThan(left, original.utf16.count)
+    let firstMarker = app.keys.matching(NSPredicate(format: "label IN %@", ["x", "X"])).firstMatch
+    XCTAssertTrue(firstMarker.waitForExistence(timeout: 5) && firstMarker.isHittable)
+    let firstValue = firstMarker.label
+    // This fixture string is ASCII, so public UTF-16 offsets are also String offsets.
+    let firstExpected = String(original.prefix(left)) + firstValue + String(original.dropFirst(left))
+    try perform("cursor-left-insert", frame: firstMarker.frame) { firstMarker.tap() }
+    expectText(firstExpected, in: app)
+    XCTAssertEqual(try caret(), left + 1)
+    try perform("cursor-right", frame: spaceFrame) {
+      spaceCoordinate.press(forDuration: 0.6, thenDragTo: spaceCoordinate.withOffset(CGVector(dx: 80, dy: 0)))
+    }
+    expectText(firstExpected, in: app)
+    let right = try caret()
+    XCTAssertGreaterThan(right, left + 1); XCTAssertLessThanOrEqual(right, firstExpected.utf16.count)
+    let nextMarker = app.keys.matching(NSPredicate(format: "label IN %@", ["v", "V"])).firstMatch
+    XCTAssertTrue(nextMarker.waitForExistence(timeout: 5) && nextMarker.isHittable)
+    let nextExpected = String(firstExpected.prefix(right)) + nextMarker.label + String(firstExpected.dropFirst(right))
+    try perform("cursor-right-insert", frame: nextMarker.frame) { nextMarker.tap() }
+    expectText(nextExpected, in: app)
+    XCTAssertEqual(try caret(), right + 1)
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
