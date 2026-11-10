@@ -409,9 +409,6 @@ public class ClarifyCoreModule: Module {
         guard UIApplication.shared.applicationState == .active,
               ClarifyAudioSession.shared.state.sessionActive, !ClarifyAudioSession.shared.state.phase.busy,
               let request = SharedState()?.consumeActivation(token) else { promise.resolve(false); return }
-        // Apple review needs the containing app. Keep it open for recording;
-        // returning to the source app here would force background dictation.
-        guard !AppleDictationPreference.enabled else { promise.resolve(false); return }
         promise.resolve(ClarifyReturnBridge.openSource(bundleID: request.sourceBundleID))
       }
     }.runOnQueue(.main)

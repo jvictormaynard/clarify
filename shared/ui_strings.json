@@ -8508,5 +8508,30 @@
     "en": "Activate Clarify, then hold the microphone button to dictate.",
     "pt": "Ative o Clarify e segure o botão do microfone para ditar.",
     "es": "Activa Clarify y mantén pulsado el botón del micrófono para dictar."
+  },
+  "Clarify transcribes the audio. Apple rewrites the text automatically, without opening an editor.": {
+    "en": "Clarify transcribes the audio. Apple rewrites the text automatically, without opening an editor.",
+    "pt": "O Clarify transcreve o áudio. A Apple reescreve o texto automaticamente, sem abrir um editor.",
+    "es": "Clarify transcribe el audio. Apple reescribe el texto automáticamente, sin abrir un editor."
+  },
+  "Use dictation as usual, including from the Clarify keyboard in another app. No review or translation screen opens.": {
+    "en": "Use dictation as usual, including from the Clarify keyboard in another app. No review or translation screen opens.",
+    "pt": "Use o ditado normalmente, inclusive pelo teclado do Clarify em outro app. Nenhuma tela de revisão ou tradução será aberta.",
+    "es": "Usa el dictado normalmente, incluso desde el teclado de Clarify en otra app. No se abre ninguna pantalla de revisión o traducción."
+  },
+  "Use short recordings. Apple rewriting accepts up to 2,000 bytes of transcribed text.": {
+    "en": "Use short recordings. Apple rewriting accepts up to 2,000 bytes of transcribed text.",
+    "pt": "Use gravações curtas. A reescrita da Apple aceita até 2.000 bytes de texto transcrito.",
+    "es": "Usa grabaciones cortas. La reescritura de Apple acepta hasta 2.000 bytes de texto transcrito."
+  },
+  "Apple rewrites dictation automatically. No Apple editor is shown.": {
+    "en": "Apple rewrites dictation automatically. No Apple editor is shown.",
+    "pt": "A Apple reescreve o ditado automaticamente. Nenhum editor da Apple será exibido.",
+    "es": "Apple reescribe el dictado automáticamente. No se muestra ningún editor de Apple."
+  },
+  "Download translation languages before dictating. Missing languages produce an error; no download window opens during dictation.": {
+    "en": "Download translation languages before dictating. Missing languages produce an error; no download window opens during dictation.",
+    "pt": "Baixe os idiomas de tradução antes de ditar. Idiomas ausentes causam um erro; nenhuma janela de download será aberta durante o ditado.",
+    "es": "Descarga los idiomas de traducción antes de dictar. Los idiomas que faltan producen un error; no se abre ninguna ventana de descarga durante el dictado."
   }
 }

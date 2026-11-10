@@ -290,9 +290,6 @@ final class ClarifyAudioSession: NSObject {
     let apple = AppleDictationPreference.enabled
     if apple {
       try MainActor.assumeIsolated {
-        guard UIApplication.shared.applicationState == .active else {
-          throw ClarifyError(L("Open Clarify to dictate with Apple Writing Tools."), code: "apple_dictation_foreground")
-        }
         guard !AppleDictation.busy, !ClarifyPrivateWritingToolsBridge.isBusy() else {
           throw ClarifyError(L("Close the current Apple editor before starting another review."))
         }
@@ -398,7 +395,7 @@ final class ClarifyAudioSession: NSObject {
             guard source == outcome.transcript else {
               throw ClarifyError(L("Saved snippet text was preserved. Apple style and language changes were not applied."))
             }
-            let text = try await AppleDictation.review(source, preferences: preferences, operationID: id)
+            let text = try await AppleDictation.rewrite(source, preferences: preferences, operationID: id)
             try Task.checkCancellation()
             guard self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
             outcome = ProcessingDictation(transcript: outcome.transcript, text: text, rewritten: text != source, successful: true)

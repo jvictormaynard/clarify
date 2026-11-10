@@ -80,19 +80,19 @@ export default function AppleDictation() {
     {!!error && <Button testID="apple-dictation.retry" disabled={loading || pending} onPress={() => void load()}>{t('Tentar carregar novamente')}</Button>}
     {busy && <Text style={[ui.small, { color: c.muted }]}>{t('Aguarde o fim da operação para alterar esta opção.')}</Text>}
     <Section title={t('Como funciona')}>
-      <Text style={[ui.body, { color: c.text }]}>{t('O Clarify transcreve o áudio. As Ferramentas de Escrita da Apple abrem para revisão. Você aceita o texto final reescrito.')}</Text>
+      <Text style={[ui.body, { color: c.text }]}>{t('Clarify transcribes the audio. Apple rewrites the text automatically, without opening an editor.')}</Text>
       <Text style={[ui.body, { color: c.text }]}>{t('A tradução para o idioma de saída selecionado ocorre no dispositivo. O resultado final volta ao resultado e ao histórico normais do Clarify.')}</Text>
     </Section>
     <Section title={t('Requisitos')}>
+      <Text style={[ui.small, { color: c.muted }]}>{t('Download translation languages before dictating. Missing languages produce an error; no download window opens during dictation.')}</Text>
       <Text style={[ui.body, { color: c.text }]}>{t('Requer iOS 26, Apple Intelligence e o modo de ditado Natural. Use apenas os estilos Padrão, Formal ou Casual.')}</Text>
-      <Text style={[ui.body, { color: c.text }]}>{t('Dite com o Clarify aberto em primeiro plano. Ao iniciar pelo teclado, será necessário abrir o Clarify. Mantenha o app em primeiro plano durante a revisão da Apple.')}</Text>
+      <Text style={[ui.body, { color: c.text }]}>{t('Use dictation as usual, including from the Clarify keyboard in another app. No review or translation screen opens.')}</Text>
       <Text style={[ui.small, { color: c.muted }]}>{t('Selecione Natural e um estilo compatível em Saída do ditado antes de ativar.')}</Text>
       <Text style={[ui.small, { color: c.muted }]}>{t('Expanded snippets are preserved. Apple style and language changes are not applied to them in this build.')}</Text>
-      <Text style={[ui.small, { color: c.muted }]}>{t('Use short recordings. Apple review accepts up to 2,000 bytes of transcribed text.')}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t('Use short recordings. Apple rewriting accepts up to 2,000 bytes of transcribed text.')}</Text>
     </Section>
     <Card>
       <NavigationRow testID="apple-dictation.output" title={t('Saída do ditado')} icon="textformat" onPress={() => router.push('/output')} />
-      <NavigationRow testID="apple-dictation.test" title={t('Teste do Apple Intelligence')} icon="cpu" onPress={() => router.push('/apple-rewrite')} />
     </Card>
   </ScrollView>;
 }

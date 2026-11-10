@@ -304,7 +304,7 @@ enum AppleRewriteEngine {
     }
   }
 
-  private static func translateInstalled(_ text: String, sourceLanguage: String,
+  static func translateInstalled(_ text: String, sourceLanguage: String,
     targetLanguage: String) async throws -> String {
     #if canImport(Translation)
     if #available(iOS 26.0, macOS 26.0, *) {

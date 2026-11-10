@@ -685,19 +685,23 @@ This does not replace the system's microphone icon or orange privacy indicator.
 Settings includes optional **Apple rewriting** for normal dictation. It is off
 by default. Use Natural dictation mode and Default, Formal or Casual style. The
 transcription destination must support the explicit Preserve policy. Clarify
-requests source-only transcription, opens Apple's review editor, and returns the
-accepted result to normal result delivery and account-scoped history. Use
-**Use result** after accepting Apple's changes. A different output language opens
-local translation; accept its result with **Use result** as well.
+requests source-only transcription, then calls the private TextComposer service
+and the public installed-language TranslationSession API. No editor, review,
+translation sheet or approval tap is part of normal dictation. Activation return
+and the normal keyboard insertion path are retained. Download language packs
+before dictation; missing packs fail without presenting a download window.
 
-Dictate with Clarify in the foreground. A keyboard attempt in another app asks
-you to open Clarify before recording; microphone activation then keeps Clarify
-open for review. Return to the previous app after accepting the result to use
-the normal insertion path. Canceling Apple's review, an audio interruption,
-backgrounding during review, oversized
-input or a failed review preserves the transcript for manual insertion/history.
-Canceling the whole dictation operation still discards that operation, and
-account/destination changes still reject its stale result.
+The direct service uses runtime-checked selectors and SDK-exported rewrite type
+constants (Magic, Professional, Friendly), not UI tool identifiers. Its input
+completion uses the output/error object contract in TCTextCompositionXPCProtocol.
+The assistant wrapper callback mapping is inferred from the matching input API;
+it still needs verification on a physical iPhone. This is a private API
+experiment, not verified public App Store compatibility. A service error, missing
+runtime contract, timeout, oversized output or failed translation preserves the
+transcript with an error. There is no fallback to the visible Writing Tools flow
+or another rewriting model. Cancellation rejects late publication; uncertain
+private work keeps its service slot until its callback ends the request.
+
 Apple input is limited to 2,000 UTF-8 bytes. Expanded snippet text is preserved
 without Apple style or language changes, with an explicit recovery message;
 the current transcription response does not identify standalone snippets.
