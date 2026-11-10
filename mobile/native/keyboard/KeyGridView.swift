@@ -49,6 +49,7 @@ final class KeyGridView: UIView {
   private var repeatTimer: Timer?
   private var lastShift = Date.distantPast
   private var accentBar: UIStackView?
+  private weak var activeAccentGesture: UILongPressGestureRecognizer?
   private var accentKeys: [UIButton] = []
   private var selectedAccent: String?
   private var suppressKey = false
@@ -442,6 +443,7 @@ final class KeyGridView: UIView {
   @objc private func accent(_ gesture: UILongPressGestureRecognizer) {
     guard let button = gesture.view as? UIButton, let title = button.title(for: .normal) else { return }
     if gesture.state == .began {
+      guard accentBar == nil else { return }
       preview.removeFromSuperview()
       suppressKey = true
       let choices = KeyboardState.accents(for: title)
@@ -451,19 +453,21 @@ final class KeyGridView: UIView {
       bar.frame = CGRect(x: min(max(6, center.x - width / 2), bounds.width - width - 6), y: 0, width: width, height: 46)
       bar.backgroundColor = .secondarySystemBackground; bar.layer.cornerRadius = 8
       accentKeys = choices.map { value in let key = key(value) {}; bar.addArrangedSubview(key); return key }
-      accentBar = bar; addSubview(bar); selectedAccent = title
+      accentBar = bar; activeAccentGesture = gesture; addSubview(bar); selectedAccent = title
     }
-    if let bar = accentBar {
+    guard activeAccentGesture === gesture, let bar = accentBar else { return }
+    if gesture.state == .began || gesture.state == .changed {
       let point = gesture.location(in: bar)
       let index = gesture.state == .began ? 0 : max(0, min(accentKeys.count - 1, Int(point.x / max(1, bar.bounds.width) * CGFloat(accentKeys.count))))
       for (i, key) in accentKeys.enumerated() { key.backgroundColor = i == index ? .systemBlue : .clear; key.setTitleColor(i == index ? .white : .label, for: .normal) }
       selectedAccent = accentKeys[index].title(for: .normal)
     }
     if [.ended, .cancelled, .failed].contains(gesture.state) {
-      let selection = selectedAccent; accentBar?.removeFromSuperview(); accentBar = nil; accentKeys = []
-      if gesture.state == .ended, let selection = selection { insert(selection) }
-      // Long-press recognition cancels UIButton's touch-up, so the next tap is valid.
+      let selection = selectedAccent; bar.removeFromSuperview(); accentBar = nil; accentKeys = []
+      activeAccentGesture = nil; selectedAccent = nil
+      // Finish this press before insertion calls back into the grid.
       suppressKey = false
+      if gesture.state == .ended, let selection = selection { insert(selection) }
     }
   }
 }

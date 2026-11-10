@@ -3,6 +3,16 @@ import XCTest
 @testable import KeyboardUI
 import KeyboardHostSupport
 
+private final class AccentGesture: UILongPressGestureRecognizer {
+  var sampleState: UIGestureRecognizer.State = .possible
+  var samplePoint = CGPoint.zero
+  override var state: UIGestureRecognizer.State {
+    get { sampleState }
+    set { sampleState = newValue }
+  }
+  override func location(in view: UIView?) -> CGPoint { samplePoint }
+}
+
 private final class SourceProcessState: NSObject {
   var pid: Int32 = 5127
   var source: Any? = "com.clarify.fixture.host"
@@ -406,6 +416,59 @@ final class KeyboardUITests: XCTestCase {
       grid.endPress("page-mode", at: pageMode); grid.endPress("page-shift", at: pageShift)
       XCTAssertEqual(grid.model.page, .numbers, "A late Shift release must not toggle another finger's page choice")
       XCTAssertEqual(text, beforeShift + "QQWqQ")
+      grid.model.page = .letters; grid.model.shift = .off; grid.rebuild(); grid.layoutIfNeeded()
+      @MainActor func emit(_ gesture: AccentGesture, _ phase: UIGestureRecognizer.State, at point: CGPoint = .zero) {
+        gesture.sampleState = phase; gesture.samplePoint = point
+        _ = grid.perform(NSSelectorFromString("accent:"), with: gesture)
+      }
+      @MainActor func startAccent() throws -> AccentGesture {
+        let letter = try key("e"), gesture = AccentGesture()
+        letter.addGestureRecognizer(gesture)
+        grid.beginPress("accent", at: center(letter)); emit(gesture, .began)
+        // UIKit cancels the key's original touch when its recognizer accepts.
+        grid.cancelPress("accent"); grid.layoutIfNeeded()
+        return gesture
+      }
+      @MainActor func accentPoint(_ title: String) throws -> CGPoint {
+        let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+          $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
+        })
+        picker.layoutIfNeeded()
+        let choice = try XCTUnwrap(picker.arrangedSubviews.compactMap { $0 as? UIButton }.first {
+          $0.title(for: .normal) == title
+        })
+        return choice.convert(CGPoint(x: choice.bounds.midX, y: choice.bounds.midY), to: picker)
+      }
+      let beforeAccent = text, stationary = try startAccent(), otherChoice = try accentPoint("è")
+      emit(stationary, .ended, at: otherChoice); emit(stationary, .ended, at: otherChoice)
+      XCTAssertEqual(text, beforeAccent + "e", "Release must commit the displayed base letter exactly once")
+      let nextPoint = center(try key("q"))
+      grid.beginPress("after-accent", at: nextPoint); grid.endPress("after-accent", at: nextPoint)
+      XCTAssertEqual(text, beforeAccent + "eq", "Accent recognition must not suppress the next tap")
+      let dragged = try startAccent(), foreign = AccentGesture()
+      try key("a").addGestureRecognizer(foreign)
+      emit(foreign, .began); emit(foreign, .ended)
+      XCTAssertEqual(text, beforeAccent + "eq", "Another recognizer must not consume the active picker")
+      emit(dragged, .changed, at: try accentPoint("è")); emit(dragged, .ended)
+      emit(dragged, .ended)
+      XCTAssertEqual(text, beforeAccent + "eqè", "Release must keep the last highlighted drag choice")
+      for phase in [UIGestureRecognizer.State.cancelled, .failed] {
+        let cancelled = try startAccent()
+        emit(cancelled, .changed, at: try accentPoint("é")); emit(cancelled, phase)
+        emit(cancelled, .ended)
+        XCTAssertEqual(text, beforeAccent + "eqè", "Cancelled and stale callbacks must not insert")
+      }
+      let reentrant = try startAccent(), beforeCallback = text
+      grid.onInsert = { value in
+        text += value
+        if value == "e" {
+          guard let next = try? key("q") else { XCTFail("Missing next key during insertion"); return }
+          let point = center(next)
+          grid.beginPress("reentrant-next", at: point); grid.endPress("reentrant-next", at: point)
+        }
+      }
+      emit(reentrant, .ended)
+      XCTAssertEqual(text, beforeCallback + "eq", "Insertion callbacks must see the completed accent's suppression cleared")
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
