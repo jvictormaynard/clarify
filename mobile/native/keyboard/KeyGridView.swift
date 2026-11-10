@@ -399,9 +399,10 @@ final class KeyGridView: UIView {
     if modern, title.count == 1 {
       if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
       else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
-      else if bracketGlyph || strokeGlyph { button.titleVerticalOffset = -3 }
+      else if bracketGlyph || strokeGlyph || title == "-" { button.titleVerticalOffset = -3 }
       else if sentenceMark { button.titleVerticalOffset = -1 }
       else if asteriskGlyph { button.titleVerticalOffset = 5 }
+      else if title == "#" { button.titleVerticalOffset = -5.0 / 3.0 }
     }
   }
   private func configureAccentActions(_ button: KeyButton, title: String) {
