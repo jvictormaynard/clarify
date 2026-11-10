@@ -388,17 +388,20 @@ final class KeyGridView: UIView {
     let bracketGlyph = title.count == 1 && "()[]{}".contains(title)
     let sentenceMark = title == "?" || title == "!"
     let strokeGlyph = title == "/" || title == "\\" || title == "|"
+    let asteriskGlyph = title == "*"
     let singleGlyphSize: CGFloat = modern && strokeGlyph ? 20 :
       (modern && compactGlyph ? 21 : (modern && (bracketGlyph || sentenceMark) ? 22.5 : 25))
-    button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : singleGlyphSize)
+    button.titleLabel?.font = .systemFont(ofSize: modern && asteriskGlyph ? 34 :
+      (title.count > 1 ? 16 : singleGlyphSize))
     button.titleVerticalOffset = 0
-    // The iOS 26 references use smaller glyphs in these groups.
+    // The iOS 26 references use distinct glyph sizes and positions in these groups.
     // Offset titles only; keep key bounds and touch ownership unchanged.
     if modern, title.count == 1 {
       if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
       else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
       else if bracketGlyph || strokeGlyph { button.titleVerticalOffset = -3 }
       else if sentenceMark { button.titleVerticalOffset = -1 }
+      else if asteriskGlyph { button.titleVerticalOffset = 5 }
     }
   }
   private func configureAccentActions(_ button: KeyButton, title: String) {
