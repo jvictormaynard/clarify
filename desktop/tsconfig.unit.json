@@ -4,5 +4,9 @@
     "allowJs": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["unit-tests", "vitest.config.ts"]
+  "include": [
+    "unit-tests", "vitest.config.ts", "tests/settings*.ts",
+    "tests/account.spec.ts", "tests/history.spec.ts",
+    "tests/style.spec.ts", "tests/computer.spec.ts"
+  ]
 }

@@ -547,6 +547,21 @@ class CandidateTests(unittest.TestCase):
         self.assertEqual(len(api.assets), 8)
         self.assertFalse(any(path == "/git/refs" for _, path, _ in api.writes))
 
+    def test_stable_build_uses_reviewed_source_after_main_advances(self):
+        expected = candidate.identity(
+            SOURCE, "refs/tags/v1.2.3", 123, 1, "stable", "1.2.3"
+        )
+        api = object()
+        with (
+            patch.object(
+                candidate.release, "verify_source", return_value={"version": "1.2.3"}
+            ) as source,
+            patch.object(candidate.release, "require_new_desktop_release") as newer,
+        ):
+            candidate.verify_source(api, expected, building=True)
+        source.assert_called_once_with(api, "desktop", SOURCE, "v1.2.3")
+        newer.assert_called_once()
+
     def test_publication_is_disabled_without_its_separate_opt_in(self):
         environment = {
             "GITHUB_REPOSITORY": candidate.release.REPOSITORY,

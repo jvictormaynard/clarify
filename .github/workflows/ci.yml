@@ -4,7 +4,13 @@ on:
     branches: [main]
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: Full repository or complete release component validation
+        type: choice
+        options: [full, desktop, mobile]
+        default: full
   schedule:
     - cron: "17 3 * * *"
 permissions:
@@ -454,16 +460,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CI_NEEDS: ${{ toJSON(needs) }}
         run: python scripts/ci.py --check-results
-      - name: Emit successful PR validation evidence
-        if: github.event_name == 'pull_request'
+      - name: Emit successful validation evidence
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.repository == 'jvictormaynard/clarify')
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_NEEDS: ${{ toJSON(needs) }}
         run: python scripts/ci.py --emit-proof "${{ runner.temp }}/proof.json"
-      - name: Upload successful PR validation evidence
-        if: github.event_name == 'pull_request'
+      - name: Upload successful validation evidence
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.repository == 'jvictormaynard/clarify')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ci-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/proof.json
           if-no-files-found: error
-          retention-days: 2
+          retention-days: ${{ github.event_name == 'push' && 30 || 2 }}

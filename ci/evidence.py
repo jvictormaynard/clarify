@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 import zipfile
@@ -31,8 +32,9 @@ class NoRedirect(HTTPRedirectHandler):
 class GitHub:
     """Never forward the API token to an artifact storage origin."""
 
-    def __init__(self):
+    def __init__(self, token=None):
         self.opener = build_opener(NoRedirect())
+        self.token = token
 
     def read(self, url, *, authenticated=True):
         from urllib.error import HTTPError
@@ -41,7 +43,9 @@ class GitHub:
         if authenticated:
             if not url.startswith(f"https://api.github.com/repos/{REPOSITORY}/"):
                 raise ValueError("Foreign API origin")
-            headers["Authorization"] = "Bearer " + os.environ["GH_TOKEN"]
+            headers["Authorization"] = "Bearer " + (
+                self.token or os.environ["GH_TOKEN"]
+            )
         request = Request(url, headers=headers)
         try:
             response = self.opener.open(request, timeout=20)
@@ -123,9 +127,27 @@ def control_change(paths):
 
 def emit(repo, env, event, needs, destination):
     impact.validate_ci_results(needs)
-    if env["GITHUB_EVENT_NAME"] != "pull_request":
-        raise ValueError("Only PR runs emit reusable evidence")
     checked = source(repo, env["GITHUB_SHA"])
+    if eligible(env):
+        expected = impact.event_jobs(repo, "push", event, checked["sha"])
+        coverage = validate(repo, checked["sha"], expected, needs, env)
+        direct = {j for j in JOBS if needs["plan"]["outputs"][j] == "true"}
+        reused = coverage - direct
+        proof = {
+            "schema": 2,
+            "repository": REPOSITORY,
+            "workflow": WORKFLOW,
+            "run_id": int(env["GITHUB_RUN_ID"]),
+            "attempt": int(env["GITHUB_RUN_ATTEMPT"]),
+            "source": checked,
+            "needs": needs,
+            "coverage": sorted(direct | reused),
+            "reused": sorted(reused),
+        }
+        Path(destination).write_text(json.dumps(proof), encoding="utf-8")
+        return
+    if env["GITHUB_EVENT_NAME"] != "pull_request":
+        raise ValueError("Only PR or canonical main pushes emit evidence")
     pr = event["pull_request"]
     if checked["parents"] != [pr["base"]["sha"], pr["head"]["sha"]]:
         raise ValueError("PR checkout is not the event synthetic merge")
@@ -146,7 +168,7 @@ def emit(repo, env, event, needs, destination):
     Path(destination).write_text(json.dumps(proof), encoding="utf-8")
 
 
-def unpack(data, digest):
+def unpack(data, digest, *, schema=1):
     if len(data) > LIMIT or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
         raise ValueError("Invalid evidence archive metadata")
     if "sha256:" + hashlib.sha256(data).hexdigest() != digest:
@@ -165,18 +187,20 @@ def unpack(data, digest):
     if (
         not isinstance(proof, dict)
         or set(proof)
-        != {
-            "schema",
-            "repository",
-            "workflow",
-            "run_id",
-            "attempt",
-            "source",
-            "pr",
-            "needs",
-        }
+        != (
+            {
+                "schema",
+                "repository",
+                "workflow",
+                "run_id",
+                "attempt",
+                "source",
+                "needs",
+            }
+            | ({"pr"} if schema == 1 else {"coverage", "reused"})
+        )
         or type(proof["schema"]) is not int
-        or proof["schema"] != 1
+        or proof["schema"] != schema
     ):
         raise ValueError("Unknown evidence manifest")
     return proof
@@ -334,8 +358,26 @@ def plan(repo, head, jobs, env, api=None):
             AttributeError,
             HTTPException,
             zlib.error,
-        ):
-            pass  # Missing or uncertain proof means ordinary main CI.
+        ) as error:
+            # Keep diagnostics bounded: transport errors can contain sensitive URLs.
+            detail = (
+                str(error)
+                if isinstance(error, ValueError)
+                and str(error)
+                in {
+                    "CI control changes require fresh validation",
+                    "Main source is not a two-parent merge",
+                    "Expected one integrated PR",
+                    "Foreign or unrelated PR",
+                    "Expired producer evidence",
+                    "Missing or ambiguous producer artifact",
+                }
+                else type(error).__name__
+            )
+            print(
+                f"PR evidence reuse unavailable ({detail}); running the affected plan",
+                file=sys.stderr,
+            )
     return set(jobs), ""
 
 
@@ -343,6 +385,7 @@ def validate(repo, head, expected, needs, env, api=None):
     impact.validate_ci_results(needs)
     flags = needs["plan"]["outputs"]
     reference = flags.get("reuse", "")
+    coverage = set()
     if reference:
         if not eligible(env):
             raise ValueError("Reuse is only permitted on canonical main pushes")
@@ -360,3 +403,105 @@ def validate(repo, head, expected, needs, env, api=None):
             expected.add("package")
     if {j for j in JOBS if flags[j] == "true"} != set(expected):
         raise ValueError("CI selection differs from authenticated expected plan")
+    return {j for j in JOBS if flags[j] == "true"} | coverage
+
+
+def release_coverage(api, run, expected_source):
+    """Authenticate the main producer receipt, not inferred job-name coverage.
+
+    Main emits its receipt only after verifying direct results and any exact-tree
+    PR reuse. Release readers trust that successful canonical producer, its exact
+    source and immutable artifact digest. PR receipts cannot serve as main proof.
+    """
+    run_id, attempt = run["id"], run["run_attempt"]
+
+    def get(path):
+        return api.request("GET", "/" + path)
+
+    def check_run(value):
+        if (
+            value.get("id") != run_id
+            or value.get("run_attempt") != attempt
+            or value.get("head_sha") != expected_source
+            or value.get("event") != "push"
+            or value.get("head_branch") != "main"
+            or value.get("path") != WORKFLOW
+            or value.get("name") != "CI"
+            or value.get("repository", {}).get("full_name") != REPOSITORY
+            or value.get("head_repository", {}).get("full_name") != REPOSITORY
+            or value.get("status") != "completed"
+            or value.get("conclusion") != "success"
+        ):
+            raise ValueError(
+                "Release coverage requires successful exact-source canonical main CI"
+            )
+
+    if (
+        type(run_id) is not int
+        or run_id <= 0
+        or type(attempt) is not int
+        or attempt <= 0
+        or not isinstance(expected_source, str)
+        or not re.fullmatch(r"[0-9a-f]{40}", expected_source)
+    ):
+        raise ValueError("Invalid coverage producer identity")
+    current = get(f"actions/runs/{run_id}")
+    check_run(run)
+    check_run(current)
+    listing = get(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+    required = [j for j in listing["jobs"] if j["name"] == "CI required"]
+    if (
+        listing["total_count"] > 100
+        or len(required) != 1
+        or required[0]["status"] != "completed"
+        or required[0]["conclusion"] != "success"
+    ):
+        raise ValueError("Coverage producer aggregate did not succeed")
+    artifacts = get(f"actions/runs/{run_id}/artifacts?per_page=100")
+    matches = [
+        a for a in artifacts["artifacts"] if a["name"] == f"ci-proof-{run_id}-{attempt}"
+    ]
+    if artifacts["total_count"] > 100 or len(matches) != 1:
+        raise ValueError("Missing or ambiguous main coverage receipt")
+    artifact = matches[0]
+    if artifact["expired"] or not 0 < artifact["size_in_bytes"] <= LIMIT:
+        raise ValueError("Unavailable main coverage receipt")
+    proof = unpack(
+        GitHub(token=api.token).archive(artifact["id"]), artifact["digest"], schema=2
+    )
+    remote = get(f"git/commits/{expected_source}")
+    expected = {
+        "sha": expected_source,
+        "tree": remote["tree"]["sha"],
+        "parents": [p["sha"] for p in remote["parents"]],
+    }
+    if (
+        remote["sha"] != expected_source
+        or proof["source"] != expected
+        or proof["repository"] != REPOSITORY
+        or proof["workflow"] != WORKFLOW
+        or proof["run_id"] != run_id
+        or proof["attempt"] != attempt
+    ):
+        raise ValueError("Main coverage receipt source mismatch")
+    impact.validate_ci_results(proof["needs"])
+    direct = {j for j in JOBS if proof["needs"]["plan"]["outputs"][j] == "true"}
+    for field in ("coverage", "reused"):
+        values = proof[field]
+        if (
+            not isinstance(values, list)
+            or any(not isinstance(j, str) or j not in JOBS for j in values)
+            or len(values) != len(set(values))
+        ):
+            raise ValueError("Invalid coverage inventory")
+    reused = set(proof["reused"])
+    if (
+        reused & {"mobile", "ios", "installer"}
+        or (reused and not proof["needs"]["plan"]["outputs"].get("reuse"))
+        or set(proof["coverage"]) != direct | reused
+    ):
+        raise ValueError(
+            "Coverage differs from successful direct and authenticated reused tasks"
+        )
+    check_run(get(f"actions/runs/{run_id}"))
+    return set(proof["coverage"])

@@ -1,3 +1,4 @@
+gem 'xcodeproj', '= 1.27.0'
 require 'xcodeproj'
 root, fixture, strict_opening_height = ARGV
 height_diagnostics = ENV['CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS'] == '1'

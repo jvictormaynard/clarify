@@ -186,6 +186,9 @@ jobs:
         env:
           CLARIFY_NATIVE_TESTS: '1'
         run: node scripts/test-keyboard-ui.cjs
+      - name: Verify the installed-keyboard fixture toolchain
+        if: ${{ steps.resume.outputs.reuse_ci != 'true' }}
+        uses: ./.github/actions/ios-fixture-toolchain
       - name: Test installed keyboard typing and activation
         if: ${{ steps.resume.outputs.reuse_ci != 'true' }}
         env:

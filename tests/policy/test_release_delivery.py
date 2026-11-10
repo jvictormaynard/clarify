@@ -9,8 +9,11 @@ from pathlib import Path
 import threading
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
+from ci import evidence
+from ci.tasks import release_jobs
 from scripts import release_delivery as delivery
 from scripts import app_store_handoff as store
 
@@ -195,6 +198,14 @@ class ReleaseDeliveryTests(unittest.TestCase):
         cls.thread.join()
 
     def setUp(self):
+        coverage = patch.object(
+            evidence,
+            "release_coverage",
+            create=True,
+            return_value=release_jobs("desktop") | release_jobs("mobile"),
+        )
+        self.coverage = coverage.start()
+        self.addCleanup(coverage.stop)
         self.server.state = self
         self.calls = []
         self.unexpected = []
@@ -251,6 +262,7 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 "Tests (windows-latest)",
                 "Package Windows executable",
                 "CI required",
+                "Repository and delivery policy",
                 "Mobile checks",
                 "iOS validation / Native tests and unsigned build",
             )
@@ -259,7 +271,7 @@ class ReleaseDeliveryTests(unittest.TestCase):
             "/releases": [],
             "/actions/runs/42": self.run,
             "/actions/workflows/7": {"name": "CI", "path": ".github/workflows/ci.yml"},
-            "/actions/runs/42/jobs": {"jobs": self.jobs},
+            "/actions/runs/42/attempts/1/jobs": {"jobs": self.jobs},
             "/commits/" + SOURCE + "/pulls": [{"number": 200}],
             "/pulls/200": self.pr,
             "/pulls/200/files": self.changes,
@@ -657,6 +669,14 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 },
             ]
         )
+        jobs.append(
+            {
+                "id": 103,
+                "name": "Repository and delivery policy",
+                "status": "completed",
+                "conclusion": "success",
+            }
+        )
         self.routes["/actions/runs/42/attempts/1/jobs"] = {"jobs": jobs}
         self.routes["/actions/runs/42"] = self.run
         receipt = delivery.internal_ci_proof(self.api, self.run, SOURCE)
@@ -718,14 +738,85 @@ class ReleaseDeliveryTests(unittest.TestCase):
                     )
         self.assertEqual(self.mutations(), [])
 
-    def test_release_consumer_does_not_duplicate_the_ci_component_inventory(self):
-        self.jobs[:] = [job for job in self.jobs if job["name"] == "CI required"]
+    def test_release_requires_full_authenticated_target_coverage(self):
+        for component in ("desktop", "mobile"):
+            if component == "mobile":
+                self.mobile()
+            tag = delivery.release_tag(self.intent)
+            for missing in release_jobs(component):
+                with self.subTest(component=component, missing=missing):
+                    self.coverage.return_value = release_jobs(component) - {missing}
+                    self.tag = SOURCE
+                    with self.assertRaisesRegex(delivery.ReleaseError, "coverage"):
+                        delivery.verify_source(self.api, component, SOURCE, tag)
+                    self.tag = None
+                    with self.assertRaisesRegex(delivery.ReleaseError, "coverage"):
+                        self.promote()
+                    self.assertEqual(self.mutations(), [])
+            self.coverage.return_value = release_jobs(component)
+            self.tag = SOURCE
+            self.assertEqual(
+                delivery.verify_source(self.api, component, SOURCE, tag), self.intent
+            )
+            self.coverage.assert_called_with(self.api, self.run, SOURCE)
+
+    def test_unavailable_or_untrusted_coverage_cannot_authorize_promotion(self):
+        self.coverage.side_effect = ValueError("Missing authenticated receipt")
+        with self.assertRaisesRegex(ValueError, "receipt"):
+            self.promote()
+        self.assertEqual(self.mutations(), [])
+
+    def test_release_rejects_source_outside_main(self):
+        self.main = BASE
         self.tag = SOURCE
+        for status, ancestor in (("diverged", BASE), ("behind", BASE), ("ahead", BASE)):
+            with self.subTest(status=status):
+                self.routes[f"/compare/{SOURCE}...{BASE}"] = {
+                    "status": status,
+                    "merge_base_commit": {"sha": ancestor},
+                }
+                with self.assertRaisesRegex(delivery.ReleaseError, "reachable"):
+                    delivery.verify_source(self.api, "desktop", SOURCE, "v1.2.4")
+                with self.assertRaisesRegex(delivery.ReleaseError, "reachable"):
+                    self.promote()
+                self.assertEqual(self.mutations(), [])
+
+    def test_release_requires_policy_in_addition_to_target_receipt(self):
+        self.jobs[:] = [
+            j for j in self.jobs if j["name"] != "Repository and delivery policy"
+        ]
+        with self.assertRaisesRegex(
+            delivery.ReleaseError, "Repository and delivery policy"
+        ):
+            self.promote()
+        self.assertEqual(self.mutations(), [])
+
+    def test_release_target_jobs_are_complete_and_policy_is_separate(self):
         self.assertEqual(
-            delivery.verify_source(self.api, "desktop", SOURCE, "v1.2.4"), self.intent
+            release_jobs("desktop"),
+            {
+                "static",
+                "python",
+                "qt",
+                "settings_unit",
+                "settings_browser",
+                "desktop_shell",
+                "package",
+                "audit",
+            },
         )
+        self.assertEqual(release_jobs("mobile"), {"mobile", "ios", "audit"})
+        with self.assertRaises(ValueError):
+            release_jobs("server")
+
+    def test_reviewed_source_can_be_promoted_after_main_advances(self):
+        self.main = BASE
+        self.routes[f"/compare/{SOURCE}...{BASE}"] = {
+            "status": "ahead",
+            "merge_base_commit": {"sha": SOURCE},
+        }
         self.assertEqual(self.promote(), "dispatched")
-        self.assertEqual(self.mutations()[-1][1]["inputs"]["action"], "build-candidate")
+        self.assertEqual(self.tag, SOURCE)
 
     def test_retired_intent_schema_cannot_authorize_a_candidate(self):
         self.intent["schema"] = 1
@@ -762,7 +853,11 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 self.run.clear()
                 self.run.update(saved)
         self.main = BASE
-        with self.assertRaisesRegex(delivery.ReleaseError, "stale"):
+        self.routes[f"/compare/{SOURCE}...{BASE}"] = {
+            "status": "diverged",
+            "merge_base_commit": {"sha": BASE},
+        }
+        with self.assertRaisesRegex(delivery.ReleaseError, "reachable"):
             self.promote()
         self.assertEqual(self.mutations(), [])
 
@@ -877,6 +972,10 @@ class ReleaseDeliveryTests(unittest.TestCase):
     ):
         self.tag = SOURCE
         self.main = BASE
+        self.routes[f"/compare/{SOURCE}...{BASE}"] = {
+            "status": "ahead",
+            "merge_base_commit": {"sha": SOURCE},
+        }
         self.assertEqual(
             delivery.verify_source(self.api, "desktop", SOURCE, "v1.2.4"), self.intent
         )

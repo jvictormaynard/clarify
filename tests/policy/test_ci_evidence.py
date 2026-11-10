@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
+from unittest.mock import Mock
 import zipfile
 
 from ci import evidence
@@ -301,6 +302,50 @@ class EvidenceTests(unittest.TestCase):
                 }
             )
 
+    def test_release_coverage_binds_main_receipt_and_never_counts_skipped_jobs(self):
+        self.run.update(event="push", head_branch="main", head_sha=self.head)
+        self.artifact["name"] = "ci-proof-10-2"
+        self.needs["plan"]["outputs"]["ios"] = "false"
+        self.needs["ios"]["result"] = "skipped"
+        self.proof = {
+            "schema": 2,
+            "repository": evidence.REPOSITORY,
+            "workflow": evidence.WORKFLOW,
+            "run_id": 10,
+            "attempt": 2,
+            "source": self.source,
+            "needs": self.needs,
+            "coverage": sorted(set(JOBS) - {"ios"}),
+            "reused": [],
+        }
+        api = Mock(token="fixture-token")
+        api.request.side_effect = lambda method, path: self.get(path.lstrip("/"))
+        self.seal()
+        with patch.object(evidence.GitHub, "archive", side_effect=lambda _: self.data):
+            self.assertEqual(
+                evidence.release_coverage(api, self.run, self.head), set(JOBS) - {"ios"}
+            )
+            self.proof["coverage"].append("ios")
+            self.seal()
+            with self.assertRaises(ValueError):
+                evidence.release_coverage(api, self.run, self.head)
+            self.proof["coverage"].remove("ios")
+            self.seal()
+            for mutation in (
+                {"run_attempt": 3},
+                {"head_sha": "f" * 40},
+                {"event": "pull_request"},
+                {"conclusion": "failure"},
+            ):
+                self.after = {**self.run, **mutation}
+                self.reads = 1
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    evidence.release_coverage(api, self.run, self.head)
+            self.after = None
+            self.artifact["digest"] = "sha256:" + "0" * 64
+            with self.assertRaises(ValueError):
+                evidence.release_coverage(api, self.run, self.head)
+
     def test_transport_keeps_token_on_api_and_uses_json_accept(self):
         from urllib.error import HTTPError
         from unittest.mock import Mock
@@ -432,3 +477,45 @@ class EvidenceTests(unittest.TestCase):
             event["pull_request"]["base"]["sha"] = "f" * 40
             with self.assertRaises(ValueError):
                 evidence.emit(Path("."), env, event, self.needs, destination)
+
+    def test_main_receipt_records_verified_reuse_without_inventing_native_coverage(
+        self,
+    ):
+        import tempfile
+
+        env = {
+            **self.env,
+            "GITHUB_SHA": self.head,
+            "GITHUB_RUN_ID": "20",
+            "GITHUB_RUN_ATTEMPT": "1",
+        }
+        selected = {"python", "static"}
+        needs = copy.deepcopy(self.needs)
+        needs["plan"]["outputs"].update(
+            {j: str(j == "static").lower() for j in JOBS},
+            reuse=json.dumps(
+                {
+                    "run_id": 10,
+                    "attempt": 2,
+                    "artifact_id": 12,
+                    "digest": "sha256:" + "0" * 64,
+                }
+            ),
+        )
+        needs.update(
+            {j: {"result": "success" if j == "static" else "skipped"} for j in JOBS}
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(evidence.impact, "event_jobs", return_value=selected),
+            patch.object(evidence, "authenticate", return_value=({"python"}, {})),
+        ):
+            destination = Path(directory) / "proof.json"
+            evidence.emit(Path("."), env, {"before": self.base}, needs, destination)
+            receipt = json.loads(destination.read_text())
+            self.assertEqual(receipt["schema"], 2)
+            self.assertEqual(set(receipt["coverage"]), selected)
+            self.assertEqual(receipt["reused"], ["python"])
+            needs["static"]["result"] = "failure"
+            with self.assertRaises(ValueError):
+                evidence.emit(Path("."), env, {"before": self.base}, needs, destination)

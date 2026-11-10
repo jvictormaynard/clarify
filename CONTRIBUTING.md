@@ -45,11 +45,11 @@ cd desktop
 npm ci
 npx --no-install playwright install chromium
 cd ..
-.\.venv\Scripts\python.exe scripts/ci.py --task settings_unit
-.\.venv\Scripts\python.exe scripts/ci.py --task settings_browser
 ```
 
-The test wrapper selects a free local port for each run. Set `CLARIFY_TEST_PORT`
+For focused local checks and affected CI tasks, use
+[local validation](docs/ci-delivery.md#local-validation). The browser test wrapper
+selects a free local port for each run. Set `CLARIFY_TEST_PORT`
 to use an explicit port; the server fails if that port is occupied. Each worktree
 keeps its own dependencies and build outputs.
 
@@ -69,7 +69,6 @@ cd clarify
 .\scripts\setup.ps1 -Dev
 .\scripts\build-desktop.ps1
 $env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
-.\.venv\Scripts\python.exe scripts/run_tests.py -v
 .\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
@@ -104,7 +103,9 @@ and integration.
 4. Update user docs when how to use the product changes. Follow
    [documentation rules](docs/agents/workflow.md#documentation-that-lasts); a cosmetic edit
    or implementation detail does not automatically need a new test or document.
-5. Run the checks below.
+5. Use focused quick local checks and inspect the full affected validation plan.
+   Run complete affected validation in remote CI; do not duplicate that full
+   selection locally before pushing. See the validation policy below.
 6. For native integration changes, build and test the Windows executable when
    your environment supports it. Report unavailable platform checks in the PR.
    Maintainers complete native acceptance before publication.
@@ -114,13 +115,15 @@ Use clear commit messages. Conventional prefixes such as `fix:`, `feat:`,
 
 ## Checks for your change
 
-Prepare the locked Python environment and CI tool dependencies as described in
-[local validation](docs/ci-delivery.md#local-validation). Run `npm run ci:plan`
-to inspect the selected checks and `npm run ci` to execute local checks.
-Use `npm run ci:full` to select every component. These commands use the
-same component policy as CI and include committed and uncommitted changes.
-They do not install dependencies. Unavailable database, remote or native gates
-are reported as unexecuted, with exit code 2.
+Use [local validation](docs/ci-delivery.md#local-validation) for setup, commands,
+quick local feedback, and the full affected plan. That document owns the command
+matrix and quick-mode limits. The normal plan and command keep all affected CI
+obligations and report unexecuted gates explicitly.
+
+Use focused checks while editing and remote CI for complete affected validation.
+Keep targeted reproductions and direct rendered proof for UI changes. Follow the
+[workflow](docs/agents/workflow.md#validation-by-affected-contract) for check
+repetition and unavailable gates.
 
 PR CI selects checks from the complete diff. Main pushes require full standard
 validation, with authenticated exact-source PR evidence reuse where supported.
@@ -128,26 +131,10 @@ Scheduled and manual runs add extended checks. No special branch prefix, label,
 paid service or secret is required. Pushes to a branch with an open PR run one
 PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 
-- Documentation: run `python scripts/check_agent_skills.py` when changing agent
-  guidance, and `git diff --check`. No product build is needed.
-- Settings design: run the shared Settings validation tasks above.
-  Rust and the portable EXE are not required for a frontend-only PR.
-- Python or QML: run the Python suite and relevant QML checks. CI tests Python
-  behavior on Linux and Windows.
-- Mobile TypeScript: run `npm ci` and `npm run check` in `mobile/`. CI also checks
-  the iOS JavaScript bundle with bounded worker concurrency. Native source, config, plugins and dependencies
-  additionally select macOS tests and an unsigned native build.
-- Server: use the isolated database tests in [server/README.md](server/README.md).
-- Dependencies or packaging: run the corresponding locked checks and native
-  build. MSI lifecycle checks apply to installer inputs, not ordinary design PRs.
-
-For Python changes, use the configured interpreter:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/run_tests.py -v
-```
-
-The runner creates a temporary process profile before test discovery, removes
+For documentation-only changes, validate references and agent guidance where
+affected, then check the diff for whitespace errors. No product build is needed.
+Use the configured interpreter and locked dependencies for behavior checks.
+The Python runner creates a temporary process profile before test discovery, removes
 inherited provider credentials and sets `CLARIFY_SKIP_DOTENV=1`. It accepts the
 same arguments as `unittest`; no arguments run full discovery. See the
 [focused example](docs/development.md#checks) for a single test file.
@@ -168,12 +155,6 @@ in `dependency-audit.json`.
 Commit `desktop/package-lock.json` and `desktop/src-tauri/Cargo.lock` when
 changing their dependencies. Dependabot covers both ecosystems. Browser tests
 do not prove native Windows focus, hotkeys, tray behavior or WebView2 integration.
-
-For packaging-related changes:
-
-```powershell
-.\scripts\build.ps1
-```
 
 For native Windows behavior and release acceptance, check the built executable,
 including affected focus, shortcuts, tray, transparency and DPI behavior. A

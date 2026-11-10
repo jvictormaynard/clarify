@@ -397,6 +397,8 @@ for (const [library,field,value] of [
  set([{...saved[0]}]);gate.release();await saving;c=h.render();
  const live=library==='dictionary'?c.dictionary:c.snippets;
  assert.deepEqual(structuredClone(live[0][field]),saved[0][field]);assert.equal(c.pageDirty,true);
+ const committed=library==='dictionary'?h.persisted.dictionaryEntries:h.persisted.snippets;
+ assert.deepEqual(committed[0][field],value,'first Save commits the submitted revision');
  await c.save();c=h.render();
  const persisted=library==='dictionary'?h.persisted.dictionaryEntries:h.persisted.snippets;
  assert.deepEqual(persisted[0][field],saved[0][field]);assert.equal(c.dirty,false);
