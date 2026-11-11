@@ -490,6 +490,7 @@ final class KeyboardUITests: XCTestCase {
       for (title, width) in [("e", CGFloat(393)), ("u", 393), ("e", 320),
                              ("i", 320), ("i", 393), ("i", 430), ("u", 320), ("u", 430),
                              ("a", 320), ("a", 393), ("a", 430),
+                             ("i", 402), ("u", 402), ("n", 402),
                              ("o", 320), ("o", 393), ("o", 402), ("o", 430)] {
         pickerHost.frame.size.width = width; toolbarCover.frame.size.width = width
         grid.frame.size.width = width; grid.layoutIfNeeded()
@@ -497,6 +498,11 @@ final class KeyboardUITests: XCTestCase {
         let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
           $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
         })
+        if #available(iOS 26.0, *), title == "i" || title == "u" || title == "n" {
+          let expectedIndex = title == "n" ? 1 : (title == "i" ? (width == 320 ? 5 : 6) : (width == 320 ? 4 : 5))
+          XCTAssertEqual(picker.arrangedSubviews.compactMap { ($0 as? UIButton)?.title(for: .normal) }.firstIndex(of: title),
+                         expectedIndex, "Prefer the rightmost aligned base slot, retaining alignment on compact widths")
+        }
         let basePoint = try accentPoint(title)
         let sourcePoint = letter.convert(CGPoint(x: letter.bounds.midX, y: letter.bounds.midY), to: picker)
         XCTAssertEqual(basePoint.x, sourcePoint.x, accuracy: 0.5, "The base choice must align with the held key")
@@ -507,7 +513,7 @@ final class KeyboardUITests: XCTestCase {
         let receiver = try XCTUnwrap(pickerHost.hitTest(pickerPoint, with: nil))
         XCTAssertTrue(receiver === picker || receiver.isDescendant(of: picker), "A second finger on the picker must not reach toolbar actions")
         grid.isUserInteractionEnabled = false
-        if title == "a" {
+        if title == "a" || title == "n" {
           XCTAssertFalse(toolbarCover.frame.contains(pickerPoint))
           XCTAssertTrue(pickerHost.hitTest(pickerPoint, with: nil) === pickerHost)
         } else {
@@ -517,7 +523,7 @@ final class KeyboardUITests: XCTestCase {
         let foreignPoint = picker.convert(basePoint, to: grid)
         grid.beginPress("picker-foreign", at: foreignPoint); grid.endPress("picker-foreign", at: foreignPoint)
         XCTAssertEqual(text, beforeJitter, "Only the held accent gesture may insert a choice")
-        if title == "i" || title == "u" || title == "a" || title == "o" {
+        if title == "i" || title == "u" || title == "a" || title == "o" || title == "n" {
           let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: pickerHost.bounds).image { pickerHost.layer.render(in: $0.cgContext) })
           capture.name = "accent-\(title)-\(Int(width))-reference"; capture.lifetime = .keepAlways; self.add(capture)
         }
@@ -527,7 +533,7 @@ final class KeyboardUITests: XCTestCase {
       }
       for (title, choice) in [("e", "ę"), ("e", "ė"), ("e", "ē"), ("i", "ī"), ("i", "į"), ("u", "ū"),
                               ("a", "å"), ("a", "æ"), ("o", "ō"), ("o", "ø"), ("o", "œ"),
-                              ("a", "ª"), ("o", "º")] {
+                              ("a", "ª"), ("o", "º"), ("n", "ñ")] {
         let letter = try key(title), beforeChoice = text
         XCTAssertTrue(letter.accessibilityCustomActions?.contains { $0.name == choice } == true)
         let held = try startAccent(title)

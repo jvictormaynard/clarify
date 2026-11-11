@@ -574,11 +574,13 @@ final class KeyGridView: UIView {
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
       let cell = (width - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
       var baseIndex = 0, origin: CGFloat = 6, distance = CGFloat.greatestFiniteMagnitude
-      // Keep the base choice over the held key, including keys near the right edge.
-      for index in choices.indices {
+      // Keep the base aligned; prefer the rightmost equally aligned slot for right-half keys.
+      for offset in choices.indices {
+        let index = center.x > bounds.midX ? choices.count - 1 - offset : offset
         let relativeCenter = cell / 2 + CGFloat(index) * (cell + bar.spacing)
-        let candidate = min(max(6, center.x - relativeCenter), bounds.width - width - 6)
-        let gap = abs(candidate + relativeCenter - center.x)
+        let proposed = center.x - relativeCenter
+        let candidate = min(max(6, proposed), bounds.width - width - 6)
+        let gap = abs(candidate - proposed)
         if gap < distance { baseIndex = index; origin = candidate; distance = gap }
       }
       let base = choices.removeFirst(); choices.insert(base, at: baseIndex)
