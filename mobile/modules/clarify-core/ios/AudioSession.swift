@@ -307,12 +307,12 @@ final class ClarifyAudioSession: NSObject {
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
     let newFile = try AudioClipWriter(url: url, inputFormat: format)
-    playCue(starting: true)
+    let cueDuration = playCue(starting: true)
     if haptics, UIApplication.shared.applicationState == .active {
       feedback.record("start")
     }
     // The engine discards the short start cue so it is not sent for transcription.
-    let captureStart = Date().addingTimeInterval(0.12)
+    let captureStart = Date().addingTimeInterval(cueDuration)
     fileLock.lock()
     file = newFile; audioURL = url; captureAfter = captureStart.timeIntervalSince1970
     meteredOperationID = id; meteredAt = 0; meteredLevel = 0
@@ -472,12 +472,14 @@ final class ClarifyAudioSession: NSObject {
     deactivate(); libraryChanged()
   }
   func cancel() {
+    let wasRecording = [.recording, .locked].contains(state.phase)
     if ProcessingDestination.shared.computerMode, let id = state.operationID {
       MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
     }
     cuePlayer?.stop(); cuePlayer = nil
     task?.cancel(); task = nil; startedAt = nil
     if let url = closeFile() { try? FileManager.default.removeItem(at: url) }
+    if wasRecording { playCue(starting: false) }
     if state.phase.busy {
       state.operationID = nil; state.phase = .idle; state.text = nil; state.message = nil
       state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
@@ -495,30 +497,20 @@ final class ClarifyAudioSession: NSObject {
     state.errorRecovery = diagnostics?.recovery; state.errorCode = diagnostics?.code; state.errorPhase = diagnostics?.phase; state.errorStatus = diagnostics?.status
     publish()
   }
-  private func playCue(starting: Bool) {
-    // Original 90 ms cue, with a soft envelope. No WhatsApp audio is bundled.
-    let rate = 24_000
-    let samples = 2_160
-    var wav = Data()
-    func ascii(_ value: String) { wav.append(Data(value.utf8)) }
-    func integer<T: FixedWidthInteger>(_ value: T) {
-      var little = value.littleEndian
-      withUnsafeBytes(of: &little) { wav.append(contentsOf: $0) }
-    }
-    ascii("RIFF"); integer(UInt32(36 + samples * 2)); ascii("WAVEfmt ")
-    integer(UInt32(16)); integer(UInt16(1)); integer(UInt16(1))
-    integer(UInt32(rate)); integer(UInt32(rate * 2)); integer(UInt16(2)); integer(UInt16(16))
-    ascii("data"); integer(UInt32(samples * 2))
-    var phase = 0.0
-    for index in 0..<samples {
-      let progress = Double(index) / Double(samples - 1)
-      let frequency = starting ? 840 + 360 * progress : 1_040 - 300 * progress
-      phase += 2 * .pi * frequency / Double(rate)
-      let envelope = pow(sin(.pi * progress), 2)
-      integer(Int16(sin(phase) * envelope * 3_800))
-    }
-    cuePlayer = try? AVAudioPlayer(data: wav)
-    cuePlayer?.volume = 0.5; cuePlayer?.prepareToPlay(); cuePlayer?.play()
+  @discardableResult
+  private func playCue(starting: Bool) -> TimeInterval {
+    cuePlayer?.stop(); cuePlayer = nil
+    let name = starting ? "dictation-start" : "dictation-stop"
+    guard let url = Bundle.main.url(forResource: name, withExtension: "wav"),
+      let player = try? AVAudioPlayer(contentsOf: url) else { return 0 }
+    player.volume = 1
+    player.prepareToPlay()
+    guard player.play() else { return 0 }
+    cuePlayer = player
+    // Include the output route's latency so the microphone does not capture
+    // either note, including on Bluetooth routes.
+    let session = AVAudioSession.sharedInstance()
+    return player.duration + session.outputLatency + session.ioBufferDuration + 0.03
   }
   @objc private func interrupted(_ notification: Notification) {
     guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
