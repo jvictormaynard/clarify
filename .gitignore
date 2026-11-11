@@ -55,6 +55,8 @@ account-secrets*.json
 account-data/
 server/.development.sqlite3*
 *.wav
+!assets/sounds/dictation-start.wav
+!assets/sounds/dictation-stop.wav
 
 # Tauri-generated schemas
 desktop/src-tauri/gen/

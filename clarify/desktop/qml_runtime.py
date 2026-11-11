@@ -148,8 +148,10 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
 
 try:
     from .qml_clipboard import QmlClipboardGateway
+    from .dictation_sounds import play_dictation_cue
 except ImportError:  # PyInstaller analyzes this module as top-level source.
     from qml_clipboard import QmlClipboardGateway
+    from dictation_sounds import play_dictation_cue
 
 
 class QtRuntimeError(RuntimeError):
@@ -508,6 +510,7 @@ class _RecorderCapture:
     process: Any = None
     meter_device: Any = None
     started: bool = False
+    cue_started: bool = False
 
 
 class QtRecorder:
@@ -517,6 +520,8 @@ class QtRecorder:
         self,
         config: QtWorkflowConfig | None = None,
         microphone_inventory_source: Any | None = None,
+        *,
+        cue_player: Callable[[bool], None] | None = None,
     ) -> None:
         roots: list[Path] = []
         bundled_root = getattr(sys, "_MEIPASS", None)
@@ -544,6 +549,16 @@ class QtRecorder:
         self._readiness_worker: threading.Thread | None = None
         self._meter_worker: threading.Thread | None = None
         self._lock = threading.RLock()
+        self._cue_player = cue_player
+        self._cue_lock = threading.Lock()
+
+    def _play_cue(self, starting: bool) -> None:
+        if self._cue_player is not None:
+            try:
+                self._cue_player(starting)
+            except Exception:
+                # Output failure must not prevent microphone use or cleanup.
+                pass
 
     @property
     def capture_active(self) -> bool:
@@ -908,6 +923,13 @@ class QtRecorder:
         if system == "Windows":
             kwargs["creationflags"] = 0x08000000
             kwargs["cwd"] = str(Path(self.sox).parent)
+        # Complete the cue before SoX opens the input. Streaming ASR and saved
+        # audio must receive speech only. These calls run off the UI thread.
+        with self._cue_lock:
+            if capture.cancel_event.is_set() or capture.stopped.is_set():
+                raise RuntimeError("Recording cancelled before startup")
+            capture.cue_started = self._cue_player is not None
+            self._play_cue(True)
         if capture.cancel_event.is_set() or capture.stopped.is_set():
             raise RuntimeError("Recording cancelled before startup")
         # Launch may wait on native Windows audio. Retain local ownership until
@@ -971,6 +993,10 @@ class QtRecorder:
             process = capture.process
             self.process = None
         self._terminate_process(process)
+        with self._cue_lock:
+            if capture.cue_started:
+                capture.cue_started = False
+                self._play_cue(False)
 
     @staticmethod
     def _terminate_process(process: Any) -> None:
@@ -1173,8 +1199,8 @@ class QtRecordingSession(RecordingSessionGateway):
     def _snapshot(self, *, finalize_stream: bool) -> RecordingSnapshot:
         self.wait_until_started()
         self._stop_boundary_monitor()
-        self.recorder.stop()
         stopped_at = time.monotonic()
+        self.recorder.stop()
         try:
             audio_bytes = self.audio_path.read_bytes()
         except OSError as error:
@@ -1883,7 +1909,9 @@ def create_real_workflow_runtime(
             ),
         )
     )
-    recording_audio = QtRecordingAudioGateway(QtRecorder(config), config)
+    recording_audio = QtRecordingAudioGateway(
+        QtRecorder(config, cue_player=play_dictation_cue), config
+    )
     clipboard = QtClipboardGateway()
     from chatgpt_auth import get_chatgpt_session
 
