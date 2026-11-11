@@ -5,6 +5,8 @@ const { spawn, spawnSync } = require('node:child_process');
 const strictOpeningHeight = process.argv.includes('--check-opening-height');
 const keyboardHeightDiagnostics = process.env.CLARIFY_KEYBOARD_HEIGHT_DIAGNOSTICS === '1';
 const internalManualReturn = process.env.CLARIFY_INTERNAL_MANUAL_RETURN === '1';
+const nativeReferenceMethods = ['testZ1NativeEnglishUSReference', 'testZ2NativePortugueseBrazilReference'];
+if (internalManualReturn || strictOpeningHeight || keyboardHeightDiagnostics) throw new Error('Native uppercase accent reference capture cannot combine with keyboard acceptance modes.');
 if (![undefined, '0', '1'].includes(process.env.CLARIFY_INTERNAL_MANUAL_RETURN)) throw new Error('Invalid manual-return test mode.');
 if (internalManualReturn && (strictOpeningHeight || keyboardHeightDiagnostics)) throw new Error('Manual return cannot be combined with diagnostics.');
 if (process.argv.slice(2).some(argument => argument !== '--check-opening-height')) throw new Error('Unknown installed keyboard test argument.');
@@ -28,6 +30,9 @@ const results = fs.mkdtempSync(path.join(output, 'installed-keyboard-'));
 const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-extension-'));
 let exitCode = 1;
 let recording;
+let nativeReferenceMethodsPassed = [];
+let nativeReferenceMethodsFailed = [];
+let nativeReferenceProcess = null;
 try {
   run('ruby', [path.join(root, 'scripts/keyboard-extension-project.rb'), root, fixture, String(strictOpeningHeight)]);
   if (!keyboardHeightDiagnostics) {
@@ -55,9 +60,20 @@ try {
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived,
     '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
+    ...nativeReferenceMethods.map(method => `-only-testing:ExtensionTests/KeyboardExtensionTests/${method}`),
     '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '300',
-    '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });
-  exitCode = result.status ?? 1;
+    '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 600000, killSignal: 'SIGINT' });
+  process.stdout.write(result.stdout ?? ''); process.stderr.write(result.stderr ?? '');
+  const testLog = [result.stdout ?? '', result.stderr ?? ''].join('\n');
+  fs.writeFileSync(path.join(results, 'native-reference-xcodebuild.log'), testLog);
+  nativeReferenceProcess = { status: result.status, signal: result.signal, errorCode: result.error?.code ?? null };
+  nativeReferenceMethodsPassed = [...testLog.matchAll(/Test Case '-\[ExtensionTests\.KeyboardExtensionTests (test\w+)\]' passed /g)].map(match => match[1]);
+  nativeReferenceMethodsFailed = [...testLog.matchAll(/Test Case '-\[ExtensionTests\.KeyboardExtensionTests (test\w+)\]' failed /g)].map(match => match[1]);
+  exitCode = result.error || result.signal ? 1 : result.status ?? 1;
+  if (exitCode === 0 && (nativeReferenceMethodsFailed.length !== 0 || nativeReferenceMethodsPassed.length !== nativeReferenceMethods.length ||
+      nativeReferenceMethods.some(method => nativeReferenceMethodsPassed.filter(name => name === method).length !== 1))) {
+    console.error('Native reference capture did not pass exactly both native language methods.'); exitCode = 1;
+  }
   if (fs.existsSync(resultPath)) run('xcrun', ['xcresulttool', 'export', 'attachments', '--path', resultPath, '--output-path', path.join(results, 'captures')]);
 } catch (error) {
   exitCode = 1;
@@ -89,6 +105,7 @@ try {
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
   fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, internalManualReturn,
-    completeKeyboardAcceptance: !internalManualReturn && !strictOpeningHeight && !keyboardHeightDiagnostics && exitCode === 0, exitCode }, null, 2));
+    nativeUppercaseAccentReferenceOnly: true, nativeReferenceMethods, nativeReferenceMethodsPassed, nativeReferenceMethodsFailed, nativeReferenceProcess,
+    nativeReferenceCapturePassed: exitCode === 0, completeKeyboardAcceptance: false, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

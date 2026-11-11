@@ -319,6 +319,38 @@ final class KeyboardExtensionTests: XCTestCase {
     try perform("after-accent-slide", frame: afterSlide.frame) { afterSlide.tap() }
     expectText(String(accentExpected.prefix(right + 2)) + "q" + String(accentExpected.dropFirst(right + 2)), in: app)
     XCTAssertEqual(try caret(), right + 3, "The next tap must work after the accent drag")
+    if name.hasPrefix("apple-") {
+      var menuText = String(accentExpected.prefix(right + 2)) + "q" + String(accentExpected.dropFirst(right + 2))
+      var menuCaret = right + 3
+      let shift = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label IN %@", "shift",
+        ["Caps lock", "Shift", "shift", "Maiúsculas", "maiúsculas"])).firstMatch
+      XCTAssertTrue(shift.waitForExistence(timeout: 5) && shift.isHittable)
+      let shiftFrame = shift.frame
+      XCTAssertTrue(!shiftFrame.isEmpty && windowFrame.contains(shiftFrame))
+      let shiftPoint = window.coordinate(withNormalizedOffset: .zero).withOffset(
+        CGVector(dx: shiftFrame.midX - windowFrame.minX, dy: shiftFrame.midY - windowFrame.minY))
+      try perform("uppercase-enabled", frame: shiftFrame) { shiftPoint.doubleTap() }
+      XCTAssertTrue(app.keys["Q"].waitForExistence(timeout: 5), "Uppercase menus require Caps Lock")
+      expectText(menuText, in: app); XCTAssertEqual(try caret(), menuCaret)
+      for title in ["A", "E", "I", "O", "U", "C", "N"] {
+        let held = app.keys[title]
+        XCTAssertTrue(held.waitForExistence(timeout: 5) && held.isHittable)
+        let frame = held.frame
+        XCTAssertTrue(!frame.isEmpty && windowFrame.contains(frame))
+        let point = window.coordinate(withNormalizedOffset: .zero).withOffset(
+          CGVector(dx: frame.midX - windowFrame.minX, dy: frame.midY - windowFrame.minY))
+        try perform("uppercase-menu-\(title)-released", frame: frame) { point.press(forDuration: 0.8) }
+        menuText = String(menuText.prefix(menuCaret)) + title + String(menuText.dropFirst(menuCaret))
+        menuCaret += 1
+        expectText(menuText, in: app)
+        XCTAssertEqual(try caret(), menuCaret, "A stationary uppercase \(title) hold must insert its base letter once")
+      }
+      let following = app.keys["Q"]
+      XCTAssertTrue(following.waitForExistence(timeout: 5) && following.isHittable, "Caps Lock must survive the uppercase holds")
+      try perform("after-uppercase-menus", frame: following.frame) { following.tap() }
+      expectText(String(menuText.prefix(menuCaret)) + "Q" + String(menuText.dropFirst(menuCaret)), in: app)
+      XCTAssertEqual(try caret(), menuCaret + 1, "The next tap must work after the uppercase accent holds")
+    }
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
