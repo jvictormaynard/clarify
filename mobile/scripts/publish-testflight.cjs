@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    "en-US": `Clarify ${version} (${build}): returns to the normal rewriting flow from current main. The experimental Apple rewriting option, test screen and private rewrite service are not included. Use the Clarify keyboard in Notes as usual with Improve clarity or Keep my words. Existing output language and tone settings use the normal processing destination. Verify that dictation inserts text without Apple error 1007 or Writing Tools windows. Test suites skipped as requested. Internal TestFlight only; no public App Store submission.`,
+    "pt-BR": `Clarify ${version} (${build}): retorna ao fluxo normal de reescrita da branch main atual. A opção experimental Apple, a tela de teste e o serviço privado de reescrita não estão incluídos. Use o teclado Clarify no Notas normalmente. O idioma e o tom usam o destino normal de processamento. Verifique se o ditado insere o texto sem o erro Apple 1007 e sem janelas Writing Tools. Testes omitidos conforme solicitado. Apenas TestFlight interno, sem envio para a App Store.`,
+    "es-ES": `Clarify ${version} (${build}): vuelve al flujo normal de reescritura de la rama main actual. No incluye la opción experimental Apple, la pantalla de prueba ni el servicio privado de reescritura. Usa el teclado Clarify en Notas. El idioma y el tono usan el destino normal de procesamiento. Comprueba que el dictado inserte texto sin el error Apple 1007 ni ventanas Writing Tools. Pruebas omitidas según lo solicitado. Solo TestFlight interno; sin envío a App Store.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
