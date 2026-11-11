@@ -11,7 +11,7 @@ function MenuPopup({ className, children, ...props }: MenuPrimitive.Popup.Props)
       <MenuPrimitive.Positioner align="end" sideOffset={4} className="z-[130]" data-slot="menu-positioner">
         <MenuPrimitive.Popup
           className={cn(
-            "dropdown-glass relative flex max-w-[calc(100vw-2rem)] min-w-[min(10rem,calc(100vw-2rem))] origin-(--transform-origin) rounded-lg text-foreground shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)] [-webkit-app-region:no-drag]",
+            "dropdown-glass transition-opacity duration-80 ease-[cubic-bezier(0,0,0.58,1)] data-starting-style:opacity-0 data-ending-style:opacity-0 relative flex max-w-[calc(100vw-2rem)] min-w-[min(10rem,calc(100vw-2rem))] origin-(--transform-origin) rounded-lg text-foreground shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)] [-webkit-app-region:no-drag]",
             className,
           )}
           data-slot="menu-popup"

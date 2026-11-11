@@ -7,7 +7,7 @@
 
 .settings-dialog,
 .text-action-editor,
-.app-style-editor {
+.profile-editor {
   display: flex;
   flex-direction: column;
   width: min(1040px, calc(100vw - 32px));
@@ -17,13 +17,12 @@
 }
 .settings-dialog { height: min(760px, calc(100dvh - 64px)); }
 .text-action-editor { width: min(896px, calc(100vw - 32px)); }
-.app-style-editor { width: min(576px, calc(100vw - 32px)); }
+.profile-editor { width: min(576px, calc(100vw - 32px)); }
 .settings-dialog-layout {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 208px minmax(0, 1fr);
   flex: 1;
   min-height: 0;
-  border-top: 1px solid var(--border);
 }
 .settings-dialog-navigation {
   display: flex;
@@ -43,6 +42,7 @@
   overscroll-behavior: contain;
   padding: 24px;
 }
+.settings-dialog-label { padding: 10px 12px 8px; color: var(--muted-foreground); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .settings-dialog-section-title { margin: 0 0 24px; font-size: 16px; font-weight: 600; }
 .settings-dialog .page-content,
 .text-action-editor .page-content { gap: 24px; }
@@ -63,12 +63,13 @@
 @media (max-width: 767px) {
   .settings-dialog-layout { grid-template-columns: 56px minmax(0, 1fr); }
   .settings-dialog-navigation .navigation-item { width: 40px; justify-content: center; padding: 6px; }
-  .settings-dialog-navigation .navigation-item > span { display: none; }
+  .settings-dialog-navigation .navigation-item > span,
+  .settings-dialog-label { display: none; }
   .settings-dialog-content,
   .text-action-editor-content { padding: 16px; }
   .settings-dialog,
   .text-action-editor,
-  .app-style-editor { max-height: calc(100dvh - 32px); }
+  .profile-editor { max-height: calc(100dvh - 32px); }
 }
 
 .row > .row-layout {

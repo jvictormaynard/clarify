@@ -20,7 +20,7 @@ test('JSON lines preserve split UTF-8, route concurrent replies and fail calls o
   await assert.rejects(pending, /disconnected/); assert.equal(ended, true); assert.equal(bridge.pending.size, 0);
 });
 test('bridge bounds frames, arguments and call lifetime', async () => {
-  for (const value of [['workflow','eval',[]], ['settings','constructor',[]], ['shell','snapshot',[]], ['workflow','chooseTranslation',[9]], ['workflow','dismissFeedback',['2']], ['workflow','quit',[1]]]) assert.throws(() => validateRequest(...value));
+  for (const value of [['workflow','eval',[]], ['settings','constructor',[]], ['settings','setApplicationWritingStyle',['C:\\Apps\\Editor.exe','formal']], ['shell','snapshot',[]], ['workflow','chooseTranslation',[9]], ['workflow','dismissFeedback',['2']], ['workflow','quit',[1]]]) assert.throws(() => validateRequest(...value));
   const input = new PassThrough(), output = new PassThrough(); output.resume(); let ended = false;
   const bridge = new Bridge(input, output, () => {}, () => ended = true, 5);
   await assert.rejects(bridge.call('settings', 'snapshot', []), /did not respond/);
@@ -39,14 +39,15 @@ function fakeElectron() {
     show() { this.visible = true; } showInactive() { this.inactive = true; this.visible = true; } hide() { this.visible = false; }
     setIgnoreMouseEvents(value) { this.ignores = value; }
     setFocusable(value) { this.focusable = value; }
+    getNativeWindowHandle() { return Buffer.alloc(8); }
   }
-  return {app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
+  return {passiveWindow: {setPassive() {}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
     screen: {events:{}, on(name, callback) {this.events[name]=callback;}, reads: 0, cursor: {x:100,y:100}, getCursorScreenPoint() { this.reads++; return this.cursor; }, getPrimaryDisplay: () => ({workArea: {x:0,y:0,width:1920,height:1080}}), getDisplayNearestPoint: () => ({workArea: {x:0,y:0,width:1920,height:1080}})},
     session: {defaultSession: {setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, webRequest: {onBeforeRequest() {}}}}};
 }
 test('host retains settings until accepted close, resets each reopen and keeps pill passive', async () => {
   const e = fakeElectron(), input = new PassThrough(), output = new PassThrough(); let sent = ''; output.on('data', c => sent += c);
-  const {windows: {settings, pill}, bridge} = await startHost(e, input, output);
+  const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow);
   const event = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
   e.handlers['clarify:renderer-ready'](event(settings)); e.handlers['clarify:renderer-ready'](event(pill));
   assert.equal(sent, '{"event":"ready"}\n');
@@ -59,45 +60,40 @@ test('host retains settings until accepted close, resets each reopen and keeps p
   assert.equal(pill.focusable, true); assert.equal(pill.focused, true);
   input.write('{"event":"workflow","state":{"surface":"idle"}}\n');
   assert.equal(pill.focusable, false);
-  input.write('{"window":"pill-hide"}\n'); assert.equal(pill.visible, false);
+  input.write('{"window":"pill-hide"}\n'); assert.equal(pill.visible, true);
+  assert.equal(pill.messages.at(-1).value, 'dock-collapse');
+  input.write('{"window":"pill-toggle"}\n'); assert.equal(pill.messages.at(-1).value, 'dock-toggle');
   input.write('{"event":"workflow","state":{"surface":"recording"}}\n'); assert.equal(pill.visible, true);
   e.screen.cursor = {x: pill.position.x + 5, y: pill.position.y + 5};
   e.handlers['clarify:window'](event(pill), 'regions', [{x:0,y:0,width:100,height:100}]);
   assert.equal(pill.ignores, false);
+  assert.equal(pill.messages.at(-1).value, 'pointer-enter');
   e.screen.cursor = {x:0,y:0}; await new Promise(resolve => setTimeout(resolve, 60));
   assert.equal(pill.ignores, true, 'native cursor restores click-through without a renderer mouse event');
-  input.write('{"event":"workflow","state":{"surface":"settings"}}\n'); assert.equal(pill.visible, false);
-  input.write('{"event":"workflow","state":{"surface":"idle"}}\n'); assert.equal(pill.visible, false);
+  assert.equal(pill.messages.at(-1).value, 'pointer-leave');
+  input.write('{"event":"workflow","state":{"surface":"settings"}}\n'); assert.equal(pill.visible, true);
+  input.write('{"event":"workflow","state":{"surface":"idle"}}\n'); assert.equal(pill.visible, true);
   input.write('{"event":"workflow","state":{"surface":"translation_picker"}}\n');
   input.write('{"event":"workflow","state":{"surface":"settings"}}\n');
   const reads = e.screen.reads;
   await new Promise(resolve => setTimeout(resolve, 60));
-  assert.equal(e.screen.reads, reads, 'hidden panel stops native cursor polling');
+  assert.ok(e.screen.reads > reads, 'the dock still detects hover with Settings open');
+  input.write('{"event":"workflow","state":{"surface":"files"}}\n'); assert.equal(pill.visible, true);
   const style = '{"event":"workflow","state":{"surface":"idle","writingStyleFinished":true,"feedbackOperationId":7,"writingStyleCaption":"Style applied"}}\n';
   input.write(style); assert.equal(pill.visible, true);
   await new Promise(resolve => setTimeout(resolve, 2250));
-  assert.equal(pill.visible, false);
-  input.write(style); assert.equal(pill.visible, false, 'unchanged operation does not renew style outcome');
+  assert.equal(pill.visible, true);
+  input.write(style); assert.equal(pill.visible, true, 'feedback expiry returns to the dock');
   pill.setPosition(3000,2000);
   e.screen.events['display-metrics-changed']();
-  assert.deepEqual(pill.position, {x: 1260, y: 808});
+  assert.deepEqual(pill.position, {x: 630, y: 808});
   e.screen.getDisplayNearestPoint = point => ({workArea: {x: point.x >= 1920 ? 1920 : 0, y:0,width:1920,height:1080}});
   pill.setPosition(2010,500); e.screen.events['display-metrics-changed']();
-  assert.deepEqual(pill.position, {x:2010,y:500});
+  assert.deepEqual(pill.position, {x:2550,y:808});
   assert.equal(pill.getBounds().width,660); assert.equal(pill.getBounds().height,272);
-  const origin={...pill.position}; e.screen.cursor={x:300,y:300};
-  e.handlers['clarify:window'](event(pill),'dragStart');
-  e.screen.cursor={x:280,y:260};
-  for(let sample=0;sample<30;sample++) e.handlers['clarify:window'](event(pill),'dragMove');
-  assert.deepEqual(pill.position,{x:origin.x-20,y:origin.y-40});
-  e.handlers['clarify:window'](event(pill),'dragStart');
-  e.handlers['clarify:window'](event(pill),'regions',[]);
-  e.screen.cursor={x:1000,y:1000};e.handlers['clarify:window'](event(pill),'dragMove');
-  assert.deepEqual(pill.position,{x:origin.x-20,y:origin.y-40});
-  assert.equal(pill.getBounds().width,660);assert.equal(pill.getBounds().height,272);
-  e.handlers['clarify:window'](event(pill),'dragEnd');
-  e.screen.cursor={x:900,y:900};e.handlers['clarify:window'](event(pill),'dragMove');
-  assert.deepEqual(pill.position,{x:origin.x-20,y:origin.y-40});
+  for (const method of ['dragStart', 'dragMove', 'dragEnd']) {
+    assert.throws(() => e.handlers['clarify:window'](event(pill), method), /Invalid/);
+  }
   assert.throws(() => e.handlers['clarify:window'](event(pill), 'move', {dx: NaN, dy: 0}), /Invalid/);
   let prevented = false; settings.emit('close', {preventDefault: () => prevented = true});
   assert.equal(prevented, true); assert.equal(settings.visible, true); assert.doesNotMatch(sent, /settings-hidden/);
@@ -118,6 +114,12 @@ test('host retains settings until accepted close, resets each reopen and keeps p
   for (const args of [['setDictationWritingStyle', ['unknown']], ['setDictationWritingStyle', ['formal', 'casual']], ['setLanguage', ['unknown']]]) {
     assert.throws(() => e.handlers['clarify:call'](event(pill), 'settings', 'savePreference', args), /channel/);
   }
+  const refresh = e.handlers['clarify:call'](event(settings), 'settings', 'refreshLibrary', ['isolated-library-context']);
+  const refreshRequest = JSON.parse(sent.trim().split('\n').at(-1));
+  assert.deepEqual(refreshRequest, {id: refreshRequest.id, channel: 'settings', method: 'refreshLibrary', args: ['isolated-library-context']});
+  input.write(JSON.stringify({id: refreshRequest.id, result: {snippetContext: 'isolated-library-context'}}) + '\n');
+  assert.deepEqual(await refresh, {snippetContext: 'isolated-library-context'});
+  assert.throws(() => e.handlers['clarify:call'](event(pill), 'settings', 'refreshLibrary', ['isolated-library-context']), /channel/);
   assert.throws(() => e.handlers['clarify:window'](event(pill), 'closeAccepted'), /Invalid/);
   assert.deepEqual(settings.open({url:'https://example.com'}), {action:'deny'});
   e.handlers['clarify:call'](event(pill), 'workflow', 'quit', []); assert.match(sent, /"event":"quit"/);

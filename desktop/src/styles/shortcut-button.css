@@ -1,0 +1,6 @@
+.shortcut-control.button { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; width: 216px; max-width: 100%; min-height: 44px; padding: 6px 10px; border-radius: 9px; background: var(--card); border-color: var(--border); font-family: var(--font-sans); }
+.shortcut-keycaps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; font-size: 13px; }
+.shortcut-keycaps kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 25px; height: 25px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--accent); font: inherit; line-height: 1; }
+.shortcut-keycaps svg { width: 13px; height: 13px; }
+.shortcut-control > svg { color: var(--muted-foreground); flex-shrink: 0; }
+.shortcut-control:hover > svg, .shortcut-control:focus-visible > svg { color: var(--foreground); }

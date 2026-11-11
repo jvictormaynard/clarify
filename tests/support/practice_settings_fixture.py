@@ -58,7 +58,9 @@ def bind_practice(settings, app):
         workflow,
         language=lambda: settings.language,
         readiness=lambda: practice_readiness(
-            settings, lambda: True, lambda _model, _device: True
+            settings,
+            lambda: True,
+            lambda _model, _device: "--practice-missing-model" not in sys.argv,
         ),
         stop_microphone_test=settings.stopMicrophoneTest,
     )

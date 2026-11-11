@@ -20,7 +20,7 @@ export function TextProfileEditor({ controller: c }: SettingsPageProps) {
   };
   const status = statusMessages[a.modelStatus];
   return <Dialog open={!!editor} onOpenChange={open => { if (!open) a.close(); }}>
-    <DialogPopup className="app-style-editor max-w-xl" bottomStickOnMobile={false}>
+    <DialogPopup className="profile-editor max-w-xl" bottomStickOnMobile={false}>
       <DialogHeader><DialogTitle>{t("Perfil de processamento")}</DialogTitle>
         <DialogDescription>{t("Escolha o serviço e o modelo usados pelas ações deste perfil.")}</DialogDescription></DialogHeader>
       {editor && <div className="text-action-editor-content">

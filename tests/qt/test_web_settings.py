@@ -269,6 +269,59 @@ class WebSettingsTests(unittest.TestCase):
         self.assertFalse(self.settings.dictionaryEntries[0]["enabled"])
         self.assertTrue(self.settings.snippets[0]["case_sensitive"])
 
+    def test_library_refresh_reloads_external_rows_without_saving_pending_edits(self):
+        from dictionary_snippets import DictionarySnippets, DictionaryEntry, Snippet
+
+        service = self.settings._dictionary_service
+        context = self.settings.snippetContext
+        self.request("setSnippets", [{"trigger": "draft", "replacement": "Pending"}])
+        self.request("setLanguage", "pt")
+        durable = DictionarySnippets(
+            dictionary=(DictionaryEntry("External"),),
+            snippets=(Snippet("remote", "Remote text"),),
+        )
+        service.repository.save(durable)
+        refreshed = self.request("refreshLibrary", context)
+        self.assertIn("result", refreshed)
+        self.assertEqual(
+            refreshed["result"]["dictionaryEntries"][0]["term"], "External"
+        )
+        self.assertEqual(
+            {row["trigger"] for row in refreshed["result"]["snippets"]},
+            {"draft", "remote"},
+        )
+        self.assertEqual(service.repository.load(), durable)
+        self.assertEqual(self.settings.language, "pt")
+        self.assertTrue(self.settings.dirty)
+        self.assertIn("error", self.request("refreshLibrary", "stale-context"))
+        self.assertEqual(service.repository.load(), durable)
+
+    def test_library_refresh_syncs_account_without_committing_drafts(self):
+        from dictionary_snippets import DictionarySnippets, DictionaryEntry
+
+        account, service, guest = self.account_library()
+        before = guest.load()
+        context = self.settings.snippetContext
+        self.request("setSnippets", [{"trigger": "draft", "replacement": "Pending"}])
+        self.request("setLanguage", "pt")
+        with patch.object(
+            account,
+            "sync_library",
+            side_effect=lambda library: library.replace(
+                DictionarySnippets(dictionary=(DictionaryEntry("Mobile"),)),
+                expected_context=context,
+            ),
+        ) as sync:
+            self.assertIn("result", self.request("refreshLibrary", context))
+            self.wait_for_account()
+            sync.assert_called_once_with(service)
+        self.assertEqual(self.settings.dictionaryEntries[0]["term"], "Mobile")
+        self.assertEqual(self.settings.snippets[0]["replacement"], "Pending")
+        self.assertEqual(service.state.snippets, ())
+        self.assertEqual(guest.load(), before)
+        self.assertEqual(self.settings.language, "pt")
+        self.assertTrue(self.settings.dirty)
+
     def test_library_preference_rejects_stale_partial_new_and_invalid_identities(self):
         self.request("setSnippets", [{"trigger": "saved", "replacement": "Saved text"}])
         saved = self.request("save")["result"]

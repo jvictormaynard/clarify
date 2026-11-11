@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest.mock import Mock, patch
 from tempfile import TemporaryDirectory
 from pathlib import Path
 from types import SimpleNamespace
@@ -191,6 +192,49 @@ class QmlTextActionTests(QmlTextActionFixture, unittest.TestCase):
             self.provider.transform_text_action.call_args.args[1], "Sample"
         )
         first_generation = self.settings.textActionPreview["generation"]
+        with patch.object(
+            self.settings, "_write_history_clipboard", Mock()
+        ) as clipboard:
+            for context, generation in [
+                (state["textActionContext"], True),
+                ("former-context", first_generation),
+                (state["textActionContext"], first_generation - 1),
+            ]:
+                self.assertIn(
+                    "error", self.request("copyTextActionPreview", context, generation)
+                )
+            clipboard.assert_not_called()
+            clipboard.side_effect = OSError("Fixture clipboard unavailable")
+            self.assertIn(
+                "error",
+                self.request(
+                    "copyTextActionPreview",
+                    state["textActionContext"],
+                    first_generation,
+                ),
+            )
+            self.assertEqual(self.settings.textActionPreview["text"], "Preview result")
+            clipboard.side_effect = None
+            self.assertNotIn(
+                "error",
+                self.request(
+                    "copyTextActionPreview",
+                    state["textActionContext"],
+                    first_generation,
+                ),
+            )
+            clipboard.assert_called_with("Preview result")
+            self.request("cancelTextActionPreview")
+            clipboard.reset_mock()
+            self.assertIn(
+                "error",
+                self.request(
+                    "copyTextActionPreview",
+                    state["textActionContext"],
+                    first_generation,
+                ),
+            )
+            clipboard.assert_not_called()
         self.assertNotIn(
             "error",
             self.request(

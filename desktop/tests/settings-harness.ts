@@ -41,7 +41,8 @@ async function startFixture(page: Page, language: string, signedIn: boolean) {
     } };
   });
   await page.goto("/");
-  await expect(page.getByRole("combobox", { name: language === "en" ? "Microphone" : language === "es" ? "Micrófono" : "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole("heading", { level: 1, name: language === "en" ? "Welcome back" : language === "es" ? "Bienvenido de nuevo" : "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator("main .page-content")).toBeVisible();
   return {
     rpc,
     close: async () => {

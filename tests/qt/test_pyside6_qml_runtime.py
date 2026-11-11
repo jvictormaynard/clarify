@@ -1230,6 +1230,7 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
     def test_workflow_hotkeys_dismiss_files_before_dispatch(self):
         cases = (
             ("recording_hotkey", StartDictation),
+            ("recording_button", StartDictation),
             ("rewrite_hotkey", StartRewrite),
             ("translation_hotkey", StartTranslation),
         )
@@ -1251,7 +1252,10 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
                 bridge.openFiles()
                 self.assertEqual(bridge.surface, "files")
 
-                self.assertTrue(bridge.handleHotkey(action))
+                if action == "recording_button":
+                    bridge.startRecordingFromButton()
+                else:
+                    self.assertTrue(bridge.handleHotkey(action))
                 self.assertEqual(dispatched_surfaces, ["idle"])
                 self.assertNotEqual(bridge.surface, "files")
                 self.assertIsInstance(service.commands[-1], command_type)
@@ -1287,6 +1291,7 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
             with self.subTest(action=action):
                 self.assertFalse(bridge.handleHotkey(action))
 
+        bridge.startRecordingFromButton()
         self.assertEqual(bridge.surface, "files")
         self.assertEqual(service.commands, [])
 

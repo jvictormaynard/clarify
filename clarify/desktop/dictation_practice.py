@@ -120,6 +120,12 @@ class PracticeController:
     def subscribe(self, callback):
         self._listeners.append(callback)
 
+        def unsubscribe():
+            if callback in self._listeners:
+                self._listeners.remove(callback)
+
+        return unsubscribe
+
     def _notify(self):
         for callback in tuple(self._listeners):
             callback()

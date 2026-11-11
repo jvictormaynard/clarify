@@ -12,7 +12,7 @@ $taskSharedStage = Join-Path $taskStageRoot 'shared'
 $taskTarget = $taskBuildPaths.SettingsTarget
 Assert-ClarifySettingsStagePath -StageRoot $taskStageRoot -Path $taskStage
 Assert-ClarifySettingsStagePath -StageRoot $taskStageRoot -Path $taskSharedStage
-$taskSharedFiles = @('i18n.ts', 'ui_strings.json', 'usage.ts')
+$taskSharedFiles = @('i18n.ts', 'ui_strings.json', 'usage.ts', 'history.ts')
 foreach ($taskFile in $taskSharedFiles) {
     if (-not (Test-Path -LiteralPath (Join-Path $taskRepo "shared\$taskFile") -PathType Leaf)) {
         throw "Missing required Settings input: shared\$taskFile"

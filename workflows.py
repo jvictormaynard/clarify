@@ -776,9 +776,7 @@ class WorkflowService:
         session.mode = command.mode
         resolve_style = getattr(self._config, "dictation_writing_style", None)
         if callable(resolve_style):
-            session.writing_style = resolve_style(
-                command.target.executable if command.target is not None else None
-            ).requested_style
+            session.writing_style = resolve_style()
         session.language = command.language
         session.started_at = self._clock.time()
         session.usage_context = self._config.recording_usage_context(command.mode)
@@ -1276,9 +1274,7 @@ class WorkflowService:
             return False
         session.text_action = snapshot
         if snapshot is not None:
-            session.writing_style = snapshot.config.application_writing_styles.resolve(
-                session.target_executable
-            ).requested_style
+            session.writing_style = snapshot.config.dictation_writing_style
         self._transition(session, WorkflowPhase.REWRITING)
         self._scheduler.run_in_background(lambda: self._rewrite_worker(session))
         return True
@@ -1393,9 +1389,7 @@ class WorkflowService:
             return False
         session.text_action = snapshot
         if snapshot is not None:
-            session.writing_style = snapshot.config.application_writing_styles.resolve(
-                session.target_executable
-            ).requested_style
+            session.writing_style = snapshot.config.dictation_writing_style
         # The state is explicit even though the current presentation keeps this
         # preparation step visually silent until the picker is ready.
         self._transition(session, WorkflowPhase.PREPARING_TRANSLATION)

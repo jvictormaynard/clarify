@@ -140,7 +140,7 @@ test.beforeEach(async ({ page }, info) => {
     } };
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Dictation", exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Welcome back", exact: true })).toBeVisible({ timeout: 30000 });
   info.setTimeout(actionTimeout + Math.ceil(performance.now() - setupStarted));
 });
 

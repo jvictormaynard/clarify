@@ -9,6 +9,7 @@ test("styles: simplified choices persist, legacy tones remain readable, and forb
   await rpc("savePreference", ["setDictationCleanupLevel", [""]]);
   await rpc("savePreference", ["setDictationWritingStyle", [""]]);
   await page.reload(); await navigate(page, "Estilo");
+  await expect(page.getByRole("button", { name: "Adicionar aplicativo", exact: true })).toHaveCount(0);
   const editing = page.getByRole("combobox", { name: "Edição do texto", exact: true });
   const tone = page.getByRole("combobox", { name: "Tom", exact: true });
   await expect(editing).toContainText("Instruções atuais");
@@ -61,26 +62,13 @@ test("styles: output preference saves through the toolbar owner without saving p
   }
 });
 
-test("styles: application rules start natural and retain legacy selections", async ({ page }) => {
-  await openDisclosure(page, "Mais opções");
-  await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
-  await expect(dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true })).toContainText("Manter meu tom");
-  await dialog.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Editor.exe");
-  await dialog.getByRole("button", { name: "Salvar regra", exact: true }).click();
-  await expect(dialog).toBeHidden();
-  await page.reload(); await navigate(page, "Estilo"); await openDisclosure(page, "Mais opções");
-  await page.getByRole("button", { name: "Editar estilo de editor", exact: true }).click();
-  await expect(dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true })).toContainText("Manter meu tom");
-  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
-  await page.getByRole("button", { name: "Remover regra", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Editar estilo de editor", exact: true })).toHaveCount(0);
-});
+
 
 });
 
 settingsScenario({ initialPage: "style", quota: true }, () => {
 test("quota: styles hide tone for preserve without exposing personal provider routes", async ({ page }) => {
+  await expect(page.getByRole("combobox", { name: "Tom", exact: true })).toBeVisible();
   const editing = page.getByRole("combobox", { name: "Edição do texto", exact: true });
   await editing.click(); await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Tom", exact: true })).toHaveCount(0);

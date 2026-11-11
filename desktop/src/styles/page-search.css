@@ -1,0 +1,6 @@
+.page-search { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 36px; color: var(--muted-foreground); transition: flex-basis 150ms var(--interaction-spring-ease); }
+.page-search[data-open] { flex-basis: 320px; }
+.page-search .page-search-trigger.button { flex-shrink: 0; padding: 8px; width: 36px; height: 36px; min-height: 36px; }
+.page-search [data-slot="input-control"] { flex: 1; min-width: 0; height: 36px; }
+.page-search [data-slot="input-control"] input { height: 34px; padding-inline: 0; line-height: 24px; font-size: 16px; }
+.page-search input::placeholder { font-size: 14px; line-height: 20px; }

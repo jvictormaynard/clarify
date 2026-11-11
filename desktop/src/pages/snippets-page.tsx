@@ -1,127 +1,99 @@
 import { t } from "../i18n";
-import { useState } from "react";
-import { Plus, Search, X } from "lucide-react";
-import { Button, Input, SettingsDisclosure, Switch, TextArea } from "../components/ui";
+import { useEffect, useState } from "react";
+import { Plus, Pencil, X } from "lucide-react";
 import type { Snippet } from "../settings/bridge";
+import { dictionaryIdentity } from "../settings/dictionary-identity";
+import { Button, Input, Switch, TextArea } from "../components/ui";
+import { LibraryPageHeader, LibraryToolbar } from "../components/library-page-layout";
+import { LibraryEditor } from "../components/library-editor";
 import type { SettingsPageProps } from "../settings/use-settings";
-import "../styles/snippets.css";
+import "../styles/libraries.css";
+
+type Editor = { value: Snippet; original: Snippet | null; index: number; context: string };
 
 export function SnippetsPage({ controller }: SettingsPageProps) {
   const entries = controller.snippets ?? controller.state.snippets;
-  const [trigger, setTrigger] = useState("");
-  const [replacement, setReplacement] = useState("");
   const [query, setQuery] = useState("");
+  const [editor, setEditor] = useState<Editor | null>(null);
   const [error, setError] = useState("");
-  const [editing, setEditing] = useState<number | null>(null);
-  const add = () => {
-    const phrase = trigger.trim().normalize("NFC");
-    if (!phrase || !replacement.trim()) return;
-    if (entries.some((entry) => entry.trigger.toLocaleLowerCase() === phrase.toLocaleLowerCase())) {
-      setError(t("Esta frase de ativação já existe."));
-      return;
-    }
-    if (entries.length >= 512) {
-      setError(t("O limite é de 512 snippets."));
-      return;
-    }
-    controller.setSnippets([...entries, {
-      trigger: phrase, replacement, enabled: true, case_sensitive: false,
-    }]);
-    setTrigger("");
-    setReplacement("");
-    setQuery("");
+  useEffect(() => {
+    setEditor(current => {
+      if (!current?.original || JSON.stringify(current.value) !== JSON.stringify(current.original)) return current;
+      const latest = entries.find(entry => dictionaryIdentity(entry.trigger) === dictionaryIdentity(current.original!.trigger));
+      return latest && JSON.stringify(latest) !== JSON.stringify(current.original)
+        ? { ...current, original: latest, value: { ...latest } } : current;
+    });
+  }, [entries]);
+  const open = (index = -1) => {
+    const original = entries[index] ?? null;
+    setEditor({ original, index, value: original ? { ...original } : { trigger: "", replacement: "", enabled: true, case_sensitive: false }, context: controller.state.snippetContext });
     setError("");
   };
-  const update = (index: number, patch: Partial<Snippet>) =>
-    controller.setSnippets(entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry));
-  const visible = entries.map((entry, index) => ({ entry, index })).filter(
-    ({ entry, index }) => index === editing ||
-      `${entry.trigger} ${entry.replacement}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-  );
-
-  return (
-    <section className="snippets">
-      <p className="hint">
-        {t("Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.")}
-      </p>
-      <form className="snippet-composer" onSubmit={(event) => { event.preventDefault(); add(); }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
-            event.preventDefault(); add();
-          }
-        }}>
-        <label htmlFor="new-snippet-trigger">{t("Frase de ativação")}</label>
-        <Input id="new-snippet-trigger" aria-label={t("Nova frase de ativação")}
-          placeholder={t("minha assinatura")} maxLength={256} value={trigger}
-          onChange={(event) => { setTrigger(event.target.value); setError(""); }} />
-        <label htmlFor="new-snippet-text">{t("Texto a inserir")}</label>
-        <TextArea id="new-snippet-text" aria-label={t("Novo texto do snippet")}
-          placeholder={t("Seu nome\nEquipe de suporte")} rows={3} maxLength={4096}
-          value={replacement} onChange={(event) => setReplacement(event.target.value)} />
-        <div className="snippet-actions">
-          <span className="hint">{replacement.length}/4096</span>
-          <Button type="submit" disabled={!trigger.trim() || !replacement.trim()}>
-            <Plus size={16} /> {t("Adicionar snippet")}
-          </Button>
+  const change = (patch: Partial<Snippet>) => {
+    setEditor(current => current ? { ...current, value: { ...current.value, ...patch } } : null);
+    setError("");
+  };
+  const apply = () => {
+    if (!editor || editor.context !== controller.state.snippetContext) return;
+    const value = { ...editor.value, trigger: editor.value.trigger.trim().normalize("NFC") };
+    const index = editor.original ? entries.findIndex(entry => dictionaryIdentity(entry.trigger) === dictionaryIdentity(editor.original!.trigger)) : -1;
+    // Do not replace a row changed or removed by a refresh while the dialog was open.
+    if (editor.original && (index < 0 || JSON.stringify(entries[index]) !== JSON.stringify(editor.original))) {
+      setError(t("A entrada mudou. Feche e abra o editor novamente.")); return;
+    }
+    if (entries.some((entry, row) => row !== index && dictionaryIdentity(entry.trigger) === dictionaryIdentity(value.trigger))) {
+      setError(t("Esta frase de ativação já existe.")); return;
+    }
+    if (!editor.original && entries.length >= 512) { setError(t("O limite é de 512 snippets.")); return; }
+    controller.setSnippets(editor.original ? entries.map((entry, row) => row === index ? value : entry) : [...entries, value]);
+    if (editor.original && value.case_sensitive !== editor.original.case_sensitive) {
+      // Existing flags use the targeted save path, independent of text drafts.
+      void controller.setLibraryPreference("snippets", index, "case_sensitive", value.case_sensitive);
+    }
+    setEditor(null);
+  };
+  const visible = entries.map((entry, index) => ({ entry, index })).filter(({ entry }) =>
+    `${entry.trigger} ${entry.replacement}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  return <section className="library-page">
+    <LibraryPageHeader kind="snippets" title={t("Snippets")}>
+      <Button variant="primary" onClick={() => open()}><Plus size={16} />{t("Adicionar novo")}</Button>
+    </LibraryPageHeader>
+    <LibraryToolbar label={t("Buscar snippets")} query={query} onQueryChange={setQuery}
+      refreshLabel={t("Atualizar {label}", { label: t("Snippets") })} busy={!!controller.state.accountState?.busy} onRefresh={() => controller.run("refreshLibrary", controller.state.snippetContext)} />
+    {(controller.state.accountState?.syncError || controller.state.accountState?.error) && <p className="error" role="alert">{t(controller.state.accountState.syncError || controller.state.accountState.error)}</p>}
+    <div className="library-list">
+      {visible.map(({ entry, index }) => <div className="library-entry" key={index}>
+        <div className="library-entry-copy"><span className="library-entry-name">{entry.trigger}</span>
+          <p className="library-entry-detail">{entry.replacement}</p>
         </div>
-        {error && <p className="error" role="alert">{error}</p>}
-      </form>
-      {entries.length > 0 && (
-        <div className="dictionary-search">
-          <Search size={16} aria-hidden="true" />
-          <Input unstyled className="library-search-input" aria-label={t("Buscar snippets")} placeholder={t("Buscar snippets")} value={query}
-            onChange={(event) => setQuery(event.target.value)} />
-          <span className="hint">{entries.length}/512</span>
+        <div className="library-entry-actions">
+          <Switch label={t("Usar snippet {v0}", { v0: index + 1 })} checked={entry.enabled}
+            onChange={enabled => void controller.setLibraryPreference("snippets", index, "enabled", enabled)} />
+          <Button variant="ghost" aria-label={t("Editar snippet {v0}", { v0: index + 1 })} onClick={() => open(index)}><Pencil size={16} /></Button>
+          <Button variant="ghost" aria-label={t("Remover snippet {v0}", { v0: index + 1 })}
+            onClick={() => controller.setSnippets(entries.filter((_, row) => row !== index))}><X size={16} /></Button>
         </div>
-      )}
-      <div className="snippet-list">
-        {visible.map(({ entry, index }) => (
-          <div className="snippet-entry" key={index}
-            onFocus={() => setEditing(index)}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setEditing(null);
-            }}>
-            <div className="dictionary-line">
-              <label htmlFor={`snippet-trigger-${index}`} className="snippet-label">{t("Frase de ativação")}</label>
-              <Switch label={t("Usar snippet {v0}", { v0: index + 1 })} checked={entry.enabled}
-                onChange={(enabled) => void controller.setLibraryPreference("snippets", index, "enabled", enabled)} />
-              <Button variant="ghost" aria-label={t("Remover snippet {v0}", { v0: index + 1 })}
-                onClick={() => controller.setSnippets(entries.filter((_, i) => i !== index))}>
-                <X size={16} />
-              </Button>
-            </div>
-            <Input id={`snippet-trigger-${index}`} aria-label={t("Frase do snippet {v0}", { v0: index + 1 })}
-              maxLength={256} value={entry.trigger}
-              onChange={(event) => update(index, { trigger: event.target.value })} />
-            <label htmlFor={`snippet-text-${index}`}>{t("Texto a inserir")}</label>
-            <TextArea id={`snippet-text-${index}`} aria-label={t("Texto do snippet {v0}", { v0: index + 1 })}
-              rows={3} maxLength={4096} value={entry.replacement}
-              onChange={(event) => update(index, { replacement: event.target.value })} />
-            <SettingsDisclosure title={t("Opções de correspondência")}>
-              <div className="snippet-actions inline-actions">
-                <span className="hint">{t("Diferenciar maiúsculas e minúsculas")}</span>
-                <Switch label={t("Diferenciar maiúsculas no snippet {v0}", { v0: index + 1 })}
-                  checked={entry.case_sensitive}
-                  onChange={(case_sensitive) => void controller.setLibraryPreference("snippets", index, "case_sensitive", case_sensitive)} />
-              </div>
-            </SettingsDisclosure>
+      </div>)}
+      {!visible.length && <p className="library-empty hint">{entries.length ? t("Nenhum snippet encontrado.") : t("Adicione seu primeiro snippet.")}</p>}
+    </div>
+    <LibraryEditor registerCloseGuard={controller.registerLibraryCloseGuard}
+      dirty={!!editor && JSON.stringify(editor.value) !== JSON.stringify(editor.original ?? { trigger: "", replacement: "", enabled: true, case_sensitive: false })} open={!!editor} snippet={true} title={editor?.original ? t("Editar snippet") : t("Adicionar snippet")}
+      error={error} valid={!!editor?.value.trigger.trim() && !!editor?.value.replacement.trim() && editor?.context === controller.state.snippetContext}
+      onClose={() => setEditor(null)} onApply={apply}>
+      {editor && <>
+          <div className="library-field"><label htmlFor="library-trigger">{t("Frase de ativação")}</label>
+            <Input id="library-trigger" aria-label={editor.original ? t("Frase do snippet {v0}", { v0: editor.index + 1 }) : t("Nova frase de ativação")} maxLength={256}
+              value={editor.value.trigger} onChange={event => change({ trigger: event.target.value })} />
           </div>
-        ))}
-        {!visible.length && <p className="hint dictionary-empty">
-          {entries.length ? t("Nenhum snippet encontrado.") : t("Adicione seu primeiro snippet acima.")}
-        </p>}
-      </div>
-      <SettingsDisclosure className="dictionary-help" title={t("Como funciona")}>
-        <p className="hint">
-          {t("Diga a frase sozinha para inserir o texto exato. Dentro de uma mensagem, o texto é inserido antes da reescrita e pode ser ajustado. Use Salvar para aplicar ou Descartar para cancelar.")}
-        </p>
-        <p className="hint">
-          {controller.state.accountState?.signedIn
-            ? t("Os snippets desta conta são sincronizados e aplicados pelo servidor no desktop e no mobile.")
-            : t("Os snippets deste dispositivo são aplicados localmente.")}
-          {" "}{t("Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.")}
-        </p>
-      </SettingsDisclosure>
-    </section>
-  );
+          <div className="library-field"><label htmlFor="library-replacement">{t("Texto a inserir")}</label>
+            <TextArea id="library-replacement" aria-label={editor.original ? t("Texto do snippet {v0}", { v0: editor.index + 1 }) : t("Novo texto do snippet")} rows={6} maxLength={4096}
+              value={editor.value.replacement} onChange={event => change({ replacement: event.target.value })} />
+          </div>
+          <div className="library-option"><span>{t("Diferenciar maiúsculas e minúsculas")}</span>
+            <Switch label={t("Diferenciar maiúsculas e minúsculas")} checked={editor.value.case_sensitive} onChange={case_sensitive => change({ case_sensitive })} />
+          </div>
+      </>}
+    </LibraryEditor>
+
+  </section>;
 }

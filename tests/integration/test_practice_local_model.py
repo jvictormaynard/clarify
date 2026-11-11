@@ -11,7 +11,8 @@ class LocalPracticeModelTests(unittest.TestCase):
     def test_status_is_checked_off_thread_once_and_cached_for_the_saved_route(self):
         scheduler = ManualScheduler()
         status = Mock(return_value=True)
-        readiness = LocalModelReadiness(scheduler, status)
+        changed = Mock()
+        readiness = LocalModelReadiness(scheduler, status, changed=changed)
         self.assertFalse(readiness.ready("ggml-small", "cpu"))
         self.assertFalse(readiness.ready("ggml-small", "cpu"))
         status.assert_not_called()
@@ -19,13 +20,15 @@ class LocalPracticeModelTests(unittest.TestCase):
         scheduler.background.pop()()
         self.assertFalse(readiness.ready("ggml-small", "cpu"))
         scheduler.soon.pop()()
+        changed.assert_called_once_with()
         self.assertTrue(readiness.ready("ggml-small", "cpu"))
         self.assertEqual(status.call_args.args[:2], ("ggml-small", "cpu"))
         self.assertEqual(scheduler.background, [])
 
     def test_new_route_or_opening_cancels_old_check_and_ignores_its_result(self):
         scheduler = ManualScheduler()
-        readiness = LocalModelReadiness(scheduler, lambda *_: True)
+        changed = Mock()
+        readiness = LocalModelReadiness(scheduler, lambda *_: True, changed=changed)
         readiness.ready("ggml-small", "cpu")
         cancelled = readiness._cancel
         self.assertFalse(readiness.ready("ggml-medium", "cuda:1"))
@@ -33,6 +36,7 @@ class LocalPracticeModelTests(unittest.TestCase):
         self.assertEqual(len(scheduler.background), 1)
         scheduler.background.pop()()
         scheduler.soon.pop()()
+        changed.assert_called_once_with()
         self.assertFalse(readiness.ready("ggml-medium", "cuda:1"))
         scheduler.background.pop()()
         scheduler.soon.pop()()
@@ -40,8 +44,10 @@ class LocalPracticeModelTests(unittest.TestCase):
         readiness.invalidate()
         self.assertFalse(readiness.ready("ggml-medium", "cuda:1"))
         readiness.close()
+        changed.reset_mock()
         scheduler.background.pop()()
         scheduler.soon.pop()()
+        changed.assert_not_called()
         self.assertFalse(readiness.ready("ggml-medium", "cuda:1"))
 
     def test_installer_uses_saved_model_and_resolved_device_with_existing_cpu_fallback(

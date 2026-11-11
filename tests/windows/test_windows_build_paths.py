@@ -55,6 +55,7 @@ class WindowsBuildPathTests(unittest.TestCase):
             "shared/i18n.ts": "catalog",
             "shared/ui_strings.json": "{}",
             "shared/usage.ts": "usage",
+            "shared/history.ts": "history",
         }
         for name, content in files.items():
             path = repository / name
@@ -116,7 +117,11 @@ class WindowsBuildPathTests(unittest.TestCase):
             (repository / "desktop/src/rename.ts").rename(
                 repository / "desktop/src/renamed.ts"
             )
-            for name in ("desktop/src/update.ts", "shared/usage.ts"):
+            for name in (
+                "desktop/src/update.ts",
+                "shared/usage.ts",
+                "shared/history.ts",
+            ):
                 (repository / name).write_text("after-update", encoding="utf-8")
                 os.utime(repository / name, (978307200, 978307200))
             self.stage_settings(repository, temporary_root)
@@ -127,7 +132,11 @@ class WindowsBuildPathTests(unittest.TestCase):
                     (stage_root / "desktop/src/renamed.ts").read_text(), "renamed"
                 )
             with self.subTest("changed inputs"):
-                for name in ("desktop/src/update.ts", "shared/usage.ts"):
+                for name in (
+                    "desktop/src/update.ts",
+                    "shared/usage.ts",
+                    "shared/history.ts",
+                ):
                     self.assertEqual((stage_root / name).read_text(), "after-update")
                 self.assertEqual(
                     (stage_root / "desktop/src/keep.ts").stat().st_mtime_ns,

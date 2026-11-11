@@ -106,6 +106,48 @@ class PracticeSettingsTests(unittest.TestCase):
             practice_readiness(self.settings, lambda: True, ready), "practice_model"
         )
 
+    def test_idle_practice_can_capture_shortcut_without_unlocking_account_changes(self):
+        from clarify.desktop.qml_app import _can_capture_settings_shortcut
+
+        voice = SimpleNamespace(active=False)
+        batch = SimpleNamespace(running=False)
+        self.settings._account_can_change = lambda: not self.practice.blocks_processing
+        self.settings._hotkey_can_change = lambda: _can_capture_settings_shortcut(
+            self.practice.workflow, voice, batch, self.practice
+        )
+        self.assertTrue(self.settings.completeOnboarding("byok", "gsk_test_only"))
+        self.assertFalse(self.settings._account_can_change())
+        self.assertTrue(self.settings.beginHotkeyCapture("recording_hotkey"))
+        self.assertTrue(self.settings.cancelHotkeyCapture())
+        from clarify.desktop.qml_web_settings import SettingsProtocol
+
+        protocol = SettingsProtocol(self.settings)
+        deferred = protocol.dispatch(
+            {"id": 1, "method": "accountCommand", "args": ["auto", ""]}
+        )
+        self.assertNotIn("error", deferred)
+        self.assertTrue(deferred["result"]["practiceState"]["open"])
+        manual = protocol.dispatch(
+            {"id": 2, "method": "accountCommand", "args": ["refresh", ""]}
+        )
+        self.assertIn("error", manual)
+        for owner, field in ((voice, "active"), (batch, "running")):
+            setattr(owner, field, True)
+            self.assertFalse(self.settings.beginHotkeyCapture("recording_hotkey"))
+            setattr(owner, field, False)
+        self.practice.command("start")
+        self.assertTrue(self.practice.busy)
+        self.assertFalse(self.settings.beginHotkeyCapture("recording_hotkey"))
+        self.practice.command("cancel")
+        for _ in range(100):
+            self.app.processEvents()
+            if not self.practice.busy:
+                break
+        self.assertFalse(self.practice.busy)
+        self.assertTrue(self.settings.beginHotkeyCapture("recording_hotkey"))
+        self.assertFalse(self.settings._account_can_change())
+        self.settings.cancelHotkeyCapture()
+
     def test_readiness_keeps_expired_managed_session_out_of_personal_route(self):
         self.settings.completeOnboarding("byok", "gsk_test_only")
         self.settings._account.snapshot = lambda: {"managed": True, "signedIn": False}
@@ -191,7 +233,7 @@ class PracticeSettingsTests(unittest.TestCase):
         self.assertEqual(practice.snapshot()["text"], "Transcribed")
         self.assertEqual(
             provider.writing_style,
-            runtime.repositories.config.load().application_writing_styles.default_style,
+            runtime.repositories.config.load().dictation_writing_style,
         )
         self.assertEqual(len(runtime.repositories.usage_stats.load_events()), 1)
         clipboard_write.assert_not_called()
