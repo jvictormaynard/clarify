@@ -672,14 +672,13 @@ activity is ended at the next app launch; stale content asks to open Clarify.
 Live Activities must be enabled on the device. iOS controls placement and priority.
 This does not replace the system's microphone icon or orange privacy indicator.
 
-Automatic Apple rewriting is currently blocked. The build 84 device crash report
-confirms SIGTRAP inside `TCTextCompositionXPCServer.Server.init()`, before model
-inference. This initializer is no longer invoked. Neither method presence nor
-protocol conformance proved it was usable. A verified client entry point is
-required before this route can be enabled again. Existing enabled installations
-must disable Apple rewriting to resume standard processing; no alternate model
-is selected silently. Build 84 remains the last published candidate and is unsafe
-for this test. The containment change has not been published or device-tested.
+Build 84's crash report confirmed SIGTRAP in
+`TCTextCompositionXPCServer.Server.init()`, before inference. That initializer
+is not called. The new candidate uses `TCTextCompositionAssistant.sharedAssistant`
+and its input-based request. Native inspection on macOS 26.6.1 established its
+two-object error callback; a separate synthetic request returned ModelManagerError
+1026 without a crash (run 42927536263). This confirms that Mac factory/error path,
+not successful rewriting, iPhone service access or public App Store acceptance.
 
 Settings includes optional **Apple rewriting** for normal dictation. It is off
 by default. Use Improve clarity and Keep my tone, Formal or Casual. Saved Natural/legacy modes remain compatible. Keep my words bypasses Apple rewriting and translation. The
@@ -693,9 +692,9 @@ before dictation; missing packs fail without presenting a download window.
 The direct service uses runtime-checked selectors and SDK-exported rewrite type
 constants (Magic, Professional, Friendly), not UI tool identifiers. Its input
 completion uses the output/error object contract in TCTextCompositionXPCProtocol.
-The conforming TextComposer service worker is instantiated and receives the exact
-protocol method. No assistant wrapper callback is inferred. Service initialization
-and execution outside its Apple host still need verification on a physical iPhone. This is a private API
+The shared assistant receives requestRewritingOfInput with a TCTextCompositionInput.
+Its callback contract has native Mac error-path evidence and an independently
+typed iOS XPC counterpart. iPhone execution still requires acceptance. This is a private API
 experiment, not verified public App Store compatibility. A service error, missing
 runtime contract, timeout, oversized output or failed translation preserves the
 transcript with an error. There is no fallback to the visible Writing Tools flow
