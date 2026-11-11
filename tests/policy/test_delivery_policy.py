@@ -46,6 +46,14 @@ class DeliveryPolicyTests(unittest.TestCase):
             "mobile/package-lock.json": {"mobile", "ios", "audit"},
             "installer/Clarify.wxs": {"package", "installer"},
             "assets/clarify.ico": {"python", "qt", "package"},
+            "assets/sounds/dictation-start.wav": {
+                "python",
+                "qt",
+                "package",
+                "desktop_shell",
+                "mobile",
+                "ios",
+            },
             "distribution/portable-update-policy.json": {"python", "qt", "package"},
             "desktop/src-tauri/src/main.rs": {
                 "package",

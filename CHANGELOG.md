@@ -5,6 +5,8 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-11
+
 ### Added
 
 - Keep a compact dictation dock above the taskbar, with controls on hover, output-language selection and quick microphone and text-action menus.
@@ -548,7 +550,8 @@ Unpublished tag. Candidate validation failed before packaging; no executable or 
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.16.2...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/jvictormaynard/clarify/compare/v0.16.2...v0.17.0
 [0.16.2]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...v0.16.2
 [0.16.1]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...d8bf53e288ff34db2482b6c566ac0d8ccbf0bb89
 [0.16.0]: https://github.com/jvictormaynard/clarify/compare/v0.15.0...v0.16.0
