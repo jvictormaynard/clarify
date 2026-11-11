@@ -214,7 +214,7 @@ final class KeyboardExtensionTests: XCTestCase {
     expectText("1QQQQ", in: app)
     XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5), "A Shift tap must turn Caps Lock off")
   }
-  private func checkAccentHold(_ name: String, in app: XCUIApplication) throws {
+  private func checkAccentHold(_ name: String, accentColumn: String = "r", in app: XCUIApplication) throws {
     expectText("1QQQQ", in: app)
     let letter = app.keys["e"]
     XCTAssertTrue(letter.waitForExistence(timeout: 5), "The accent hold must start from lowercase")
@@ -223,17 +223,19 @@ final class KeyboardExtensionTests: XCTestCase {
     let coordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
       CGVector(dx: source.midX - windowFrame.minX, dy: source.midY - windowFrame.minY))
     captureKeyboardAppearance("\(name)-before", in: app)
-    func perform(_ phase: String, frame: CGRect, action: () -> Void) throws {
+    func perform(_ phase: String, frame: CGRect, target: CGPoint? = nil, action: () -> Void) throws {
       let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
       action()
       let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
       captureKeyboardAppearance("\(name)-\(phase)", in: app)
-      let data = try JSONSerialization.data(withJSONObject: ["name": name, "phase": phase,
+      var values: [String: Any] = ["name": name, "phase": phase,
         "startedUTC": started, "endedUTC": ended, "startedUptime": startedUptime, "endedUptime": endedUptime,
         "sourceAXFrame": ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height],
         "syntheticResult": app.textFields["composer"].value as? String ?? "",
         "hostCaret": app.staticTexts["input-caret"].value as? String ?? "unavailable",
-        "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
+        "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"]
+      if let target { values["targetPoint"] = ["x": target.x, "y": target.y] }
+      let data = try JSONSerialization.data(withJSONObject: values, options: [.sortedKeys])
       let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
       trace.name = "\(name)-\(phase)-action-trace"; trace.lifetime = .keepAlways; add(trace)
     }
@@ -294,6 +296,29 @@ final class KeyboardExtensionTests: XCTestCase {
     try perform("cursor-right-insert", frame: nextMarker.frame) { nextMarker.tap() }
     expectText(nextExpected, in: app)
     XCTAssertEqual(try caret(), right + 1)
+    let accentSource = app.keys["e"], column = app.keys[accentColumn]
+    XCTAssertTrue(accentSource.waitForExistence(timeout: 5) && accentSource.isHittable)
+    XCTAssertTrue(column.waitForExistence(timeout: 5) && column.isHittable)
+    let accentFrame = accentSource.frame, columnFrame = column.frame
+    XCTAssertTrue(!accentFrame.isEmpty && windowFrame.contains(accentFrame) && windowFrame.contains(columnFrame))
+    // The captured menus place é above R in Clarify/pt-BR and above W in en-US.
+    let targetPoint = CGPoint(x: columnFrame.midX, y: accentFrame.minY - accentFrame.height)
+    XCTAssertTrue(windowFrame.contains(targetPoint), "The accent drag must end inside the host window")
+    let dragStart = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: accentFrame.midX - windowFrame.minX, dy: accentFrame.midY - windowFrame.minY))
+    let dragEnd = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: targetPoint.x - windowFrame.minX, dy: targetPoint.y - windowFrame.minY))
+    try perform("accent-slide", frame: accentFrame, target: targetPoint) {
+      dragStart.press(forDuration: 0.8, thenDragTo: dragEnd)
+    }
+    let accentExpected = String(nextExpected.prefix(right + 1)) + "é" + String(nextExpected.dropFirst(right + 1))
+    expectText(accentExpected, in: app)
+    XCTAssertEqual(try caret(), right + 2, "A drag must insert one selected accent")
+    let afterSlide = app.keys["q"]
+    XCTAssertTrue(afterSlide.waitForExistence(timeout: 5) && afterSlide.isHittable)
+    try perform("after-accent-slide", frame: afterSlide.frame) { afterSlide.tap() }
+    expectText(String(accentExpected.prefix(right + 2)) + "q" + String(accentExpected.dropFirst(right + 2)), in: app)
+    XCTAssertEqual(try caret(), right + 3, "The next tap must work after the accent drag")
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
@@ -366,7 +391,7 @@ final class KeyboardExtensionTests: XCTestCase {
     try checkNumberSlide("apple-\(language)-number-slide", in: app)
     try checkTemporaryShiftSlide("apple-\(language)-shift-slide", in: app)
     try checkCapsLock("apple-\(language)-caps-lock", in: app)
-    try checkAccentHold("apple-\(language)-accent-hold", in: app)
+    try checkAccentHold("apple-\(language)-accent-hold", accentColumn: language == "en-US" ? "w" : "r", in: app)
     app.terminate()
   }
   private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
