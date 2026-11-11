@@ -487,7 +487,9 @@ final class KeyboardUITests: XCTestCase {
       let toolbarCover = UIView(frame: CGRect(x: 0, y: 7, width: grid.bounds.width, height: 44))
       grid.frame.origin.y = 58
       pickerHost.addSubview(grid); pickerHost.addSubview(toolbarCover)
-      for title in ["e", "u"] {
+      for (title, width) in [("e", CGFloat(393)), ("u", 393), ("e", 320)] {
+        pickerHost.frame.size.width = width; toolbarCover.frame.size.width = width
+        grid.frame.size.width = width; grid.layoutIfNeeded()
         let letter = try key(title), beforeJitter = text, held = try startAccent(title)
         let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
           $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
@@ -510,6 +512,13 @@ final class KeyboardUITests: XCTestCase {
         emit(held, .changed, at: CGPoint(x: sourcePoint.x + 1, y: sourcePoint.y))
         emit(held, .ended)
         XCTAssertEqual(text, beforeJitter + title, "Small finger movement must retain the displayed base choice")
+      }
+      for choice in ["ę", "ė", "ē"] {
+        let letter = try key("e"), beforeChoice = text
+        XCTAssertTrue(letter.accessibilityCustomActions?.contains { $0.name == choice } == true)
+        let held = try startAccent()
+        emit(held, .changed, at: try accentPoint(choice)); emit(held, .ended); emit(held, .ended)
+        XCTAssertEqual(text, beforeChoice + choice, "A newly offered accent must commit exactly once")
       }
       var clock: TimeInterval = 100, offsets: [Int] = [], finishes = 0
       grid.cursorUptime = { clock }; grid.onMoveCursor = { offsets.append($0); return true }

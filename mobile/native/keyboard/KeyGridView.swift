@@ -551,7 +551,10 @@ final class KeyGridView: UIView {
       var choices = KeyboardState.accents(for: title)
       let bar = UIStackView(); bar.axis = .horizontal; bar.distribution = .fillEqually; bar.spacing = 2
       let modern = usesModernKeyAppearance
-      let preferredWidth = modern ? CGFloat(choices.count) * 37 + CGFloat(choices.count - 1) * bar.spacing : CGFloat(choices.count) * 42
+      let cellWidth: CGFloat = modern ? 37 : 42
+      // Extended rows need room to keep the held key over its base choice.
+      let fittedCellWidth = choices.count > 7 ? min(cellWidth, bounds.width / 10) : cellWidth
+      let preferredWidth = CGFloat(choices.count) * fittedCellWidth + (modern ? CGFloat(choices.count - 1) * bar.spacing : 0)
       let width = min(bounds.width - 12, preferredWidth)
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
       let cell = (width - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
