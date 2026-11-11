@@ -1143,7 +1143,8 @@ final class KeyboardUITests: XCTestCase {
   func testTypingAndRecordingUseOneStandardImpactPerEvent() async {
     await MainActor.run {
       let key = ImpactFeedbackSpy(style: .light), recording = ImpactFeedbackSpy(style: .medium)
-      let feedback = HapticFeedback(key: key, recording: recording)
+      var clicks = 0
+      let feedback = HapticFeedback(key: key, recording: recording, inputClick: { clicks += 1 })
       feedback.prepare()
       feedback.type(); feedback.type()
       XCTAssertEqual(key.pulses, 2)
@@ -1154,12 +1155,18 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(recording.pulses, 3)
       XCTAssertEqual(key.preparations, 3)
       XCTAssertEqual(recording.preparations, 4)
+      XCTAssertEqual(clicks, 0, "Non-key typing and recording feedback must not request keyboard clicks")
+      feedback.pressKey(); feedback.pressKey()
+      XCTAssertEqual(clicks, 2)
+      XCTAssertEqual(key.pulses, 4)
+      XCTAssertEqual(recording.pulses, 3)
     }
   }
   func testKeysDoNotStretchDuringTheInitialHostHeightTransition() async {
     await MainActor.run {
       let keyboard = KeyboardViewController(); keyboard.loadViewIfNeeded()
       XCTAssertTrue((keyboard.view as? UIInputView)?.allowsSelfSizing == true)
+      XCTAssertTrue((keyboard.view as? UIInputViewAudioFeedback)?.enableInputClicksWhenVisible == true)
       for height in [CGFloat(0), 278, 540, 956] {
         XCTAssertEqual(keyboard.view.systemLayoutSizeFitting(CGSize(width: 393, height: height)).height, 278)
         XCTAssertEqual(keyboard.view.systemLayoutSizeFitting(CGSize(width: 393, height: height),
@@ -1502,15 +1509,19 @@ final class KeyboardUITests: XCTestCase {
       let grid = KeyGridView()
       func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
       let button = descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "A" }!
-      var pulses = 0
-      grid.onKeyPress = { pulses += 1 }
+      var pulses = 0, clicks = 0
+      let feedback = HapticFeedback(inputClick: { clicks += 1 })
+      grid.onKeyPress = { pulses += 1; feedback.pressKey() }
       button.isHighlighted = true
       button.isHighlighted = true
       XCTAssertEqual(pulses, 1)
+      XCTAssertEqual(clicks, 1)
       button.isHighlighted = false
       XCTAssertEqual(pulses, 1)
+      XCTAssertEqual(clicks, 1)
       button.isHighlighted = true
       XCTAssertEqual(pulses, 2)
+      XCTAssertEqual(clicks, 2)
     }
   }
   func testKeyGapsRouteToNearestKeyAndAcceptTheTouch() async {

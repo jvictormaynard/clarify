@@ -4,8 +4,9 @@ import SwiftUI
 import KeyboardHostSupport
 #endif
 
-final class KeyboardInputView: UIInputView {
+final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
   static let contentHeight: CGFloat = 278
+  var enableInputClicksWhenVisible: Bool { true }
   override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
     super.init(frame: frame, inputViewStyle: inputViewStyle)
     // Publish one height before UIKit attaches and animates this input view.
@@ -286,7 +287,7 @@ class KeyboardViewController: UIInputViewController {
     cancel.accessibilityIdentifier = "clarify.keyboard.cancel"
     cancel.addAction(UIAction { [weak self] _ in self?.cancelRecording() }, for: .touchUpInside)
     keys.previewContainer = view
-    keys.onKeyPress = { [weak self] in self?.feedback.type() }
+    keys.onKeyPress = { [weak self] in self?.feedback.pressKey() }
     keys.onPrepareCursor = { [weak self] in
       guard let self, self.attached else { return }
       self.typing.prepareCursor(in: self.textDocumentProxy)

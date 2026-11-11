@@ -658,6 +658,11 @@ simulator. No public API removes that system UI.
 Start, upward lock and finish use retained, prepared standard medium-impact
 generators. Typing uses a lighter impact. Generators do not depend
 on the extension's remote window and do not scale the standard pulse intensity.
+Each new key highlight also requests the standard system keyboard click through
+`UIDevice.playInputClick()`. UIKit controls playback from the keyboard-sound
+setting and input-view visibility. Non-key typing feedback and recording actions
+do not request this click. Audible output and click timing need physical-device
+acceptance.
 The host enables haptics before activating audio input. Mobile and desktop use
 the same original WAV cues from `assets/sounds/`: two hollow pops with 55 ms
 between note starts. Start ascends; stop and recording cancellation descend.
