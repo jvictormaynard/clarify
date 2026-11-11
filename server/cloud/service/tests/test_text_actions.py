@@ -7,7 +7,7 @@ from threading import Barrier
 from unittest.mock import patch
 
 from django.db import close_old_connections, connection, connections
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from cloud.service import groq, ledger
@@ -30,6 +30,51 @@ def completion(text="Summary."):
         "choices": [{"finish_reason": "stop", "message": {"content": text}}],
         "usage": {"prompt_tokens": 100, "completion_tokens": 10},
     }
+
+
+class ActionInstructionTests(SimpleTestCase):
+    def test_known_saved_defaults_use_one_current_rewrite_policy(self):
+        from cloud.service.text_actions import Snapshot, instruction
+        from shared.rewrite_prompts import (
+            _LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            _PREVIOUS_LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            SELECTED_TEXT_REWRITE_INSTRUCTION,
+        )
+
+        for saved, expected in (
+            (
+                _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION,
+                SELECTED_TEXT_REWRITE_INSTRUCTION,
+            ),
+            (SELECTED_TEXT_REWRITE_INSTRUCTION, SELECTED_TEXT_REWRITE_INSTRUCTION),
+            (
+                _PREVIOUS_LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+                _LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            ),
+        ):
+            with self.subTest(saved=saved[:60]):
+                action = Snapshot("saved", "Saved", saved, "rewrite", True, 1)
+                self.assertEqual(instruction(action, "en"), expected)
+                self.assertEqual(action.prompt, saved)
+
+    def test_saved_rewrite_receives_current_policy_without_changing_saved_prompt(self):
+        from cloud.service.text_actions import Snapshot, instruction
+        from shared.output_preferences import LANGUAGES
+        from shared.rewrite_prompts import SELECTED_TEXT_REWRITE_INSTRUCTION
+
+        # Existing libraries retain their saved prompts across application updates.
+        saved_prompt = "Keep my technical vocabulary and literal {braces}."
+        for kind in ("rewrite", "custom", "translation"):
+            action = Snapshot("saved", "Saved", saved_prompt, kind, True, 1)
+            for language in ("auto", *LANGUAGES):
+                with self.subTest(kind=kind, language=language):
+                    system = instruction(action, language)
+                    self.assertEqual(action.prompt, saved_prompt)
+                    self.assertIn(saved_prompt, system)
+                    self.assertEqual(
+                        SELECTED_TEXT_REWRITE_INSTRUCTION in system, kind == "rewrite"
+                    )
 
 
 class CatalogTests(TestCase):

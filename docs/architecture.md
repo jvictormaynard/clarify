@@ -114,7 +114,11 @@ writing style and output language for desktop and hosted processing. Base rewrit
 and style rules do not select a language. The selected output preference supplies
 the language instruction after the task policy. The iOS app sends text and output
 preferences to the account or paired computer; it does not contain a second
-provider client or embedded rewrite prompt. Keep my words and legacy minimal
+provider client or embedded rewrite prompt. Dictation editing and selected-text
+rewriting share a meaning-first policy with the same organization rules in every
+output language. Known saved application rewrite defaults are refreshed when
+building a request; stored definitions and personal instructions are preserved.
+Keep my words and legacy minimal
 cleanup suppress saved tone and output-language overrides for dictation without
 clearing those preferences.
 Manual text actions still use their captured tone and language. Faithful rewrite
