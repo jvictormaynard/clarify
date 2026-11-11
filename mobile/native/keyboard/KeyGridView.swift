@@ -496,7 +496,13 @@ final class KeyGridView: UIView {
   }
   private func configureAccentActions(_ button: KeyButton, title: String) {
     button.accessibilityCustomActions = KeyboardState.accents(for: title).dropFirst().map { value in
-      UIAccessibilityCustomAction(name: value) { [weak self] _ in self?.insert(value); return true }
+      UIAccessibilityCustomAction(name: value) { [weak self, weak button] _ in
+        guard let self, let button, self.window != nil, !self.isHidden, self.isUserInteractionEnabled, self.alpha > 0.01,
+              button.isEnabled, button.isUserInteractionEnabled, !button.isHidden, button.alpha > 0.01,
+              button.isDescendant(of: self.stack), button.title(for: .normal) == title,
+              self.accentBar == nil, self.spacePress?.active != true else { return false }
+        self.insert(value); return true
+      }
     }
   }
   private func refreshLetterCasing() {

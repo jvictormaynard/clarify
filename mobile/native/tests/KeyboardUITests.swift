@@ -523,6 +523,49 @@ final class KeyboardUITests: XCTestCase {
       let cancellationWindow = UIWindow(frame: pickerHost.bounds)
       cancellationWindow.addSubview(pickerHost)
       defer { withExtendedLifetime(cancellationWindow) { pickerHost.removeFromSuperview() } }
+      @MainActor func eAction() throws -> UIAccessibilityCustomAction {
+        try XCTUnwrap(try key("e").accessibilityCustomActions?.first { $0.name == "é" })
+      }
+      @MainActor func activateAccent(_ action: UIAccessibilityCustomAction) throws -> Bool {
+        try XCTUnwrap(action.actionHandler)(action)
+      }
+      let blockedAction = try eAction(), beforeAccessibility = text
+      for unavailable in ["hidden-grid", "disabled-grid", "disabled-key"] {
+        let letter = try key("e")
+        switch unavailable {
+        case "hidden-grid": grid.isHidden = true
+        case "disabled-grid": grid.isUserInteractionEnabled = false
+        default: letter.isEnabled = false
+        }
+        XCTAssertFalse(try activateAccent(blockedAction), "An unavailable key must reject its accent action")
+        XCTAssertEqual(text, beforeAccessibility)
+        grid.isHidden = false; grid.isUserInteractionEnabled = true; letter.isEnabled = true
+      }
+      let accessibilityOverlap = try startAccent()
+      XCTAssertFalse(try activateAccent(blockedAction), "A custom action must not consume a held accent picker")
+      XCTAssertEqual(text, beforeAccessibility)
+      emit(accessibilityOverlap, .ended)
+      XCTAssertEqual(text, beforeAccessibility + "e", "The held picker must keep its selected base letter")
+      let lowerAction = try eAction(), casingKey = try key("e")
+      grid.beginPress("accessibility-shift", at: center(try shiftKey()))
+      XCTAssertEqual(casingKey.title(for: .normal), "E")
+      XCTAssertFalse(try activateAccent(lowerAction), "A retained lowercase action must reject changed key casing")
+      grid.cancelPress("accessibility-shift")
+      XCTAssertEqual(text, beforeAccessibility + "e")
+      let detachedAction = try eAction()
+      grid.returnType = .done; grid.rebuild()
+      XCTAssertFalse(try activateAccent(detachedAction), "A rebuilt key must reject its old accent action")
+      XCTAssertEqual(text, beforeAccessibility + "e")
+      let currentAction = try eAction()
+      XCTAssertTrue(try activateAccent(currentAction)); XCTAssertTrue(try activateAccent(currentAction))
+      XCTAssertEqual(text, beforeAccessibility + "eéé", "A current accent action must remain repeatable")
+      let beforeDetachment = text
+      grid.removeFromSuperview(); XCTAssertNil(grid.window)
+      XCTAssertFalse(try activateAccent(currentAction), "A detached grid must reject its retained accent action")
+      XCTAssertEqual(text, beforeDetachment)
+      pickerHost.addSubview(grid); XCTAssertNotNil(grid.window)
+      XCTAssertTrue(try activateAccent(try eAction()))
+      XCTAssertEqual(text, beforeDetachment + "é", "Reattachment must restore the current accent action")
       for cancellation in ["all", "hide", "detach"] {
         XCTAssertNotNil(grid.window)
         let beforeCancellation = text, held = try startAccent()
@@ -561,6 +604,8 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(text, beforeCursor + " ", "A short Space press still inserts")
       let afterTap = text
       grid.beginPress("cursor", at: try spacePoint()); clock += 1; grid.updateSpaceHold()
+      XCTAssertFalse(try activateAccent(try eAction()), "Cursor mode must reject an accent action without claiming success")
+      XCTAssertEqual(text, afterTap)
       let heldSpace = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
       grid.model.shift = .once; grid.rebuild()
       XCTAssertTrue(heldSpace.isDescendant(of: grid), "Cursor mode must keep the original UIKit receiver attached")
