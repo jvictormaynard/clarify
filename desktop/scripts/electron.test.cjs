@@ -109,6 +109,15 @@ test('host retains settings until accepted close, resets each reopen and keeps p
   assert.throws(() => e.handlers['clarify:call'](event(pill), 'settings', 'savePreference', ['setProviderApiKey', ['secret']]), /channel/);
   const preference = e.handlers['clarify:call'](event(pill), 'settings', 'savePreference', ['setLanguage', ['pt']]);
   input.write('{"id":1,"result":{}}\n'); await preference;
+  for (const style of ['', 'natural', 'formal', 'casual', 'very_casual', 'informal', 'organized']) {
+    const saving = e.handlers['clarify:call'](event(pill), 'settings', 'savePreference', ['setDictationWritingStyle', [style]]);
+    const request = JSON.parse(sent.trim().split('\n').at(-1));
+    assert.deepEqual(request.args, ['setDictationWritingStyle', [style]]);
+    input.write(JSON.stringify({id: request.id, result: {}}) + '\n'); await saving;
+  }
+  for (const args of [['setDictationWritingStyle', ['unknown']], ['setDictationWritingStyle', ['formal', 'casual']], ['setLanguage', ['unknown']]]) {
+    assert.throws(() => e.handlers['clarify:call'](event(pill), 'settings', 'savePreference', args), /channel/);
+  }
   assert.throws(() => e.handlers['clarify:window'](event(pill), 'closeAccepted'), /Invalid/);
   assert.deepEqual(settings.open({url:'https://example.com'}), {action:'deny'});
   e.handlers['clarify:call'](event(pill), 'workflow', 'quit', []); assert.match(sent, /"event":"quit"/);

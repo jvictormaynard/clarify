@@ -957,11 +957,13 @@ final class CloudAccount {
       guard result["action_id"] as? String == savedAction.id,
         ComputerJSON.integer(result["action_revision"]).map({ String($0) }) == savedAction.revision else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
     }
-    let applied = preferences.applied(in: result, dictation: false)
+    let retained = savedAction?.kind == "custom" || TextRetention.accepts(source: text, output: output)
+    let applied = retained && ComputerJSON.boolean(result["successful"]) != false && preferences.applied(in: result, dictation: false)
     return ProcessingText(text: applied ? output : text, successful: applied, outputPreferenceFailed: !applied)
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary,
     preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> CloudDictation {
+    let effectivePreferences = policy.frozenPreferences(preferences, capabilities: processingCapabilities, catalog: textActions, computer: false)
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     let identity = captureTextIdentity()
     try await waitForAutomaticRefresh()
@@ -977,7 +979,8 @@ final class CloudAccount {
     }
     guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
     guard acceptsTextIdentity(identity) else { throw CancellationError() }
-    try processingCapabilities.validate(preferences)
+    try processingCapabilities.validate(effectivePreferences)
+    let requiresOriginalConfirmation = processingCapabilities.available
     let policyFields = try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: false)
     let bytes = try Data(contentsOf: audio)
     guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
@@ -985,7 +988,7 @@ final class CloudAccount {
     var body = Data()
     func append(_ value: String) { body.append(Data(value.utf8)) }
     append("--\(boundary)\r\nContent-Disposition: form-data; name=\"operation_id\"\r\n\r\n\(operationID)\r\n")
-    for (key, value) in try preferences.requestFields(supported: outputPreferencesSupported, dictation: true).sorted(by: { $0.key < $1.key }) {
+    for (key, value) in try effectivePreferences.requestFields(supported: outputPreferencesSupported, dictation: true).sorted(by: { $0.key < $1.key }) {
       append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n")
     }
     for (key, value) in policyFields.sorted(by: { $0.key < $1.key }) {
@@ -1003,8 +1006,8 @@ final class CloudAccount {
       outcome.text.utf8.count <= 32_768, outcome.transcript.utf8.count <= 32_768 else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
     guard acceptsTextIdentity(identity) else { throw CancellationError() }
     guard policy.accepts(result) else { throw ComputerFailure.invalidResponse }
-    if !preferences.applied(in: result, dictation: true, requireOriginalConfirmation: processingCapabilities.available) {
-      let preserveFallback = !outcome.rewritten && preferences.hasDictationFallback(in: result)
+    if !effectivePreferences.applied(in: result, dictation: true, requireOriginalConfirmation: requiresOriginalConfirmation) {
+      let preserveFallback = !outcome.rewritten && effectivePreferences.hasDictationFallback(in: result)
       return CloudDictation(transcript: outcome.transcript, text: preserveFallback ? outcome.text : outcome.transcript, rewritten: false,
         snippetExpanded: preserveFallback && outcome.snippetExpanded == true, outputPreferenceFailed: true)
     }

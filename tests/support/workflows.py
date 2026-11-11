@@ -94,10 +94,12 @@ class FakeProvider:
         *,
         dictation_snapshot=None,
         output_language=None,
+        writing_style=None,
     ):
         self.transcription_request = (audio_source, mode, language)
         self.dictation_snapshot = dictation_snapshot
         self.output_language = output_language
+        self.writing_style = writing_style
         if self.on_transcribe:
             self.on_transcribe()
         return TranscriptionResult(self.transcription, "gemini", "gemini-test")

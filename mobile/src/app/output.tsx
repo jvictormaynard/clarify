@@ -63,7 +63,7 @@ export default function Output() {
     } catch (error) { if (request === generation.current) setError(errorMessage(error)); }
     finally { saving.current = false; setPending(false); }
   }
-  const legacy = preferences && !['default', ...outputStyles.map(item => item.value)].includes(preferences.style);
+  const legacy = preferences && !outputStyles.some(item => item.value === preferences.style);
   return <ScrollView testID="app.output" style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic">
     <Text style={[ui.small, { color: c.muted }]}>{t('As alterações valem para a próxima operação.')}</Text>
     {!supported && supportChecked && !error && <Text accessibilityRole="alert" style={[ui.body, { color: c.muted }]}>{t('Atualize o Clarify neste destino para mudar a saída do ditado.')}</Text>}
@@ -72,20 +72,19 @@ export default function Output() {
       disabled={pending || busy || !account?.mode}
       onPress={() => { void load(); void refreshSupport(); }}>{t('Tentar carregar novamente')}</Button>}
     {!preferences && !error && <ActivityIndicator />}
-    {preferences && <>
-      <Section title={t('Idioma de saída')}>
+    <DictationPolicyControls outputLanguage={preferences?.language} more={preferences && <><Section title={t('Idioma de saída')}>
         {[{ value: 'auto', label: `🌐 ${t('Idioma original')}` }, ...targetLanguages].map(item => <ChoiceRow key={item.value}
           testID={`output.language.${item.value}`} title={item.label} selected={preferences.language === item.value} disabled={pending || refreshing || (!supported && item.value !== 'auto')}
           onPress={() => void save('language', item.value)} />)}
       </Section>
-      <Section title={t('Estilo')}>
+        {!supported && <ChoiceRow testID="output.style.default" title={t('Padrão')} selected={preferences.style === 'default'}
+          disabled={pending || refreshing} onPress={() => void save('style', 'default')} />}
+      </>} tone={preferences && <Section title={t('Tom')}>
         {outputStyles.map(item => <ChoiceRow key={item.value} testID={`output.style.${item.value}`} title={t(item.label)}
-          selected={preferences.style === item.value} disabled={pending || refreshing || (!supported && item.value !== 'default')} onPress={() => void save('style', item.value)} />)}
+          selected={preferences.style === item.value} disabled={pending || refreshing || !supported} onPress={() => void save('style', item.value)} />)}
         {legacy && <ChoiceRow title={t(outputStyleLabel(preferences.style))} selected disabled onPress={() => {}} />}
-      </Section>
-    </>}
+      </Section>} />
     {pending && <ActivityIndicator accessibilityLabel={t('Salvando…')} />}
-    <DictationPolicyControls outputLanguage={preferences?.language} />
     <Button testID="output.close" onPress={() => router.back()}>{t('Fechar')}</Button>
   </ScrollView>;
 }

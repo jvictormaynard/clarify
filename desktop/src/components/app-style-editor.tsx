@@ -1,6 +1,7 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import type { WritingStyle } from "../settings/bridge";
+import { writingStyleOptions } from "../settings/writing-style-options";
 import { applicationName } from "../settings/display-labels";
 import { Button, Field, Picker, Row, Section, SettingsDisclosure } from "./ui";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
@@ -28,11 +29,7 @@ export function AppStyleEditor({ controller: c }: SettingsPageProps) {
             onClick={() => a.change({ executable: c.state.applicationStyleTarget ?? "" })}>{t("Usar último aplicativo")}</Button></div>}
           <Row title={t("Estilo de escrita")} hint={t(descriptions[editor.style])}>
             <Picker label={t("Estilo de escrita")} value={editor.style}
-              options={[
-                { id: "natural", label: t("Natural") },
-                { id: "formal", label: t("Formal") }, { id: "casual", label: t("Casual") }, { id: "very_casual", label: t("Muito casual") },
-                ...(["informal", "organized"].includes(editor.style) ? [{ id: editor.style, label: t(({ informal: "Informal", organized: "Organizado" } as Record<string, string>)[editor.style]) }] : []),
-              ]}
+              options={writingStyleOptions(editor.style)}
               onChange={style => a.change({ style: style as WritingStyle })} />
           </Row>
           <SettingsDisclosure title={editor.isNew ? t("Escolher outro aplicativo") : t("Detalhes do aplicativo")} defaultOpen={!editor.executable}>

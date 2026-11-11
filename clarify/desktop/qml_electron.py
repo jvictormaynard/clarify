@@ -82,6 +82,8 @@ LIBRARY_PROPERTIES = frozenset(
     )
 )
 PILL_SETTINGS = (
+    "dictationWritingStyle",
+    "applicationStyleRefinementAllowed",
     "uiLanguage",
     "microphoneDevices",
     "microphoneInventoryBusy",

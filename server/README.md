@@ -28,7 +28,6 @@ python3 -m venv server/.venv
 server/.venv/bin/pip install --require-hashes -r server/requirements.txt
 # Set DATABASE_URL to an isolated test database, not a production database.
 CLARIFY_DEVELOPMENT=1 server/.venv/bin/python server/manage.py test cloud.service.tests
-python3 mobile/scripts/sync-prompts.py --check
 ```
 
 SQLite is available for development only. Concurrency tests require PostgreSQL.

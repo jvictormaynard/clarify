@@ -9,6 +9,30 @@ final class OnboardingTests: XCTestCase {
     try test(defaults)
   }
 
+  func testNewDefaultsAreSeededOnceAndExistingMissingAndLegacyPreferencesStayCompatible() throws {
+    try withDefaults { defaults in
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let store = SharedState(root: root)
+      XCTAssertTrue(Onboarding(defaults: defaults, store: store).required(signedIn: false))
+      XCTAssertEqual(store.outputPreferences().style, .natural)
+      let policies = DictationPolicyStore(defaults: defaults)
+      XCTAssertEqual(policies.read(scope: "new").mode, .clarity)
+      try policies.save(.legacy, scope: "new")
+      XCTAssertEqual(policies.read(scope: "new").mode, .legacy)
+      _ = try store.setOutputPreference("style", value: "organized")
+      _ = Onboarding(defaults: defaults, store: store).required(signedIn: false)
+      XCTAssertEqual(store.outputPreferences().style, .organized)
+    }
+    for key in ["clarify.onboarding.presented", "clarify.onboarding.completed", "clarify.processing.destination"] {
+      withDefaults { defaults in
+        defaults.set(true, forKey: key)
+        _ = Onboarding(defaults: defaults, store: nil).required(signedIn: false)
+        XCTAssertEqual(DictationPolicyStore(defaults: defaults).read(scope: "existing").mode, .legacy)
+      }
+    }
+  }
   func testFreshInstallShowsOnceEvenWhenSetupIsSkipped() {
     withDefaults { defaults in
       let setup = Onboarding(defaults: defaults)

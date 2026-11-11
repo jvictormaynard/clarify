@@ -101,6 +101,17 @@ class ElectronDesktopTests(unittest.TestCase):
         self.assertEqual(reply["result"]["surface"], "idle")
         self.assertEqual(reply["result"]["level"], 0.25)
         self.assertNotIn("settings", reply["result"])
+        self.assertEqual(
+            reply["result"]["dictationWritingStyle"],
+            self.settings.dictationWritingStyle,
+        )
+        self.assertEqual(
+            reply["result"]["applicationStyleRefinementAllowed"],
+            self.settings.applicationStyleRefinementAllowed,
+        )
+        self.host._mark_settings({"dictationWritingStyle"})
+        self.assertIsNone(self.host._pill_settings)
+        self.assertTrue(self.host._workflow_dirty)
 
     def test_meter_push_does_not_read_or_serialize_settings_library(self):
         self.host._ready = True

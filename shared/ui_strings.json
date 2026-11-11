@@ -7853,5 +7853,95 @@
     "pt": "Mostra sugestões e corrige palavras ao digitar no teclado Clarify.",
     "en": "Shows suggestions and corrects words when typing with the Clarify keyboard.",
     "es": "Muestra sugerencias y corrige palabras al escribir con el teclado Clarify."
+  },
+  "Tom": {
+    "pt": "Tom",
+    "en": "Tone",
+    "es": "Tono"
+  },
+  "Manter meu tom": {
+    "pt": "Manter meu tom",
+    "en": "Keep my tone",
+    "es": "Mantener mi tono"
+  },
+  "Mais opções": {
+    "pt": "Mais opções",
+    "en": "More options",
+    "es": "Más opciones"
+  },
+  "Edição do texto": {
+    "pt": "Edição do texto",
+    "en": "Text editing",
+    "es": "Edición del texto"
+  },
+  "Manter minhas palavras": {
+    "pt": "Manter minhas palavras",
+    "en": "Keep my words",
+    "es": "Mantener mis palabras"
+  },
+  "Idioma e tom se aplicam à revisão e às ações de texto.": {
+    "pt": "Idioma e tom se aplicam à revisão e às ações de texto.",
+    "en": "Language and tone apply to clarity edits and text actions.",
+    "es": "El idioma y el tono se aplican a la revisión y a las acciones de texto."
+  },
+  "Usar instruções de ditado": {
+    "pt": "Usar instruções de ditado",
+    "en": "Use dictation instructions",
+    "es": "Usar instrucciones de dictado"
+  },
+  "Ajustar apenas espaços": {
+    "pt": "Ajustar apenas espaços",
+    "en": "Adjust spacing only",
+    "es": "Ajustar solo espacios"
+  },
+  "Melhorar a clareza": {
+    "pt": "Melhorar a clareza",
+    "en": "Improve clarity",
+    "es": "Mejorar la claridad"
+  },
+  "Instruções atuais": {
+    "pt": "Instruções atuais",
+    "en": "Current instructions",
+    "es": "Instrucciones actuales"
+  },
+  "Ação automática salva": {
+    "pt": "Ação automática salva",
+    "en": "Automatic saved action",
+    "es": "Acción guardada automática"
+  },
+  "Nenhuma": {
+    "pt": "Nenhuma",
+    "en": "None",
+    "es": "Ninguna"
+  },
+  "Ação indisponível": {
+    "pt": "Ação indisponível",
+    "en": "Action unavailable",
+    "es": "Acción no disponible"
+  },
+  "Manter idioma de origem": {
+    "pt": "Manter idioma de origem",
+    "en": "Keep source language",
+    "es": "Mantener idioma de origen"
+  },
+  "Seu texto": {
+    "pt": "Seu texto",
+    "en": "Your text",
+    "es": "Tu texto"
+  },
+  "Mantém as instruções atuais, sem um tom explícito.": {
+    "pt": "Mantém as instruções atuais, sem um tom explícito.",
+    "en": "Uses your current instructions without an explicit tone.",
+    "es": "Usa tus instrucciones actuales sin un tono explícito."
+  },
+  "O idioma fica salvo. Sem revisão, o ditado não é traduzido.": {
+    "pt": "O idioma fica salvo. Sem revisão, o ditado não é traduzido.",
+    "en": "The language stays saved. Without text editing, dictation is not translated.",
+    "es": "El idioma queda guardado. Sin edición del texto, el dictado no se traduce."
+  },
+  "Não aplicar ação automaticamente": {
+    "pt": "Não aplicar ação automaticamente",
+    "en": "Do not apply an action automatically",
+    "es": "No aplicar una acción automáticamente"
   }
 }
