@@ -8,7 +8,7 @@ export type SettingsScenario = {
   signedIn?: boolean;
   quota?: boolean;
   usage?: "error" | "legacy" | "malformed" | "waiting" | "unfunded" | "inactive" | "paused" | "exhausted" | "reserved";
-  practice?: "account-error" | "auth-error" | "provider-quota";
+  practice?: "account-error" | "auth-error" | "provider-quota" | "missing-model";
   socialWait?: boolean;
   librarySync?: boolean;
   history?: boolean;

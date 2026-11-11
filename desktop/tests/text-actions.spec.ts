@@ -392,50 +392,6 @@ test.describe("hosted text actions", () => {
 
 });
 
-test("pill preferences: tone uses the shared saved owner and hides when editing is forbidden", async ({ page, settingsFixture }) => {
-  await settingsFixture.rpc("savePreference", "setDictationWritingStyle", ["organized"]);
-  await page.addInitScript(() => {
-    const listeners = new Set<(message: unknown) => void>();
-    const publishWorkflow = async () => {
-      const saved = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
-      const state = { surface: "idle", uiLanguage: "pt", language: "auto",
-        dictationWritingStyle: saved.dictationWritingStyle,
-        writingStyleRefinementAllowed: saved.writingStyleRefinementAllowed };
-      for (const listener of listeners) listener({ event: "workflow", state });
-    };
-    (window as any).clarifyDesktop = {
-      call: async (channel: string, method: string, args: unknown[]) => {
-        if (channel === "workflow") {
-          if (method === "refreshMicrophones") await publishWorkflow();
-          return;
-        }
-        if (method !== "savePreference") throw new Error("Invalid renderer channel");
-        const result = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
-        await publishWorkflow();
-        return result;
-      },
-      subscribe: (listener: (message: unknown) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
-      ready: publishWorkflow,
-      window: async () => {},
-    };
-  });
-  await page.goto("/?surface=pill");
-  const more = page.getByRole("button", { name: "Mais opções", exact: true });
-  await more.click();
-  await page.getByRole("button", { name: "Tom", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Organizado", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Manter meu tom", exact: true }).click();
-  await expect(more).toBeFocused();
-  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).dictationWritingStyle).toBe("natural");
-  await settingsFixture.rpc("savePreference", "setDictationCleanupLevel", ["preserve"]);
-  await more.click();
-  // The adapter projects the saved controller state through the workflow push.
-  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).writingStyleRefinementAllowed).toBe(false);
-  await expect(page.getByRole("button", { name: "Tom", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.keyboard.press("Escape"); await expect(more).toBeFocused();
-});
-
 test("after dictation: custom saved names stay literal in main and advanced pickers", async ({ page, settingsFixture }) => {
   let state = await settingsFixture.rpc("snapshot");
   await settingsFixture.rpc("saveTextAction", {

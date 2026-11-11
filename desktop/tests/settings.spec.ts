@@ -1009,7 +1009,12 @@ test("dictionary: duplicate identity and edited search results stay focusable", 
   await term.fill("Changed term");
   await expect(term).toBeFocused();
   await page.getByRole("button", { name: "Aplicar", exact: true }).click();
+  const search = page.getByRole("searchbox", { name: "Buscar termos", exact: true });
+  await expect(search).toHaveValue("Straße");
+  await expect(page.getByText("Changed term", { exact: true })).toBeHidden();
+  await search.press("Escape");
   await expect(page.getByRole("searchbox", { name: "Buscar termos", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Buscar termos", exact: true })).toBeFocused();
   await expect(page.getByText("Changed term", { exact: true })).toBeVisible();
 });
 

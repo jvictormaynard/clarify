@@ -73,22 +73,14 @@ settingsScenario({ history: true }, () => {
 for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["Straße", "STRASSE"]]) settingsScenario({ history: true }, () => {
   test(`history: correction reuses unsaved ${localTerm}/${correctedTerm} and keeps pending metadata`, async ({ page }) => {
     await navigate(page, "Dicionário");
+    await page.getByRole("button", { name: "Adicionar novo", exact: true }).click();
     await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill(localTerm);
-    await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
-    const pronunciation = page.getByRole("button", { name: "Pronúncia e variações", exact: true });
-    await pronunciation.focus();
-    await page.keyboard.press("Enter");
-    const pronunciationInput = page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true });
-    await pronunciationInput.fill("Pending pronunciation");
-    await pronunciation.focus();
-    await page.keyboard.press("Space");
-    await expect(pronunciation).toHaveAttribute("aria-expanded", "false");
-    await expect(pronunciation).toBeFocused();
-    await expect(pronunciationInput).toBeHidden();
-    await page.keyboard.press("Enter");
-    await expect(pronunciationInput).toHaveValue("Pending pronunciation");
+    await page.getByRole("textbox", { name: "Pronúncia do termo 0", exact: true }).fill("Pending pronunciation");
+    await page.getByRole("button", { name: "Aplicar", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeVisible();
     await navigate(page, "Histórico");
     const row = page.locator(".history-row").filter({ hasText: "Isolated revised desktop history." });
+    await row.getByRole("button", { name: "Abrir textos", exact: true }).click();
     await row.getByRole("button", { name: "Corrigir termo", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Corrigir termo", exact: true });
     await dialog.getByRole("textbox", { name: "Termo ouvido", exact: true }).fill("desktop");
@@ -97,11 +89,12 @@ for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["St
     await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
     await expect(dialog).toBeHidden();
     await navigate(page, "Dicionário");
+    await expect(page.getByRole("button", { name: "Editar termo 2", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Editar termo 1", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Termo 1", exact: true })).toHaveValue(localTerm);
-    await expect(page.getByRole("textbox", { name: "Termo 2", exact: true })).toHaveCount(0);
-    await page.getByText("Pronúncia e variações", { exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Pronúncia do termo 1", exact: true })).toHaveValue("Pending pronunciation");
     await expect(page.getByRole("textbox", { name: "Variações do termo 1", exact: true })).toHaveValue("desktop");
+    await page.getByRole("button", { name: "Cancelar", exact: true }).click();
     await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
     const saved = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));

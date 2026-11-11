@@ -469,7 +469,7 @@ settingsScenario({ socialWait: true }, () => {
   });
 });
 
-settingsScenario({ onboarding: true }, () => {
+settingsScenario({ onboarding: true, practice: "missing-model" }, () => {
   test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
     await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
     await page.getByRole("button", { name: "Continuar com modelo local" }).click();
