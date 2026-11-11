@@ -72,8 +72,8 @@ final class ContractsTests: XCTestCase {
     keyboard.didInsert(" ")
     XCTAssertEqual(keyboard.page, .letters)
     XCTAssertTrue(KeyboardState.accents(for: "a").contains("ã"))
-    XCTAssertEqual(KeyboardState.accents(for: "a"), ["a", "á", "ã", "à", "â", "ä", "å", "æ"])
-    XCTAssertEqual(KeyboardState.accents(for: "A"), ["A", "Á", "Ã", "À", "Â", "Ä", "Å", "Æ"])
+    XCTAssertEqual(KeyboardState.accents(for: "a"), ["a", "á", "ã", "à", "â", "ä", "å", "æ", "ª"])
+    XCTAssertEqual(KeyboardState.accents(for: "A"), ["A", "Á", "Ã", "À", "Â", "Ä", "Å", "Æ", "ª"])
     XCTAssertEqual(KeyboardState.accents(for: "C"), ["C", "Ç"])
     XCTAssertEqual(KeyboardState.accents(for: "e"), ["e", "é", "ê", "è", "ę", "ė", "ē", "ë"])
     XCTAssertEqual(KeyboardState.accents(for: "E"), ["E", "É", "Ê", "È", "Ę", "Ė", "Ē", "Ë"])
@@ -81,7 +81,7 @@ final class ContractsTests: XCTestCase {
     XCTAssertEqual(KeyboardState.accents(for: "I"), ["I", "Ī", "Į", "Ï", "Ì", "Î", "Í"])
     XCTAssertEqual(KeyboardState.accents(for: "u"), ["u", "ū", "û", "ù", "ü", "ú"])
     XCTAssertEqual(KeyboardState.accents(for: "U"), ["U", "Ū", "Û", "Ù", "Ü", "Ú"])
-    XCTAssertEqual(KeyboardState.accents(for: "o"), ["o", "ō", "ø", "œ", "ö", "ò", "õ", "ó", "ô"])
-    XCTAssertEqual(KeyboardState.accents(for: "O"), ["O", "Ō", "Ø", "Œ", "Ö", "Ò", "Õ", "Ó", "Ô"])
+    XCTAssertEqual(KeyboardState.accents(for: "o"), ["o", "º", "ō", "ø", "œ", "ö", "ò", "õ", "ó", "ô"])
+    XCTAssertEqual(KeyboardState.accents(for: "O"), ["O", "º", "Ō", "Ø", "Œ", "Ö", "Ò", "Õ", "Ó", "Ô"])
   }
 }

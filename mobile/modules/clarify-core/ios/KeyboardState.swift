@@ -78,8 +78,8 @@ struct KeyboardState {
     return true
   }
   static func accents(for key: String) -> [String] {
-    let values: [String: String] = ["a": "aáãàâäåæ", "e": "eéêèęėēë", "i": "iīįïìîí",
-      "o": "oōøœöòõóô", "u": "uūûùüú", "c": "cç", "n": "nñ"]
+    let values: [String: String] = ["a": "aáãàâäåæª", "e": "eéêèęėēë", "i": "iīįïìîí",
+      "o": "oºōøœöòõóô", "u": "uūûùüú", "c": "cç", "n": "nñ"]
     guard let value = values[key.lowercased()] else { return [] }
     return value.map { key == key.uppercased() ? String($0).uppercased() : String($0) }
   }
