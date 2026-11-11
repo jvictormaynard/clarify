@@ -9,6 +9,7 @@ from django.db import transaction
 from rest_framework.exceptions import PermissionDenied
 
 from shared.output_preferences import LANGUAGES as OUTPUT_LANGUAGES
+from shared.rewrite_prompts import rewrite_task_instruction
 
 from .ledger import Rejected
 from .models import TextActionLibrary, TextActionRevision
@@ -195,6 +196,8 @@ def instruction(action, language):
     # Use replacement only for the documented translation token. User braces
     # must never enter Python's format language.
     prompt = action.prompt
+    if action.kind == "rewrite":
+        return rewrite_task_instruction(prompt)
     if action.kind == "translation":
         prompt = prompt.replace("{lang}", LANGUAGES[language])
     system = (
