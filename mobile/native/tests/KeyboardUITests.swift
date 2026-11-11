@@ -520,6 +520,35 @@ final class KeyboardUITests: XCTestCase {
         emit(held, .changed, at: try accentPoint(choice)); emit(held, .ended); emit(held, .ended)
         XCTAssertEqual(text, beforeChoice + choice, "A newly offered accent must commit exactly once")
       }
+      let cancellationWindow = UIWindow(frame: pickerHost.bounds)
+      cancellationWindow.addSubview(pickerHost)
+      defer { withExtendedLifetime(cancellationWindow) { pickerHost.removeFromSuperview() } }
+      for cancellation in ["all", "hide", "detach"] {
+        XCTAssertNotNil(grid.window)
+        let beforeCancellation = text, held = try startAccent()
+        emit(held, .changed, at: try accentPoint("é"))
+        let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+          $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == "é" }
+        })
+        grid.model.shift = .caps; grid.rebuild()
+        switch cancellation {
+        case "hide": grid.isHidden = true
+        case "detach": grid.removeFromSuperview()
+        default: grid.cancelAllPresses()
+        }
+        XCTAssertNil(picker.superview, "Cancelling the keyboard must remove its accent picker: \(cancellation)")
+        emit(held, .changed); emit(held, .ended)
+        XCTAssertEqual(text, beforeCancellation, "A cancelled accent must reject late callbacks: \(cancellation)")
+        _ = try key("Q")
+        grid.isHidden = false
+        if grid.superview == nil { pickerHost.addSubview(grid) }
+        grid.model.shift = .off; grid.rebuild(); grid.layoutIfNeeded()
+        let restarted = try startAccent()
+        emit(held, .ended); emit(restarted, .ended)
+        let next = center(try key("q"))
+        grid.beginPress("after-cancellation", at: next); grid.endPress("after-cancellation", at: next)
+        XCTAssertEqual(text, beforeCancellation + "eq", "A stale owner must not consume a new picker or tap")
+      }
       var clock: TimeInterval = 100, offsets: [Int] = [], finishes = 0
       grid.cursorUptime = { clock }; grid.onMoveCursor = { offsets.append($0); return true }
       grid.onEndCursor = { finishes += 1 }

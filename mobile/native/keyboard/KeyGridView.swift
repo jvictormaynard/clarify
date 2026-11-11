@@ -203,7 +203,9 @@ final class KeyGridView: UIView {
     onEndCursor?()
   }
   func cancelAllPresses() {
+    clearAccentPicker()
     for id in Array(presses.keys) { cancelPress(id) }
+    finishPresses()
   }
   private func finishPresses() {
     if presses.isEmpty, rebuildPending { rebuildPending = false; rebuild() }
@@ -542,6 +544,10 @@ final class KeyGridView: UIView {
     onDelete?()
   }
   @objc private func stopDelete() { repeatTimer?.invalidate(); repeatTimer = nil }
+  private func clearAccentPicker() {
+    accentBar?.removeFromSuperview(); accentBar = nil; accentKeys = []
+    activeAccentGesture = nil; selectedAccent = nil; suppressKey = false
+  }
   @objc private func accent(_ gesture: UILongPressGestureRecognizer) {
     guard let button = gesture.view as? UIButton, let title = button.title(for: .normal) else { return }
     if gesture.state == .began {
@@ -584,11 +590,11 @@ final class KeyGridView: UIView {
       selectedAccent = accentKeys[index].title(for: .normal)
     }
     if [.ended, .cancelled, .failed].contains(gesture.state) {
-      let selection = selectedAccent; bar.removeFromSuperview(); accentBar = nil; accentKeys = []
-      activeAccentGesture = nil; selectedAccent = nil
+      let selection = selectedAccent
       // Finish this press before insertion calls back into the grid.
-      suppressKey = false
+      clearAccentPicker()
       if gesture.state == .ended, let selection = selection { insert(selection) }
+      finishPresses()
     }
   }
 }
