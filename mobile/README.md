@@ -658,9 +658,11 @@ simulator. No public API removes that system UI.
 Start, upward lock and finish use retained, prepared standard medium-impact
 generators. Typing uses a lighter impact. Generators do not depend
 on the extension's remote window and do not scale the standard pulse intensity.
-The host enables haptics before activating audio input. Start uses an original
-short rising tone; finish uses a falling tone. The start cue is excluded from
-captured audio. These are not WhatsApp assets. Haptic intensity needs iPhone acceptance.
+The host enables haptics before activating audio input. Mobile and desktop use
+the same original WAV cues from `assets/sounds/`: two hollow pops with 55 ms
+between note starts. Start ascends; stop and recording cancellation descend.
+The start cue is excluded from captured audio. Haptic intensity and cue volume
+need physical-device acceptance.
 While the microphone is held, two upward chevron tips appear inside its button.
 The icon shrinks and shifts smoothly; Reduce Motion disables that transition.
 The hint disappears after lock or release. Initial layout reports a fixed

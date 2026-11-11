@@ -307,6 +307,8 @@ def path_components(path: str) -> set[str]:
         if path.startswith("desktop/boot-tests/"):
             return {"settings", "desktop_shell"}
         return DESKTOP_BUILD.copy()
+    if path.startswith("assets/sounds/"):
+        return {"desktop", "package", "desktop_shell", "mobile", "ios"}
     if (
         path.startswith(
             ("assets/", "licenses/", "local_asr_manifests/", "distribution/", "extra/")
