@@ -1,3 +1,4 @@
+import { copyTextActionPreview } from "./bridge";
 import { useDraft } from "./use-draft";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { t } from "../i18n";
@@ -34,15 +35,20 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const dismissEpoch = useRef(0);
   const setDiscardRequested = (value: boolean) => { dismissEpoch.current += 1; renderDiscardRequested(value); };
   const [deleting, setDeleting] = useState<{ action: TextAction; context: string; revision: string } | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const [using, setUsing] = useState(false);
   const [sample, renderSample] = useState("");
   const sampleRef = useRef(sample);
   const sampleLanguage = state?.language ?? "auto";
   const [preview, setPreview] = useState("");
   const [previewing, setPreviewing] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyingRef = useRef(false);
   const previewRequest = useRef<{ actionId: string; revision: number; context: string; sample: string; generation?: number } | null>(null);
   const invalidatePreview = () => {
     const active = previewRequest.current;
-    previewRequest.current = null; setPreview(""); setPreviewing(false);
+    previewRequest.current = null; setPreview(""); setPreviewing(false); setCopied(false);
     if (active) void run("cancelTextActionPreview");
   };
 
@@ -63,9 +69,11 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
     return () => { document.removeEventListener("visibilitychange", hidden); };
   }, [cancelCapture]);
 
-  const open = (action?: TextAction, duplicate = false) => {
+  const open = (action?: TextAction, duplicate = false, use = false) => {
     const snapshot = current.current;
     if (!snapshot?.textActionContext || savingRef.current || refreshingRef.current) return;
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) opener.current = document.activeElement;
+    invalidatePreview(); setUsing(use);
     const value = action ? writable(action) : {
       id: crypto.randomUUID(), name: "", prompt: "", kind: "custom" as const,
       enabled: true, processingProfileId: "default", shortcut: null,
@@ -222,11 +230,22 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
     invalidatePreview();
     if (!await run("savePreference", "setLanguage", [value])) setError(t("Não foi possível salvar a preferência de saída. Tente novamente."));
   };
+  const copyPreview = async () => {
+    const request = previewRequest.current;
+    if (!request || request.generation === undefined || !preview || copyingRef.current) return;
+    const active = () => previewRequest.current === request && request.context === current.current?.textActionContext;
+    copyingRef.current = true; setCopying(true); setCopied(false); setError("");
+    try {
+      const result = await copyTextActionPreview(request.context, request.generation, active);
+      if (result && active()) setCopied(true);
+    } catch { if (active()) setError(t("Não foi possível copiar. Tente novamente.")); }
+    finally { copyingRef.current = false; setCopying(false); }
+  };
   const test = async () => {
     const value = editorRef.current;
     if (!value || isDirty(value) || !sampleRef.current.trim() || previewing || current.current?.textActionPreview?.busy) return;
     const request: NonNullable<typeof previewRequest.current> = { actionId: value.action.id, revision: value.savedRevision, context: value.context, sample: sampleRef.current };
-    previewRequest.current = request; setPreviewing(true); setError(""); setPreview("");
+    previewRequest.current = request; setPreviewing(true); setError(""); setPreview(""); setCopied(false);
     const result = await run("previewTextAction", request.actionId, request.sample, request.context, request.revision, sampleLanguage || "auto");
     if (previewRequest.current !== request) return;
     if (!result) { setPreviewing(false); setError(t("Não foi possível testar a ação.")); return; }
@@ -237,14 +256,19 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
     }
   };
   useEffect(() => {
+    const request = previewRequest.current;
+    if (request && (request.context !== state?.textActionContext ||
+      state?.textActions?.find(action => action.id === request.actionId)?.revision !== request.revision)) invalidatePreview();
+  }, [state?.textActionContext, state?.textActions]);
+  useEffect(() => {
     const request = previewRequest.current, outcome = state?.textActionPreview;
     if (!request || request.generation === undefined || !outcome || outcome.generation !== request.generation ||
       outcome.busy || request.context !== state?.textActionContext || request.sample !== sampleRef.current) return;
     setPreview(outcome.text ?? ""); setError(outcome.error ?? ""); setPreviewing(false);
   }, [state?.textActionPreview, state?.textActionContext]);
 
-  return { editor, dirty: isDirty(editor), isDirty: () => isDirty(editorRef.current),
+  return { opener, using, use: (action: TextAction) => open(action, false, true), cancelPreview: invalidatePreview, editor, dirty: isDirty(editor), isDirty: () => isDirty(editorRef.current),
     error, saving, refreshing, refresh, conflict, resolveConflict, capturing, captureStarting, discardRequested, setDiscardRequested, open, change, close, save,
     beginCapture, cancelCapture, captureKey, captureMouse, toggle, deleting, requestDelete,
-    cancelDelete: () => { if (!savingRef.current) { setDeleting(null); setError(""); } }, confirmDelete, sample, setSample, sampleLanguage, setSampleLanguage, preview, previewing, test };
+    cancelDelete: () => { if (!savingRef.current) { setDeleting(null); setError(""); } }, confirmDelete, sample, setSample, sampleLanguage, setSampleLanguage, preview, previewing, test, copyPreview, copying, copied };
 }

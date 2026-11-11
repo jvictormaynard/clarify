@@ -7943,5 +7943,475 @@
     "pt": "Não aplicar ação automaticamente",
     "en": "Do not apply an action automatically",
     "es": "No aplicar una acción automáticamente"
+  },
+  "Usar ação": {
+    "pt": "Usar ação",
+    "en": "Use action",
+    "es": "Usar acción"
+  },
+  "Texto de entrada": {
+    "pt": "Texto de entrada",
+    "en": "Input text",
+    "es": "Texto de entrada"
+  },
+  "Cole o texto que você quer transformar.": {
+    "pt": "Cole o texto que você quer transformar.",
+    "en": "Paste the text you want to change.",
+    "es": "Pega el texto que quieres transformar."
+  },
+  "A ação ou o serviço de texto não está disponível. Verifique a configuração.": {
+    "pt": "A ação ou o serviço de texto não está disponível. Verifique a configuração.",
+    "en": "The action or text service is unavailable. Check the settings.",
+    "es": "La acción o el servicio de texto no está disponible. Revisa los ajustes."
+  },
+  "Nomes e termos": {
+    "pt": "Nomes e termos",
+    "en": "Names and terms",
+    "es": "Nombres y términos"
+  },
+  "Desativar ação": {
+    "pt": "Desativar ação",
+    "en": "Disable action",
+    "es": "Desactivar acción"
+  },
+  "Sistema": {
+    "pt": "Sistema",
+    "en": "System",
+    "es": "Sistema"
+  },
+  "Dados e privacidade": {
+    "pt": "Dados e privacidade",
+    "en": "Data & Privacy",
+    "es": "Datos y privacidad"
+  },
+  "Barra lateral": {
+    "pt": "Barra lateral",
+    "en": "Sidebar",
+    "es": "Barra lateral"
+  },
+  "Fechar busca": {
+    "pt": "Fechar busca",
+    "en": "Close search",
+    "es": "Cerrar búsqueda"
+  },
+  "A entrada mudou. Feche e abra o editor novamente.": {
+    "pt": "A entrada mudou. Feche e abra o editor novamente.",
+    "en": "The entry changed. Close and reopen the editor.",
+    "es": "La entrada cambió. Cierra y vuelve a abrir el editor."
+  },
+  "Adicionar novo": {
+    "pt": "Adicionar novo",
+    "en": "Add new",
+    "es": "Añadir nuevo"
+  },
+  "Adicione seu primeiro termo.": {
+    "pt": "Adicione seu primeiro termo.",
+    "en": "Add your first term.",
+    "es": "Añade tu primer término."
+  },
+  "Editar snippet {v0}": {
+    "pt": "Editar snippet {v0}",
+    "en": "Edit snippet {v0}",
+    "es": "Editar snippet {v0}"
+  },
+  "Editar termo": {
+    "pt": "Editar termo",
+    "en": "Edit term",
+    "es": "Editar término"
+  },
+  "Editar termo {v0}": {
+    "pt": "Editar termo {v0}",
+    "en": "Edit term {v0}",
+    "es": "Editar término {v0}"
+  },
+  "Remover termo {v0}": {
+    "pt": "Remover termo {v0}",
+    "en": "Remove term {v0}",
+    "es": "Eliminar término {v0}"
+  },
+  "Termo": {
+    "pt": "Termo",
+    "en": "Term",
+    "es": "Término"
+  },
+  "Usar termo {v0}": {
+    "pt": "Usar termo {v0}",
+    "en": "Use term {v0}",
+    "es": "Usar término {v0}"
+  },
+  "Use Salvar para aplicar ou Descartar para cancelar.": {
+    "pt": "Use Salvar para aplicar ou Descartar para cancelar.",
+    "en": "Use Save to apply or Discard to cancel.",
+    "es": "Usa Guardar para aplicar o Descartar para cancelar."
+  },
+  "Aplique ou cancele o editor antes de fechar.": {
+    "pt": "Aplique ou cancele o editor antes de fechar.",
+    "en": "Apply or cancel the editor before closing.",
+    "es": "Aplica o cancela el editor antes de cerrar."
+  },
+  "Transformações": {
+    "pt": "Transformações",
+    "en": "Transforms",
+    "es": "Transformaciones"
+  },
+  "Bem-vindo de volta": {
+    "pt": "Bem-vindo de volta",
+    "en": "Welcome back",
+    "es": "Bienvenido de nuevo"
+  },
+  "Ler mais": {
+    "pt": "Ler mais",
+    "en": "Read more",
+    "es": "Leer más"
+  },
+  "Texto completo": {
+    "pt": "Texto completo",
+    "en": "Full text",
+    "es": "Texto completo"
+  },
+  "QR para baixar o Clarify na App Store": {
+    "pt": "QR para baixar o Clarify na App Store",
+    "en": "QR code to download Clarify from the App Store",
+    "es": "QR para descargar Clarify de la App Store"
+  },
+  "Leia com a câmera do iPhone": {
+    "pt": "Leia com a câmera do iPhone",
+    "en": "Scan with your iPhone camera",
+    "es": "Escanea con la cámara del iPhone"
+  },
+  "Baixe o Clarify na App Store.": {
+    "pt": "Baixe o Clarify na App Store.",
+    "en": "Download Clarify from the App Store.",
+    "es": "Descarga Clarify de la App Store."
+  },
+  "Olá! Podemos conversar amanhã?": {
+    "pt": "Olá! Podemos conversar amanhã?",
+    "en": "Hi! Can we talk tomorrow?",
+    "es": "¡Hola! ¿Podemos hablar mañana?"
+  },
+  "Mensagem": {
+    "pt": "Mensagem",
+    "en": "Message",
+    "es": "Mensaje"
+  },
+  "Sua voz. Seu texto.": {
+    "pt": "Sua voz. Seu texto.",
+    "en": "Your voice. Your words.",
+    "es": "Tu voz. Tu texto."
+  },
+  "Clarify para iPhone": {
+    "pt": "Clarify para iPhone",
+    "en": "Clarify for iPhone",
+    "es": "Clarify para iPhone"
+  },
+  "Leve sua voz com você.": {
+    "pt": "Leve sua voz com você.",
+    "en": "Take your voice with you.",
+    "es": "Lleva tu voz contigo."
+  },
+  "Dite mensagens, e-mails e notas com o teclado do Clarify.": {
+    "pt": "Dite mensagens, e-mails e notas com o teclado do Clarify.",
+    "en": "Dictate messages, emails and notes with the Clarify keyboard.",
+    "es": "Dicta mensajes, correos y notas con el teclado de Clarify."
+  },
+  "Já tenho o aplicativo": {
+    "pt": "Já tenho o aplicativo",
+    "en": "I already have the app",
+    "es": "Ya tengo la aplicación"
+  },
+  "Reproduzir demonstração": {
+    "pt": "Reproduzir demonstração",
+    "en": "Play demo",
+    "es": "Reproducir demostración"
+  },
+  "Pausar demonstração": {
+    "pt": "Pausar demonstração",
+    "en": "Pause demo",
+    "es": "Pausar demostración"
+  },
+  "Fechar sugestão do aplicativo": {
+    "pt": "Fechar sugestão do aplicativo",
+    "en": "Dismiss app suggestion",
+    "es": "Cerrar sugerencia de la aplicación"
+  },
+  "Vamos preparar seu ditado": {
+    "pt": "Vamos preparar seu ditado",
+    "en": "Set up your dictation",
+    "es": "Prepara tu dictado"
+  },
+  "Fale em vez de digitar": {
+    "pt": "Fale em vez de digitar",
+    "en": "Speak instead of typing",
+    "es": "Habla en vez de escribir"
+  },
+  "Três ajustes. Depois, experimente sua voz.": {
+    "pt": "Três ajustes. Depois, experimente sua voz.",
+    "en": "Three settings. Then try your voice.",
+    "es": "Tres ajustes. Después, prueba tu voz."
+  },
+  "Use o atalho onde você pode digitar.": {
+    "pt": "Use o atalho onde você pode digitar.",
+    "en": "Use the shortcut wherever you can type.",
+    "es": "Usa el atajo donde puedas escribir."
+  },
+  "Teste local de até 30 segundos. O áudio não é enviado.": {
+    "pt": "Teste local de até 30 segundos. O áudio não é enviado.",
+    "en": "Local test for up to 30 seconds. Audio is not sent.",
+    "es": "Prueba local de hasta 30 segundos. El audio no se envía."
+  },
+  "Alterar atalho": {
+    "pt": "Alterar atalho",
+    "en": "Change shortcut",
+    "es": "Cambiar atajo"
+  },
+  "Segure para falar. Solte para concluir.": {
+    "pt": "Segure para falar. Solte para concluir.",
+    "en": "Hold to speak. Release to finish.",
+    "es": "Mantén pulsado para hablar. Suelta para terminar."
+  },
+  "Pressione para falar. Pressione novamente para concluir.": {
+    "pt": "Pressione para falar. Pressione novamente para concluir.",
+    "en": "Press to speak. Press again to finish.",
+    "es": "Pulsa para hablar. Pulsa otra vez para terminar."
+  },
+  "E-mail de prática": {
+    "pt": "E-mail de prática",
+    "en": "Practice email",
+    "es": "Correo de práctica"
+  },
+  "Assunto: uma conversa rápida": {
+    "pt": "Assunto: uma conversa rápida",
+    "en": "Subject: a quick conversation",
+    "es": "Asunto: una conversación breve"
+  },
+  "Transcreva neste computador, sem conta nem chave de API. Você precisa configurar um modelo antes de ditar.": {
+    "pt": "Transcreva neste computador, sem conta nem chave de API. Você precisa configurar um modelo antes de ditar.",
+    "en": "Transcribe on this computer without an account or API key. Set up a model before you dictate.",
+    "es": "Transcribe en este equipo sin cuenta ni clave de API. Configura un modelo antes de dictar."
+  },
+  "Continuar com modelo local": {
+    "pt": "Continuar com modelo local",
+    "en": "Continue with a local model",
+    "es": "Continuar con un modelo local"
+  },
+  "Seu ditado está pronto": {
+    "pt": "Seu ditado está pronto",
+    "en": "Your dictation is ready",
+    "es": "Tu dictado está listo"
+  },
+  "Experimente aqui. Este e-mail não será enviado.": {
+    "pt": "Experimente aqui. Este e-mail não será enviado.",
+    "en": "Try it here. This email will not be sent.",
+    "es": "Prueba aquí. Este correo no se enviará."
+  },
+  "Quando podemos conversar?": {
+    "pt": "Quando podemos conversar?",
+    "en": "When can we talk?",
+    "es": "¿Cuándo podemos hablar?"
+  },
+  "Dite mensagens, e-mails e notas.": {
+    "pt": "Dite mensagens, e-mails e notas.",
+    "en": "Dictate messages, emails and notes.",
+    "es": "Dicta mensajes, correos y notas."
+  },
+  "O Clarify agora também está no iPhone!": {
+    "pt": "O Clarify agora também está no iPhone!",
+    "en": "Clarify is now also available on iPhone!",
+    "es": "¡Clarify ahora también está disponible en iPhone!"
+  },
+  "Dite onde estiver, em qualquer app no seu iPhone.": {
+    "pt": "Dite onde estiver, em qualquer app no seu iPhone.",
+    "en": "Dictate on the go, in any app on your iPhone.",
+    "es": "Dicta estés donde estés, en cualquier app de tu iPhone."
+  },
+  "Leia com a câmera do iPhone para baixar": {
+    "pt": "Leia com a câmera do iPhone para baixar",
+    "en": "Scan with your iPhone camera to download",
+    "es": "Escanea con la cámara de tu iPhone para descargar"
+  },
+  "Disponível para iOS": {
+    "pt": "Disponível para iOS",
+    "en": "Available on iOS",
+    "es": "Disponible para iOS"
+  },
+  "Sobre": {
+    "pt": "Sobre",
+    "en": "About",
+    "es": "Acerca de"
+  },
+  "Versão": {
+    "pt": "Versão",
+    "en": "Version",
+    "es": "Versión"
+  },
+  "Como funciona: {name}": {
+    "pt": "Como funciona: {name}",
+    "en": "How {name} works",
+    "es": "Cómo funciona {name}"
+  },
+  "Etapa anterior": {
+    "pt": "Etapa anterior",
+    "en": "Previous step",
+    "es": "Paso anterior"
+  },
+  "Próxima etapa": {
+    "pt": "Próxima etapa",
+    "en": "Next step",
+    "es": "Siguiente paso"
+  },
+  "Etapa {current} de {total}": {
+    "pt": "Etapa {current} de {total}",
+    "en": "Step {current} of {total}",
+    "es": "Paso {current} de {total}"
+  },
+  "Etapas": {
+    "pt": "Etapas",
+    "en": "Steps",
+    "es": "Pasos"
+  },
+  "Salve uma frase": {
+    "pt": "Salve uma frase",
+    "en": "Save a phrase",
+    "es": "Guarda una frase"
+  },
+  "Adicione a frase e o texto que ela insere. Salve para aplicar.": {
+    "pt": "Adicione a frase e o texto que ela insere. Salve para aplicar.",
+    "en": "Add a phrase and the text it inserts. Save to apply.",
+    "es": "Añade una frase y el texto que inserta. Guarda para aplicar."
+  },
+  "Diga a frase": {
+    "pt": "Diga a frase",
+    "en": "Say the phrase",
+    "es": "Di la frase"
+  },
+  "Dite apenas a frase de ativação.": {
+    "pt": "Dite apenas a frase de ativação.",
+    "en": "Dictate only the trigger phrase.",
+    "es": "Dicta solo la frase de activación."
+  },
+  "Insira o texto salvo": {
+    "pt": "Insira o texto salvo",
+    "en": "Insert the saved text",
+    "es": "Inserta el texto guardado"
+  },
+  "O texto é inserido exatamente como você salvou.": {
+    "pt": "O texto é inserido exatamente como você salvou.",
+    "en": "The text is inserted exactly as you saved it.",
+    "es": "El texto se inserta tal como lo guardaste."
+  },
+  "Em mensagens maiores, a reescrita pode ajustar o texto e enviá-lo à IA.": {
+    "pt": "Em mensagens maiores, a reescrita pode ajustar o texto e enviá-lo à IA.",
+    "en": "In longer messages, rewriting can adjust the text and send it to AI.",
+    "es": "En mensajes más largos, la reescritura puede ajustar el texto y enviarlo a la IA."
+  },
+  "Adicione um termo": {
+    "pt": "Adicione um termo",
+    "en": "Add a term",
+    "es": "Añade un término"
+  },
+  "Escreva o nome como ele deve aparecer.": {
+    "pt": "Escreva o nome como ele deve aparecer.",
+    "en": "Write the name as it should appear.",
+    "es": "Escribe el nombre como debe aparecer."
+  },
+  "Ajuste a pronúncia": {
+    "pt": "Ajuste a pronúncia",
+    "en": "Set the pronunciation",
+    "es": "Ajusta la pronunciación"
+  },
+  "Pronúncia e variações são opcionais. Salve para aplicar.": {
+    "pt": "Pronúncia e variações são opcionais. Salve para aplicar.",
+    "en": "Pronunciation and variations are optional. Save to apply.",
+    "es": "La pronunciación y las variantes son opcionales. Guarda para aplicar."
+  },
+  "Dite normalmente": {
+    "pt": "Dite normalmente",
+    "en": "Dictate as usual",
+    "es": "Dicta como siempre"
+  },
+  "O termo ajuda a transcrição e a revisão, quando compatíveis.": {
+    "pt": "O termo ajuda a transcrição e a revisão, quando compatíveis.",
+    "en": "The term helps transcription and rewriting when supported.",
+    "es": "El término ayuda a la transcripción y la revisión cuando son compatibles."
+  },
+  "Não treina o modelo nem garante a grafia. Termos usados na nuvem são enviados ao serviço.": {
+    "pt": "Não treina o modelo nem garante a grafia. Termos usados na nuvem são enviados ao serviço.",
+    "en": "This does not train the model or guarantee spelling. Terms used in the cloud are sent to the service.",
+    "es": "No entrena el modelo ni garantiza la escritura. Los términos usados en la nube se envían al servicio."
+  },
+  "Crie uma ação": {
+    "pt": "Crie uma ação",
+    "en": "Create an action",
+    "es": "Crea una acción"
+  },
+  "Dê um nome e escreva o que ela deve fazer.": {
+    "pt": "Dê um nome e escreva o que ela deve fazer.",
+    "en": "Give it a name and write what it should do.",
+    "es": "Ponle un nombre y escribe qué debe hacer."
+  },
+  "Adicione o texto": {
+    "pt": "Adicione o texto",
+    "en": "Add your text",
+    "es": "Añade tu texto"
+  },
+  "Abra a ação e cole o texto que deseja transformar.": {
+    "pt": "Abra a ação e cole o texto que deseja transformar.",
+    "en": "Open the action and paste the text you want to change.",
+    "es": "Abre la acción y pega el texto que quieres transformar."
+  },
+  "Execute e copie": {
+    "pt": "Execute e copie",
+    "en": "Run and copy",
+    "es": "Ejecuta y copia"
+  },
+  "Execute a ação. Revise o resultado e copie quando quiser.": {
+    "pt": "Execute a ação. Revise o resultado e copie quando quiser.",
+    "en": "Run the action. Review the result and copy when ready.",
+    "es": "Ejecuta la acción. Revisa el resultado y cópialo cuando quieras."
+  },
+  "Atenciosamente,\nAlex": {
+    "pt": "Atenciosamente,\nAlex",
+    "en": "Best regards,\nAlex",
+    "es": "Saludos,\nAlex"
+  },
+  "oi, pode enviar o arquivo hoje?": {
+    "pt": "oi, pode enviar o arquivo hoje?",
+    "en": "hi, can you send the file today?",
+    "es": "hola, ¿puedes enviar el archivo hoy?"
+  },
+  "Olá! Você pode enviar o arquivo hoje?": {
+    "pt": "Olá! Você pode enviar o arquivo hoje?",
+    "en": "Hello! Could you send the file today?",
+    "es": "¡Hola! ¿Podrías enviar el archivo hoy?"
+  },
+  "Mais claro": {
+    "pt": "Mais claro",
+    "en": "Make it clear",
+    "es": "Más claro"
+  },
+  "Reescreva com clareza.": {
+    "pt": "Reescreva com clareza.",
+    "en": "Rewrite clearly.",
+    "es": "Reescribe con claridad."
+  },
+  "Fechar guia de {name}": {
+    "pt": "Fechar guia de {name}",
+    "en": "Dismiss {name} guide",
+    "es": "Cerrar guía de {name}"
+  },
+  "Buscar ações": {
+    "pt": "Buscar ações",
+    "en": "Search actions",
+    "es": "Buscar acciones"
+  },
+  "O histórico está vinculado à sua conta.": {
+    "pt": "O histórico está vinculado à sua conta.",
+    "en": "History is linked to your account.",
+    "es": "El historial está vinculado a tu cuenta."
+  },
+  "Expandir / recolher dock": {
+    "pt": "Expandir / recolher dock",
+    "en": "Expand / collapse dock",
+    "es": "Expandir / contraer dock"
   }
 }

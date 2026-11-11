@@ -14,18 +14,7 @@ export function GeneralPage({ controller }: SettingsPageProps) {
   const { state, run } = controller;
   return (
     <>
-      <Section title={t("Preferências")}>
-        <Row title={t("Idioma do texto")}>
-          <Picker
-            label={t("Idioma")}
-            value={state.language}
-            options={state.languages.map((id) => ({
-              id,
-              label: languageNames[id] || id,
-            }))}
-            onChange={(v) => void run("setLanguage", v)}
-          />
-        </Row>
+      <Section title={t("Sistema")}>
         <Toggle
           title={t("Iniciar com o Windows")}
           hint={t("Deixe o Clarify pronto quando você precisar.")}
@@ -59,4 +48,23 @@ export function GeneralPage({ controller }: SettingsPageProps) {
       )}
     </>
   );
+}
+
+export function TextLanguagePreferences({ controller }: SettingsPageProps) {
+  const { state, run } = controller;
+  return <>
+      <Section title={t("Preferências")}>
+        <Row title={t("Idioma do texto")}>
+          <Picker
+            label={t("Idioma")}
+            value={state.language}
+            options={state.languages.map((id) => ({
+              id,
+              label: languageNames[id] || id,
+            }))}
+            onChange={(v) => void run("setLanguage", v)}
+          />
+        </Row>
+      </Section>
+  </>;
 }

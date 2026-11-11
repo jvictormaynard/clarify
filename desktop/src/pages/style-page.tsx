@@ -1,6 +1,7 @@
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
-import { ApplicationWritingStyles } from "../components/application-writing-styles";
+import type { WritingStyle } from "../settings/bridge";
+import { writingStyleOptions } from "../settings/writing-style-options";
 import { Picker, Row, Section, SettingsDisclosure, TextArea, Toggle } from "../components/ui";
 import { WorkflowRoute } from "../components/workflow-route";
 import { textActionLanguages, TextEditing, AutomaticSavedAction } from "../components/after-dictation-action";
@@ -10,7 +11,13 @@ export function StylePage({ controller: c }: SettingsPageProps) {
   return <>
     <Section title={t("Seu texto")}>
     <TextEditing controller={c} />
-    <ApplicationWritingStyles controller={c} />
+    {c.state.writingStyleRefinementAllowed !== false && <>
+      <Row title={t("Tom")}>
+        <Picker label={t("Tom")} value={c.state.dictationWritingStyle ?? ""} options={writingStyleOptions(c.state.dictationWritingStyle ?? "")}
+          onChange={value => void c.run("setDictationWritingStyle", value as WritingStyle | "")} />
+      </Row>
+      {!c.state.dictationWritingStyle && <p className="hint">{t("Mantém as instruções atuais, sem um tom explícito.")}</p>}
+    </>}
     <SettingsDisclosure title={t("Mais opções")}>
       <Section title={t("Idioma de saída")}>
         <Row title={t("Idioma de saída")}>
@@ -18,10 +25,9 @@ export function StylePage({ controller: c }: SettingsPageProps) {
             options={[{ id: "auto", label: t("Manter idioma de origem") }, ...textActionLanguages]}
             onChange={value => void c.run("setLanguage", value)} />
         </Row>
-        {c.state.language !== "auto" && c.state.applicationStyleRefinementAllowed === false &&
+        {c.state.language !== "auto" && c.state.writingStyleRefinementAllowed === false &&
           <p className="hint" role="status">{t("O idioma fica salvo. Sem revisão, o ditado não é traduzido.")}</p>}
       </Section>
-      <ApplicationWritingStyles controller={c} rulesOnly />
       <AutomaticSavedAction key={c.state.textActionContext} controller={c} />
       {!managed && <Section title={t("Revisão com IA")}>
         <SettingsDisclosure title={t("Modelo e instruções da revisão")}>

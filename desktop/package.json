@@ -39,6 +39,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "45.2.3",
     "jsdom": "27.4.0",
+    "node-gyp": "12.1.0",
     "tailwindcss": "4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",

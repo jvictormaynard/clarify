@@ -9,7 +9,6 @@ import type { RecordingControls } from "./recording";
 export type Option = { id: string; label: string };
 export type DictationCleanupLevel = "preserve" | "light" | "clarity";
 export type WritingStyle = "formal" | "casual" | "very_casual" | "natural" | "informal" | "organized";
-export type ApplicationWritingStyle = { executable: string; style: WritingStyle };
 export type HotkeyDefinition = { modifiers: string[]; key: string };
 export type TextActionKind = "rewrite" | "translation" | "custom";
 export type TextAction = {
@@ -118,9 +117,7 @@ export interface Settings {
   recordingControls: RecordingControls;
   dictationCleanupLevel?: DictationCleanupLevel | "";
   dictationWritingStyle?: WritingStyle | "";
-  applicationWritingStyles?: ApplicationWritingStyle[];
-  applicationStyleTarget?: string;
-  applicationStyleRefinementAllowed?: boolean;
+  writingStyleRefinementAllowed?: boolean;
   dictationCleanupRefinementAllowed?: boolean;
   selectedScope: string;
   routeProviderId: string;
@@ -189,6 +186,7 @@ export type SettingsArguments = {
   deleteHistoryEntry: [id: string, context: string];
   clearHistory: [context: string];
   snapshot: [];
+  refreshLibrary: [context: string];
   setLanguage: [value: string];
   setSnippets: [entries: Snippet[], context: string, expectedEntries?: Snippet[]];
   setDictionaryEntries: [entries: DictionaryEntry[], context?: string, expectedEntries?: DictionaryEntry[]];
@@ -196,7 +194,6 @@ export type SettingsArguments = {
   setDictationCleanupLevel: [value: DictationCleanupLevel | ""];
   setDictationWritingStyle: [value: WritingStyle | ""];
   setDictationPostProcessing: [mode: string, actionId: string, language: string, context: string, revision: string];
-  setApplicationWritingStyle: [executable: string, style: WritingStyle | ""];
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
   checkForUpdates: [];
@@ -247,7 +244,6 @@ export type SettingsMethod = keyof SettingsArguments;
 export const preferenceMethods = [
   "setDictationWritingStyle",
   "setDictationCleanupLevel",
-  "setApplicationWritingStyle",
   "setMode", "setLanguage", "setAutostart", "setHistoryEnabled", "setAutomaticUpdates",
   "selectMicrophone", "setRouteProviderId", "setRouteModelId", "setRouteEnabled",
   "setLocalStreaming", "setLocalAsrCloudRefinement", "setHotkey", "setHotkeyActivationMode",
@@ -328,6 +324,10 @@ export const copyHistoryText = (scope: HistoryScope, id: string, field: HistoryT
   // Navigation/search cancellation can happen while waiting for the pipe.
   if (!isCurrent()) return null;
   return invoke<HistoryScope & { id: string }>("settings_call", { method: "copyHistoryText", args: [scope.context, id, field, scope.revision] });
+});
+export const copyTextActionPreview = (context: string, generation: number, isCurrent: () => boolean) => enqueue(async () => {
+  if (!isCurrent()) return null;
+  return invoke<Settings>("settings_call", { method: "copyTextActionPreview", args: [context, generation] });
 });
 // Only periodic polls advance the Python baseline. Commands still return full state.
 export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from shared.dictation_policy import DictationCleanupLevel, cleanup_level
-from writing_styles import ApplicationWritingStyles
+from shared.writing_style_policy import WritingStyle, writing_style
 
 from provider_registry import PROVIDER_IDS, PROVIDER_REGISTRY
 from provider_types import ProviderCapability, ProviderError
@@ -76,7 +76,7 @@ __all__ = [
 ]
 
 
-CONFIG_SCHEMA_VERSION = 6
+CONFIG_SCHEMA_VERSION = 7
 STATS_SCHEMA_VERSION = 1
 SUPPORTED_PROVIDERS = PROVIDER_IDS
 PROVIDER_SECRET_KEYS = {
@@ -198,9 +198,7 @@ class AppConfig:
     startup: StartupSettings = field(default_factory=StartupSettings)
     local_asr_cloud_refinement: bool = False
     dictation_cleanup_level: DictationCleanupLevel | None = None
-    application_writing_styles: ApplicationWritingStyles = field(
-        default_factory=ApplicationWritingStyles
-    )
+    dictation_writing_style: WritingStyle | None = None
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
     history_enabled: bool = False
@@ -563,9 +561,7 @@ class AppConfig:
             dictation_cleanup_level=_config_cleanup_level(
                 source.get("dictation_cleanup_level")
             ),
-            application_writing_styles=_config_writing_styles(
-                source.get("application_writing_styles")
-            ),
+            dictation_writing_style=_config_writing_style(source),
             local_asr_device=__import__("local_asr_catalog").normalize_device(
                 source.get("local_asr_device")
             ),
@@ -608,7 +604,9 @@ class AppConfig:
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
             "dictation_cleanup_level": self.dictation_cleanup_level,
-            "application_writing_styles": self.application_writing_styles.to_mapping(),
+            "dictation_writing_style": self.dictation_writing_style.value
+            if self.dictation_writing_style is not None
+            else None,
             "local_asr_device": self.local_asr_device,
             "local_asr_streaming": self.local_asr_streaming,
             "refinement_provider": self.selection.refinement_provider,
@@ -1100,11 +1098,15 @@ def _migrate_v2_to_v3(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "schema_version": 3}
 
 
-def _config_writing_styles(value):
+def _config_writing_style(source):
+    value = source.get("dictation_writing_style")
+    if "dictation_writing_style" not in source:
+        legacy = source.get("application_writing_styles")
+        value = legacy.get("default_style") if isinstance(legacy, Mapping) else None
     try:
-        return ApplicationWritingStyles.from_mapping(value)
+        return writing_style(value)
     except ValueError:
-        return ApplicationWritingStyles()
+        return None
 
 
 def _migrate_v3_to_v4(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1122,6 +1124,18 @@ def _migrate_v5_to_v6(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "schema_version": 6}
 
 
+def _migrate_v6_to_v7(payload: dict[str, Any]) -> dict[str, Any]:
+    # Keep the general tone while retiring executable-specific rules. The new
+    # schema makes older readers refuse writes rather than erase this choice.
+    migrated = dict(payload)
+    legacy = migrated.pop("application_writing_styles", None)
+    if "dictation_writing_style" not in migrated:
+        migrated["dictation_writing_style"] = (
+            legacy.get("default_style") if isinstance(legacy, Mapping) else None
+        )
+    return {**migrated, "schema_version": 7}
+
+
 CONFIG_MIGRATIONS = {
     0: _migrate_legacy_to_v1,
     1: _migrate_v1_to_v2,
@@ -1129,6 +1143,7 @@ CONFIG_MIGRATIONS = {
     3: _migrate_v3_to_v4,
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
+    6: _migrate_v6_to_v7,
 }
 
 
@@ -1381,9 +1396,8 @@ class LocalConfigRepository(ConfigRepository):
                 runtime["dictation_cleanup_level"] = self.defaults.get(
                     "dictation_cleanup_level", "clarity"
                 )
-                runtime["application_writing_styles"] = self.defaults.get(
-                    "application_writing_styles",
-                    {"default_style": "natural", "rules": []},
+                runtime["dictation_writing_style"] = self.defaults.get(
+                    "dictation_writing_style", "natural"
                 )
             return AppConfig.from_mapping(runtime, self.defaults)
 
@@ -1404,9 +1418,8 @@ class LocalConfigRepository(ConfigRepository):
                 dictation_cleanup_level=self.defaults.get(
                     "dictation_cleanup_level", "clarity"
                 ),
-                application_writing_styles=self.defaults.get(
-                    "application_writing_styles",
-                    {"default_style": "natural", "rules": []},
+                dictation_writing_style=self.defaults.get(
+                    "dictation_writing_style", "natural"
                 ),
             )
         incoming = dict(config)

@@ -6,21 +6,19 @@ import { ScrollArea } from "./primitives/scroll-area";
 
 const groups = () => [
   { id: "workspace", label: undefined },
-  { id: "library", label: t("Biblioteca") },
 ];
 
-export function SettingsNavigation({ pages, activePage, version, onNavigate, onOpenSettings, settingsButtonRef }: {
+export function SettingsNavigation({ pages, activePage, onNavigate, onOpenSettings, settingsButtonRef }: {
   pages: readonly SettingsPage[];
   activePage: PageId;
-  version?: string;
   onNavigate: (id: PageId) => Promise<unknown>;
   onOpenSettings: () => void;
   settingsButtonRef?: Ref<HTMLButtonElement>;
 }) {
   const navigationItems = (groupId: string) => pages.filter(item => item.group === groupId).map(({ id, label, icon: Icon }) => <button type="button"
     key={id} className="navigation-item" aria-label={label} title={label}
-    aria-current={id === activePage ? "page" : undefined} onClick={() => void onNavigate(id)}>
-    <Icon size={16} strokeWidth={2} aria-hidden /><span>{label}</span>
+    aria-current={(id === activePage) ? "page" : undefined} onClick={() => void onNavigate(id)}>
+    <Icon size={18} strokeWidth={2} aria-hidden /><span>{label}</span>
   </button>);
 
   return <>
@@ -43,6 +41,5 @@ export function SettingsNavigation({ pages, activePage, version, onNavigate, onO
         </button>
       </div>
     </nav>
-    <div className="sidebar-meta"><span>Clarify</span>{version && <code>v{version}</code>}</div>
   </>;
 }

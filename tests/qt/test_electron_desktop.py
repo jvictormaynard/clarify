@@ -101,17 +101,47 @@ class ElectronDesktopTests(unittest.TestCase):
         self.assertEqual(reply["result"]["surface"], "idle")
         self.assertEqual(reply["result"]["level"], 0.25)
         self.assertNotIn("settings", reply["result"])
+        self.assertEqual(reply["result"]["completionId"], "")
+        self.assertEqual(reply["result"]["recordingShortcut"], "Alt+L")
+        self.bridge._on_workflow_state(
+            WorkflowState(
+                phase=WorkflowPhase.COMPLETED,
+                operation_id=9,
+                kind="rewrite",
+                writing_style_requested="formal",
+            )
+        )
+        self.assertEqual(self.host.workflow_snapshot()["completionId"], "workflow:9")
+        self.assertTrue(
+            self.settings.setHotkey(
+                "recording_hotkey", {"modifiers": ["ctrl", "shift"], "key": "L"}
+            )
+        )
+        self.assertEqual(
+            self.host.workflow_snapshot()["recordingShortcut"], "Ctrl+Shift+L"
+        )
         self.assertEqual(
             reply["result"]["dictationWritingStyle"],
             self.settings.dictationWritingStyle,
         )
         self.assertEqual(
-            reply["result"]["applicationStyleRefinementAllowed"],
-            self.settings.applicationStyleRefinementAllowed,
+            reply["result"]["writingStyleRefinementAllowed"],
+            self.settings.writingStyleRefinementAllowed,
         )
         self.host._mark_settings({"dictationWritingStyle"})
         self.assertIsNone(self.host._pill_settings)
         self.assertTrue(self.host._workflow_dirty)
+        self.host.toggle_pill()
+        self.host.toggle_pill()
+        self.assertEqual(self.messages[-2:], [{"window": "pill-toggle"}] * 2)
+        self.messages.clear()
+        self.host._receive({"event": "ready"})
+        self.assertFalse(
+            any(
+                message.get("window", "").startswith("pill-")
+                for message in self.messages
+            )
+        )
 
     def test_meter_push_does_not_read_or_serialize_settings_library(self):
         self.host._ready = True
@@ -176,6 +206,69 @@ class ElectronDesktopTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_practice_pushes_native_commands_readiness_and_async_result(self):
+        from tests.support.practice_settings_fixture import bind_practice
+
+        practice = bind_practice(self.settings, self.app)
+        self.settings.completeOnboarding("byok", "gsk_test_only")
+        practice.command("close")
+        self.settings._microphone_inventory_generation += 1
+        self.settings._microphone_inventory_busy = False
+        self.host._ready = self.host._visible = True
+        self.host._workflow_dirty = False
+        self.host._publish_settings(full=True)
+        self.messages.clear()
+
+        def pushed():
+            self.host._flush()
+            states = [
+                m["state"]["practiceState"]
+                for m in self.messages
+                if m.get("event") == "settings" and "practiceState" in m["state"]
+            ]
+            self.assertTrue(states, "Native practice must push without a renderer RPC")
+            return states[-1]
+
+        practice.command("open")
+        self.assertTrue(pushed()["open"])
+        self.settings._microphone_inventory_busy = True
+        self.settings.microphoneChanged.emit()
+        self.assertEqual(pushed()["blocked"], "practice_busy")
+        self.settings._microphone_inventory_busy = False
+        self.settings.microphoneChanged.emit()
+        self.assertEqual(pushed()["blocked"], "")
+        readiness = practice.readiness
+        other_settings_busy = False
+        practice.readiness = lambda: (
+            "practice_busy" if other_settings_busy else readiness()
+        )
+        for signal in (
+            self.settings.modelCatalogChanged,
+            self.settings.chatgptStateChanged,
+        ):
+            other_settings_busy = True
+            signal.emit()
+            self.assertEqual(pushed()["blocked"], "practice_busy")
+            other_settings_busy = False
+            signal.emit()
+            self.assertEqual(pushed()["blocked"], "")
+        practice.command("start")
+        self.assertEqual(pushed()["phase"], "recording")
+        loop, deadline = QEventLoop(), QTimer()
+        deadline.setSingleShot(True)
+        deadline.timeout.connect(loop.quit)
+        unsubscribe = practice.subscribe(
+            lambda: loop.quit() if practice.snapshot()["phase"] == "completed" else None
+        )
+        try:
+            practice.command("stop")
+            deadline.start(2000)
+            loop.exec()
+        finally:
+            deadline.stop()
+            unsubscribe()
+        self.assertEqual(pushed()["text"], "Hoje vou escrever com o Clarify.")
 
     def test_completion_push_restores_value_exposed_by_intermediate_reply(self):
         self.host._ready = True

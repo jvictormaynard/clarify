@@ -1,18 +1,27 @@
-import { openDisclosure } from "./settings-navigation";
+import { navigate, openDisclosure } from "./settings-navigation";
 import { test, expect, openSettings } from "./settings-harness";
 
 test("workspace: navigation presents tasks and keeps keyboard focus at every width", async ({ page }, testInfo) => {
+  await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible();
+  const setup = page.locator("aside nav").getByRole("button", { name: "Configurações", exact: true });
+  await setup.click();
+  const settings = page.getByRole("dialog", { name: "Configurações", exact: true });
+  await expect(settings.getByRole("heading", { level: 2, name: "Geral", exact: true })).toBeVisible();
+  await settings.getByRole("button", { name: "Fechar", exact: true }).click();
+  await expect(setup).toBeFocused();
   for (const width of [1040, 820, 640]) {
     await page.setViewportSize({ width, height: 760 });
-    const navigation = page.getByRole("navigation");
+    const navigation = page.locator("aside nav");
     expect(await navigation.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual([
-      "Ditado", "Estilo", "Ações de texto", "Dicionário", "Snippets", "Histórico", "Configurações",
+      "Início", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
     ]);
     await expect(navigation.getByRole("combobox")).toHaveCount(0);
-    await navigation.getByRole("button", { name: "Ditado", exact: true }).focus();
+    await navigation.getByRole("button", { name: "Dicionário", exact: true }).focus();
     await page.keyboard.press("Tab");
-    await expect(navigation.getByRole("button", { name: "Estilo", exact: true })).toBeFocused();
+    await expect(navigation.getByRole("button", { name: "Snippets", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Snippets", exact: true })).toBeVisible();
+    await navigation.getByRole("button", { name: "Estilo", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Estilo", exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toBeVisible();
     await expect(navigation.getByRole("button", { name: "Configurações", exact: true })).toBeInViewport();
@@ -22,7 +31,7 @@ test("workspace: navigation presents tasks and keeps keyboard focus at every wid
 });
 
 test("text profiles: Cancel keeps the route and Save preserves unrelated Style instructions", async ({ page, settingsFixture }, testInfo) => {
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await navigate(page, "Estilo");
   await openDisclosure(page, "Mais opções");
   await page.getByRole("button", { name: "Modelo e instruções da revisão", exact: true }).click();
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
@@ -46,12 +55,12 @@ test("text profiles: Cancel keeps the route and Save preserves unrelated Style i
   const saved = await settingsFixture.rpc("snapshot");
   expect(saved.textActionProfiles?.find(profile => profile.id === "legacy-rewrite")?.modelId).toBe("fixture-model");
   expect(saved.routePrompt).not.toBe("Pending style instructions.");
-  await settings.getByRole("button", { name: "Concluído", exact: true }).click();
+  await settings.getByRole("button", { name: "Fechar", exact: true }).click();
   await expect(prompt).toHaveValue("Pending style instructions.");
 });
 
 test("after dictation: translation saves only after an explicit target language", async ({ page, settingsFixture }) => {
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await navigate(page, "Estilo");
   await openDisclosure(page, "Mais opções");
   await page.getByRole("combobox", { name: "Ação automática salva", exact: true }).click();
   await page.getByRole("option", { name: "Aplicar ação de texto", exact: true }).click();
@@ -74,8 +83,8 @@ test("after dictation: translation saves only after an explicit target language"
   expect(saved.afterDictationTextActionId).toBe("translation");
   expect(saved.afterDictationTextActionLanguage).toBe("en");
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Bem-vindo de volta", exact: true })).toBeVisible();
+  await navigate(page, "Estilo");
   await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toContainText("Tradução");
   // Changing tone must not remove the selected automatic action or its target.
   await page.getByRole("combobox", { name: "Tom", exact: true }).click();
@@ -96,7 +105,7 @@ test("after dictation: basic processing stays available without an action catalo
     const result = await settingsFixture.rpc(request.method, ...(request.args ?? []));
     await route.fulfill({ json: { result: { ...result, textActionContext: "", textActions: [] } } });
   });
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await navigate(page, "Estilo");
   const mode = page.getByRole("combobox", { name: "Edição do texto", exact: true });
   await expect(mode).toBeEnabled();
   await mode.click(); await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
@@ -115,7 +124,7 @@ test("after dictation: basic processing stays available without an action catalo
 test("text actions: saved preview uses the latest sample and the shared output language", async ({ page, settingsFixture }, testInfo) => {
   await settingsFixture.rpc("savePreference", "setLanguage", ["auto"]);
   await page.reload();
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   await page.locator("#text-action-rewrite").getByRole("button", { name: "Editar ação", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Editar ação", exact: true });
   const sample = dialog.getByRole("textbox", { name: "Texto de exemplo", exact: true });
@@ -143,20 +152,24 @@ test("text actions: saved preview uses the latest sample and the shared output l
 });
 
 test("settings dialog: unsaved privacy changes stay local and the task remains selected", async ({ page }, testInfo) => {
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
+  await navigate(page, "Estilo");
   const dialog = await openSettings(page, "Privacidade");
+  const actions = dialog.locator('[data-slot="dialog-footer"]');
+  await expect(actions).toHaveCount(0);
   await dialog.getByRole("switch", { name: "Salvar histórico", exact: true }).click();
   await expect(dialog.getByRole("switch", { name: "Salvar histórico", exact: true })).toBeChecked();
   const retention = dialog.getByRole("spinbutton", { name: "Retenção do histórico", exact: true });
   await retention.fill("31");
+  await expect(actions).toBeVisible();
   await dialog.getByRole("button", { name: "Fechar", exact: true }).click();
-  await expect(dialog.getByRole("status")).toContainText("Há alterações não salvas");
+  await expect(dialog.getByRole("status").filter({ hasText: "Há alterações não salvas" })).toBeVisible();
   await dialog.getByRole("button", { name: "Continuar editando", exact: true }).click();
   await expect(retention).toHaveValue("31");
   await dialog.getByRole("button", { name: "Salvar alterações", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
   await page.screenshot({ path: testInfo.outputPath("settings-dialog.png") });
-  await dialog.getByRole("button", { name: "Concluído", exact: true }).click();
+  await expect(actions).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Fechar", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("button", { name: "Configurações", exact: true })).toBeFocused();
   await expect(page.getByRole("heading", { level: 1, name: "Estilo", exact: true })).toBeVisible();
@@ -165,33 +178,10 @@ test("settings dialog: unsaved privacy changes stay local and the task remains s
   await expect(reopened.getByRole("spinbutton", { name: "Retenção do histórico", exact: true })).toHaveValue("31");
 });
 
-test("style rule: Cancel preserves configuration and Save adds the named app", async ({ page, settingsFixture }, testInfo) => {
-  await page.getByRole("button", { name: "Estilo", exact: true }).click();
-  await openDisclosure(page, "Mais opções");
-  const original = (await settingsFixture.rpc("snapshot")).applicationWritingStyles;
-  await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
-  let dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
-  const path = dialog.getByRole("textbox", { name: "Caminho do aplicativo", exact: true });
-  if (!await path.isVisible()) await dialog.getByRole("button", { name: "Escolher outro aplicativo", exact: true }).click();
-  await path.fill("C:\\Apps\\Editor.exe");
-  await dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true }).click();
-  await page.getByRole("option", { name: "Casual", exact: true }).click();
-  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
-  expect((await settingsFixture.rpc("snapshot")).applicationWritingStyles).toEqual(original);
-  await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
-  dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
-  if (!await path.isVisible()) await dialog.getByRole("button", { name: "Escolher outro aplicativo", exact: true }).click();
-  await path.fill("C:\\Apps\\Editor.exe");
-  await page.screenshot({ path: testInfo.outputPath("app-style-editor.png") });
-  await dialog.getByRole("button", { name: "Salvar regra", exact: true }).click();
-  await expect(dialog).toBeHidden();
-  await expect(page.getByRole("button", { name: "Editar estilo de editor", exact: true })).toBeVisible();
-  const rules = (await settingsFixture.rpc("snapshot")).applicationWritingStyles ?? [];
-  expect(rules.some(rule => rule.executable.toLowerCase().endsWith("editor.exe"))).toBe(true);
-});
+
 
 test("text actions: prompt and shortcut remain drafts until Save", async ({ page, settingsFixture }, testInfo) => {
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   const before = (await settingsFixture.rpc("snapshot")).textActions;
   await page.getByRole("button", { name: "Nova ação", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Nova ação", exact: true });
@@ -218,13 +208,13 @@ test("text actions: prompt and shortcut remain drafts until Save", async ({ page
   const saved = (await settingsFixture.rpc("snapshot")).textActions?.find(action => action.name === "Resumo de teste");
   expect(saved?.prompt).toBe("Resuma o texto em três tópicos.");
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Resumo de teste", exact: true })).toBeVisible();
 });
 
 test("text actions: duplicate has a new ID and no shortcut; disable and delete persist", async ({ page, settingsFixture }) => {
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   const original = (await settingsFixture.rpc("snapshot")).textActions!.find(action => action.id === "rewrite")!;
   expect(original.shortcut).not.toBeNull();
   const row = page.locator("#text-action-rewrite");
@@ -245,12 +235,13 @@ test("text actions: duplicate has a new ID and no shortcut; disable and delete p
   expect(copy.shortcut).toBeNull();
   expect(copy.prompt).toBe(original.prompt);
   expect(saved.find(action => action.id === original.id)).toEqual(original);
-  const enabled = row.getByRole("switch", { name: "Ativar Reescrita", exact: true });
-  await enabled.click(); await expect(enabled).not.toBeChecked();
+  await row.getByRole("button", { name: "Mais opções de Reescrita", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Desativar ação", exact: true }).click();
+  await expect(row).toContainText("Desativada");
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
-  await expect(enabled).not.toBeChecked();
+  await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
+  await expect(row).toContainText("Desativada");
   const copyRow = page.locator(`#text-action-${copy.id}`);
   await copyRow.getByRole("button", { name: "Mais opções de Cópia de teste", exact: true }).click();
   await page.getByRole("menuitem", { name: "Excluir", exact: true }).click();
@@ -262,14 +253,14 @@ test("text actions: duplicate has a new ID and no shortcut; disable and delete p
   await confirmation.getByRole("button", { name: "Excluir", exact: true }).click();
   await expect(copyRow).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   await expect(copyRow).toHaveCount(0);
   expect((await settingsFixture.rpc("snapshot")).textActions!.map(action => action.id)).toEqual(["rewrite", "translation"]);
 });
 
 test("text actions: stale CAS rejects Save without losing the editor draft or the newer saved action", async ({ page, settingsFixture }) => {
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   const before = await settingsFixture.rpc("snapshot");
   const { revision: _revision, ...action } = before.textActions!.find(action => action.id === "rewrite")!;
   await page.locator("#text-action-rewrite").getByRole("button", { name: "Editar ação", exact: true }).click();
@@ -302,7 +293,7 @@ test("text actions: stale CAS rejects Save without losing the editor draft or th
 });
 
 test("text actions: shortcut input receives focus only after the controller accepts capture", async ({ page, settingsFixture }) => {
-  await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
+  await page.getByRole("button", { name: "Ações", exact: true }).click();
   await page.getByRole("button", { name: "Nova ação", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Nova ação", exact: true });
   const begin = editor.getByRole("button", { name: "Definir atalho", exact: true });
@@ -345,8 +336,7 @@ test.describe("hosted text actions", () => {
   test.use({ signedIn: true });
   test("an incomplete hosted write can be refreshed without losing the open draft", async ({ page, settingsFixture }) => {
     await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionRefresh?.status).toBe("succeeded");
-    await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Atualizar ações", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Ações", exact: true }).click();
     await page.getByRole("button", { name: "Nova ação", exact: true }).click();
     const editor = page.getByRole("dialog", { name: "Nova ação", exact: true });
     const name = editor.getByRole("textbox", { name: "Nome da ação", exact: true });
@@ -361,9 +351,9 @@ test.describe("hosted text actions", () => {
     await editor.getByRole("button", { name: "Salvar ação", exact: true }).click();
     await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActions!.some(action => action.name === "Rascunho preservado")).toBe(true);
   });
+
   test("Save waits for the final job and a failed delete keeps its confirmation open", async ({ page, settingsFixture }) => {
-    await page.getByRole("button", { name: "Ações de texto", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Nova ação", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Ações", exact: true }).click();
     await page.getByRole("button", { name: "Nova ação", exact: true }).click();
     const draft = page.getByRole("dialog", { name: "Nova ação", exact: true });
     await draft.getByRole("textbox", { name: "Nome da ação", exact: true }).fill("Ação da conta");
@@ -399,6 +389,7 @@ test.describe("hosted text actions", () => {
     await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
     await expect(row).toBeVisible();
   });
+
 });
 
 test("pill preferences: tone uses the shared saved owner and hides when editing is forbidden", async ({ page, settingsFixture }) => {
@@ -409,7 +400,7 @@ test("pill preferences: tone uses the shared saved owner and hides when editing 
       const saved = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
       const state = { surface: "idle", uiLanguage: "pt", language: "auto",
         dictationWritingStyle: saved.dictationWritingStyle,
-        applicationStyleRefinementAllowed: saved.applicationStyleRefinementAllowed };
+        writingStyleRefinementAllowed: saved.writingStyleRefinementAllowed };
       for (const listener of listeners) listener({ event: "workflow", state });
     };
     (window as any).clarifyDesktop = {
@@ -439,7 +430,7 @@ test("pill preferences: tone uses the shared saved owner and hides when editing 
   await settingsFixture.rpc("savePreference", "setDictationCleanupLevel", ["preserve"]);
   await more.click();
   // The adapter projects the saved controller state through the workflow push.
-  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).applicationStyleRefinementAllowed).toBe(false);
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).writingStyleRefinementAllowed).toBe(false);
   await expect(page.getByRole("button", { name: "Tom", exact: true })).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.keyboard.press("Escape"); await expect(more).toBeFocused();
@@ -516,4 +507,142 @@ test("after dictation: translation keeps its selected revision and cancels when 
   await expect(dialog).toBeHidden();
   await expect(select).toHaveCount(0);
   expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("");
+});
+
+
+test("text tools: use a saved action without editing and reject stale output", async ({ page, settingsFixture }) => {
+  await page.locator("aside nav").getByRole("button", { name: "Ações", exact: true }).click();
+  await page.getByRole("button", { name: "Buscar ações", exact: true }).click();
+  const search = page.getByRole("searchbox", { name: "Buscar ações", exact: true });
+  await expect(search).toBeFocused();
+  await search.fill("Reescrita");
+  await expect(page.locator("#text-action-rewrite")).toBeVisible();
+  await expect(page.locator("#text-action-translation")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Buscar ações", exact: true })).toBeFocused();
+  await expect(page.locator("#text-action-translation")).toBeVisible();
+  const row = page.locator("#text-action-rewrite");
+  await row.getByRole("button", { name: "Usar ação: Reescrita", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: /^Usar ação:/ });
+  const input = dialog.getByRole("textbox", { name: "Texto de entrada", exact: true });
+  await expect(input).toBeFocused();
+  await expect(dialog.getByRole("textbox", { name: "Instruções da ação" })).toHaveCount(0);
+  const before = (await settingsFixture.rpc("snapshot")).textActions;
+  await input.fill("My actual text");
+  await dialog.getByRole("button", { name: "Executar ação", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Resultado", exact: true })).toHaveValue(/My actual text/);
+  await dialog.getByRole("button", { name: "Copiar resultado", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Copiado.", exact: true })).toBeVisible();
+  await input.fill("Changed text");
+  await expect(dialog.getByRole("textbox", { name: "Resultado", exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Copiado.", exact: true })).toHaveCount(0);
+  expect((await settingsFixture.rpc("snapshot")).textActions).toEqual(before);
+  await dialog.getByRole("button", { name: "Concluído", exact: true }).click();
+  await expect(row.getByRole("button", { name: "Usar ação: Reescrita", exact: true })).toBeFocused();
+});
+
+
+test("workspace: visual guides support steps, keyboard, reset, and focus without changing data", async ({ page, settingsFixture }) => {
+  const before = await settingsFixture.rpc("snapshot");
+  for (const name of ["Snippets", "Dicionário", "Ações"]) {
+    await navigate(page, name);
+    const trigger = page.getByRole("button", { name: "Como funciona", exact: true });
+    await trigger.hover();
+    await expect(page.getByRole("tooltip")).toHaveText("Como funciona");
+    await trigger.click();
+    const guide = page.getByRole("dialog", { name: "Como funciona: " + name, exact: true });
+    await expect(guide).toBeVisible();
+    await expect(guide.getByText("Etapa 1 de 3", { exact: true })).toBeVisible();
+    await expect(guide.getByRole("button", { name: "Etapa anterior", exact: true })).toBeDisabled();
+    await guide.getByRole("button", { name: "Próxima etapa", exact: true }).click();
+    await expect(guide.getByText("Etapa 2 de 3", { exact: true })).toBeVisible();
+    const transientOverflow = await guide.evaluate(root => {
+      // Sample the start of the text transition, before a real scrollbar can flash.
+      for (const animation of root.getAnimations({ subtree: true })) {
+        if (animation instanceof CSSAnimation) { animation.pause(); animation.currentTime = 0; }
+      }
+      return root.scrollHeight - root.clientHeight;
+    });
+    expect(transientOverflow).toBeLessThanOrEqual(1);
+    await guide.getByRole("button", { name: "Etapa anterior", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
+    await expect(guide.getByText("Etapa 2 de 3", { exact: true })).toBeVisible();
+    await page.keyboard.press("ArrowRight");
+    await expect(guide.getByText("Etapa 3 de 3", { exact: true })).toBeVisible();
+    await expect(guide.getByRole("button", { name: "Próxima etapa", exact: true })).toBeDisabled();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(guide.locator(".guide-step-visual")).toHaveCSS("animation-name", "none");
+    await guide.getByRole("button", { name: "Concluído", exact: true }).click();
+    await expect(guide).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await trigger.press("Enter");
+    await expect(guide.getByText("Etapa 1 de 3", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(guide).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+  }
+  const after = await settingsFixture.rpc("snapshot");
+  expect(after.snippets).toEqual(before.snippets);
+  expect(after.dictionaryEntries).toEqual(before.dictionaryEntries);
+  expect(after.textActions).toEqual(before.textActions);
+});
+
+
+test("workspace: About owns version information and all page titles match Settings", async ({ page, settingsFixture }) => {
+  const state = await settingsFixture.rpc("snapshot");
+  const settings = await openSettings(page, "Dispositivos");
+  const titleStyle = await settings.getByRole("heading", { name: "Dispositivos", exact: true }).evaluate(el => {
+    const style = getComputedStyle(el); return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.letterSpacing];
+  });
+  await settings.getByRole("button", { name: "Sobre", exact: true }).click();
+  await expect(settings.getByRole("heading", { name: "Sobre", exact: true })).toBeVisible();
+  await expect(settings.locator(".about-page")).toContainText(state.applicationVersion);
+  await expect(page.locator("#desktop-sidebar")).not.toContainText(state.applicationVersion);
+  await settings.getByRole("button", { name: "Fechar", exact: true }).click();
+  await expect(settings).toBeHidden();
+  for (const name of ["Início", "Dicionário", "Snippets", "Estilo", "Ações"]) {
+    await navigate(page, name);
+    const title = page.locator("main .workspace-page-header h1");
+    expect(await title.evaluate(el => {
+      const style = getComputedStyle(el); return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.letterSpacing];
+    })).toEqual(titleStyle);
+  }
+});
+
+
+test("workspace: inline guides cycle all steps and preserve dismissal for every card", async ({ page }) => {
+  await page.clock.install();
+  await navigate(page, "Snippets");
+  let card = page.locator(".feature-guide-card");
+  await expect(card.getByRole("heading", { name: "Salve uma frase", exact: true })).toBeVisible();
+  await expect(card.getByRole("button", { name: /Fechar guia/ })).toHaveCount(1);
+  for (const title of ["Diga a frase", "Insira o texto salvo", "Salve uma frase"]) {
+    await page.clock.fastForward(6001);
+    await expect(card.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  }
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.fastForward(18000);
+  await expect(card.getByRole("heading", { name: "Salve uma frase", exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Etapa 3 de 3", exact: true }).click();
+  await expect(card.getByRole("heading", { name: "Insira o texto salvo", exact: true })).toBeVisible();
+  await expect(card.locator(".guide-card-scene")).toHaveCSS("animation-name", "none");
+  for (const name of ["Snippets", "Dicionário", "Ações"]) {
+    await navigate(page, name);
+    card = page.locator(".feature-guide-card");
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: "Fechar guia de " + name, exact: true }).click();
+    await expect(card).toHaveCount(0);
+    const info = page.getByRole("button", { name: "Como funciona", exact: true });
+    await expect(info).toBeFocused();
+    await info.press("Enter");
+    const modal = page.getByRole("dialog", { name: "Como funciona: " + name, exact: true });
+    await expect(modal).toBeVisible();
+    await page.keyboard.press("Escape");await expect(modal).toBeHidden();
+  }
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible();
+  for (const name of ["Snippets", "Dicionário", "Ações"]) {
+    await navigate(page, name);await expect(page.locator(".feature-guide-card")).toHaveCount(0);
+  }
 });

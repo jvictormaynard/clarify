@@ -64,20 +64,16 @@ function ComboboxPopup({
         side={side}
         sideOffset={sideOffset}
       >
-        <span
+        <ComboboxPrimitive.Popup
           className={cn(
-            "dropdown-glass relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] transition-[scale,opacity] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
+            "dropdown-glass relative flex max-h-[min(var(--available-height),23rem)] min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) flex-col overflow-hidden rounded-lg text-foreground shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] transition-opacity duration-80 ease-[cubic-bezier(0,0,0.58,1)] data-starting-style:opacity-0 data-ending-style:opacity-0 dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]",
             className,
           )}
+          data-slot="combobox-popup"
+          {...props}
         >
-          <ComboboxPrimitive.Popup
-            className="flex min-w-0 max-h-[min(var(--available-height),23rem)] flex-1 flex-col overflow-hidden text-foreground"
-            data-slot="combobox-popup"
-            {...props}
-          >
-            {children}
-          </ComboboxPrimitive.Popup>
-        </span>
+          {children}
+        </ComboboxPrimitive.Popup>
       </ComboboxPrimitive.Positioner>
     </ComboboxPrimitive.Portal>
   );

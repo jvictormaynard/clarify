@@ -28,9 +28,10 @@ class LocalModelReadiness:
     remains responsible for revalidating assets before transcription.
     """
 
-    def __init__(self, scheduler, status=_installed):
+    def __init__(self, scheduler, status=_installed, *, changed=lambda: None):
         self._scheduler = scheduler
         self._status = status
+        self._changed = changed
         self._key = None
         self._value = None
         self._generation = 0
@@ -75,3 +76,5 @@ class LocalModelReadiness:
         self._checking = False
         if not self._closed and generation == self._generation:
             self._value = value
+        if not self._closed:
+            self._changed()
