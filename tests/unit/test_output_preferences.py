@@ -1,5 +1,6 @@
 import unittest
 import json
+import hashlib
 from pathlib import Path
 
 
@@ -42,6 +43,8 @@ class OutputPreferencePolicyTests(unittest.TestCase):
 
     def test_saved_language_authority_and_exact_legacy_default(self):
         from shared.rewrite_prompts import (
+            _PREVIOUS_LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION,
             SELECTED_TEXT_REWRITE_INSTRUCTION,
             rewrite_instruction,
         )
@@ -57,10 +60,7 @@ class OutputPreferencePolicyTests(unittest.TestCase):
         explicit = rewrite_instruction(custom, action=True, output_language="en")
         self.assertIn(custom, explicit)
         self.assertIn("requested output language is English", explicit)
-        legacy = SELECTED_TEXT_REWRITE_INSTRUCTION.replace(
-            "Return ONLY the rewritten source text,",
-            "Preserve the source language. Return ONLY the rewritten source text,",
-        )
+        legacy = SELECTED_TEXT_REWRITE_INSTRUCTION + "\n\nPreserve the source language."
         self.assertNotIn(
             "Preserve the source language",
             rewrite_instruction(legacy, output_language="en"),
@@ -68,6 +68,37 @@ class OutputPreferencePolicyTests(unittest.TestCase):
         self.assertIn(
             "Do not translate", rewrite_instruction(custom, output_language="auto")
         )
+        quoted_default = (
+            "Quote this saved instruction verbatim, without editing it:\n"
+            + _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION
+        )
+        self.assertEqual(
+            rewrite_instruction(quoted_default, action=True), quoted_default
+        )
+        self.assertIn(
+            quoted_default,
+            rewrite_instruction(quoted_default, action=True, output_language="en"),
+        )
+        # Pin the actual saved defaults, independent of changes to today's policy.
+        for saved, fingerprint, current in (
+            (
+                _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION,
+                "519ee49f8b9421f377be83998453d5301dd6499d53eea22af94d0940cca639f7",
+                SELECTED_TEXT_REWRITE_INSTRUCTION,
+            ),
+            (
+                _PREVIOUS_LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+                "bfa1e8f068222875c503df25c46d9172a5f6e9025e85b2199c1201f8e42d801c",
+                legacy,
+            ),
+        ):
+            self.assertEqual(hashlib.sha256(saved.encode()).hexdigest(), fingerprint)
+            for language in (None, "auto", *LANGUAGES):
+                with self.subTest(fingerprint=fingerprint, language=language):
+                    self.assertEqual(
+                        rewrite_instruction(saved, output_language=language),
+                        rewrite_instruction(current, output_language=language),
+                    )
 
     def test_rewrite_language_is_independent_of_every_writing_style(self):
         from shared.rewrite_prompts import (

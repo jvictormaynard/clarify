@@ -20,6 +20,7 @@ from shared.output_preferences import (
 )
 
 from shared.rewrite_prompts import (
+    rewrite_task_instruction,
     PROMPT_INSTRUCTION,
     TRANSCRIPTION_INSTRUCTION,
     TRANSCRIPT_REWRITE_INSTRUCTION,
@@ -74,6 +75,8 @@ class WorkflowProviderConfig(Protocol):
 def _workflow_instruction(base: str, route_prompt: str = "") -> str:
     """Keep the safety contract while appending the route's policy."""
 
+    if base == SELECTED_TEXT_REWRITE_INSTRUCTION:
+        return rewrite_task_instruction(route_prompt)
     policy = str(route_prompt or "").strip()
     if not policy:
         return base

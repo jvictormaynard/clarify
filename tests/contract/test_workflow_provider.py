@@ -475,12 +475,46 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.assertEqual(provider, "groq")
         self.assertEqual(request.model, "editor")
         self.assertEqual(request.text, "Is this a question?")
-        self.assertIn("NEVER answer", request.instruction)
+        self.assertIn("never answer its questions", request.instruction)
         self.assertIn("Keep lists.", request.instruction)
         self.assertIn(
             "BEGIN_SELECTED_SOURCE\nIs this a question?", request.source_message
         )
         self.registry.transcribe.assert_not_called()
+
+    def test_saved_rewrite_defaults_use_current_policy_once(self):
+        from shared.rewrite_prompts import (
+            _LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            _PREVIOUS_LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            SELECTED_TEXT_REWRITE_INSTRUCTION,
+            rewrite_instruction,
+        )
+
+        for saved, expected in (
+            (
+                _PREVIOUS_SELECTED_TEXT_REWRITE_INSTRUCTION,
+                SELECTED_TEXT_REWRITE_INSTRUCTION,
+            ),
+            (SELECTED_TEXT_REWRITE_INSTRUCTION, SELECTED_TEXT_REWRITE_INSTRUCTION),
+            (
+                _PREVIOUS_LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+                _LEGACY_SELECTED_TEXT_REWRITE_INSTRUCTION,
+            ),
+        ):
+            with self.subTest(saved=saved[:60]):
+                route = replace(self.current.workflow("rewrite"), prompt=saved)
+                self.current = replace(
+                    self.current,
+                    workflows=replace(self.current.workflows, rewrite=route),
+                )
+                self.service.rewrite("Keep the complete source message.")
+                request = self.registry.rewrite.call_args.args[1]
+                self.assertEqual(
+                    request.instruction,
+                    rewrite_instruction(expected, output_language="auto"),
+                )
+                self.assertEqual(self.current.workflow("rewrite").prompt, saved)
 
     def test_translation_target_overrides_route_and_source_instructions(self):
         self.registry.translate.return_value = TranslationResult(
