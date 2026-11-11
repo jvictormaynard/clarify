@@ -566,22 +566,23 @@ final class KeyboardUITests: XCTestCase {
       let lateDelete = expectation(description: "Cancelled hold must not delete again")
       lateDelete.isInverted = true
       let grid = await MainActor.run { KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)) }
-      try await MainActor.run {
+      let delete = try await MainActor.run {
         grid.layoutIfNeeded()
         let key = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Apagar") })
-        let point = key.convert(CGPoint(x: key.bounds.midX, y: key.bounds.midY), to: grid)
         var deletions = 0
-        grid.onDelete = { [weak grid] in
+        grid.onDelete = { [weak key] in
           deletions += 1
           if deletions == cancelOnDelete {
-            grid?.cancelPress("delete-owner"); cancelled.fulfill()
+            key?.sendActions(for: .touchCancel); cancelled.fulfill()
           } else if deletions > cancelOnDelete { lateDelete.fulfill() }
         }
-        grid.beginPress("delete-owner", at: point)
+        key.sendActions(for: .touchDown)
+        XCTAssertEqual(deletions, 1, "Delete must begin before observing repeat cancellation")
+        return key
       }
       await fulfillment(of: [cancelled], timeout: 2)
       await fulfillment(of: [lateDelete], timeout: 0.55)
-      await MainActor.run { grid.cancelAllPresses(); grid.onDelete = nil }
+      await MainActor.run { delete.sendActions(for: .touchCancel); grid.onDelete = nil }
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
