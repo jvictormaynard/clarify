@@ -2005,8 +2005,8 @@ class QtProviderGatewayTests(unittest.TestCase):
         self.assertEqual(result.refinement_provider_id, "gemini")
         self.assertEqual(result.refinement_model, "editor")
         transcription_request = registry.transcription_requests[0][1]
-        self.assertIn("editing, not summarization", transcription_request.instruction)
-        self.assertIn("NEVER answer it", transcription_request.instruction)
+        self.assertIn("Do not summarize", transcription_request.instruction)
+        self.assertIn("never answer its questions", transcription_request.instruction)
         self.assertIn(
             "Output MUST be in Brazilian Portuguese.", transcription_request.instruction
         )
@@ -2027,7 +2027,7 @@ class QtProviderGatewayTests(unittest.TestCase):
             "Preserve QML vocabulary", registry.rewrite_requests[0][1].instruction
         )
         self.assertIn(
-            "already-transcribed source text",
+            "Rewrite only the source",
             registry.rewrite_requests[0][1].instruction,
         )
         self.assertIn(
@@ -2035,7 +2035,7 @@ class QtProviderGatewayTests(unittest.TestCase):
             registry.rewrite_requests[0][1].instruction,
         )
         self.assertIn(
-            "Workflow-specific instruction",
+            "Saved rewrite instruction",
             registry.rewrite_requests[0][1].instruction,
         )
         self.assertIn(
@@ -2112,11 +2112,10 @@ class QtProviderGatewayTests(unittest.TestCase):
 
         self.assertEqual(result.text, "Oi, tudo bem?")
         self.assertEqual(registry.request.language, "auto")
-        self.assertIn("not a conversational assistant", registry.request.instruction)
-        self.assertIn("If the source is a question", registry.request.instruction)
-        self.assertIn("NEVER answer it", registry.request.instruction)
+        self.assertIn("Keep questions as questions", registry.request.instruction)
+        self.assertIn("never answer its questions", registry.request.instruction)
         self.assertIn("Do not translate the source", registry.request.instruction)
-        self.assertIn("Workflow-specific instruction", registry.request.instruction)
+        self.assertIn("Saved rewrite instruction", registry.request.instruction)
         self.assertEqual(
             registry.request.source_message,
             "Rewrite only the selected source text between the delimiters below. "

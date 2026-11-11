@@ -231,6 +231,8 @@ class SnippetDictationTests(unittest.TestCase):
                 RecordingSnapshot(Path("unused.wav"), b"fixture"), "prompt", "pt"
             )
         self.assertEqual(result.text, "Already edited")
-        self.assertIn("Transcribe the audio first", asr.call_args.args[1].instruction)
+        self.assertIn(
+            "Transcribe the supplied audio first", asr.call_args.args[1].instruction
+        )
         self.assertEqual(asr.call_args.args[1].prompt, "Custom recognition preference")
         rewrite.assert_not_called()
