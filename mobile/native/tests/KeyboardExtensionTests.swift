@@ -319,6 +319,26 @@ final class KeyboardExtensionTests: XCTestCase {
     try perform("after-accent-slide", frame: afterSlide.frame) { afterSlide.tap() }
     expectText(String(accentExpected.prefix(right + 2)) + "q" + String(accentExpected.dropFirst(right + 2)), in: app)
     XCTAssertEqual(try caret(), right + 3, "The next tap must work after the accent drag")
+    var menuText = String(accentExpected.prefix(right + 2)) + "q" + String(accentExpected.dropFirst(right + 2))
+    var menuCaret = right + 3
+    for title in ["a", "i", "o", "u", "c", "n"] {
+      let held = app.keys[title]
+      XCTAssertTrue(held.waitForExistence(timeout: 5) && held.isHittable)
+      let frame = held.frame
+      XCTAssertTrue(!frame.isEmpty && windowFrame.contains(frame))
+      let point = window.coordinate(withNormalizedOffset: .zero).withOffset(
+        CGVector(dx: frame.midX - windowFrame.minX, dy: frame.midY - windowFrame.minY))
+      try perform("menu-\(title)-released", frame: frame) { point.press(forDuration: 0.8) }
+      menuText = String(menuText.prefix(menuCaret)) + title + String(menuText.dropFirst(menuCaret))
+      menuCaret += 1
+      expectText(menuText, in: app)
+      XCTAssertEqual(try caret(), menuCaret, "A stationary \(title) hold must insert its base letter once")
+    }
+    let following = app.keys["q"]
+    XCTAssertTrue(following.waitForExistence(timeout: 5) && following.isHittable)
+    try perform("after-other-menus", frame: following.frame) { following.tap() }
+    expectText(String(menuText.prefix(menuCaret)) + "q" + String(menuText.dropFirst(menuCaret)), in: app)
+    XCTAssertEqual(try caret(), menuCaret + 1, "The next tap must work after the remaining accent holds")
   }
   private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
     let app = XCUIApplication(); app.terminate()
