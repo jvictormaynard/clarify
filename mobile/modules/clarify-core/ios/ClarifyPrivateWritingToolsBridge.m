@@ -212,6 +212,49 @@ static NSDictionary<NSString *, id> *CWReply(NSString *code, NSString *error, NS
             @"diagnostics": diagnostics, @"route": @"private_textcomposer" };
 }
 
+static NSString *CWErrorDomain(NSError *error) {
+  NSString *domain = error.domain;
+  NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:
+    @"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.-"];
+  if (domain.length == 0 || domain.length > 96
+      || [domain rangeOfCharacterFromSet:allowed.invertedSet].location != NSNotFound) return @"other_domain";
+  return domain;
+}
+
+static NSString *CWErrorDiagnostics(NSError *error) {
+  if (![error isKindOfClass:NSError.class]) return @"service_callback_rejected";
+  // Diagnostic build: retain domain/code only, with at most two underlying errors.
+  // Never publish descriptions, arbitrary userInfo, source text or identifiers.
+  NSMutableString *metadata = [NSMutableString stringWithString:@"service_error"];
+  NSError *current = error;
+  for (NSUInteger depth = 0; depth < 3 && current; depth++) {
+    NSString *domain = CWErrorDomain(current);
+    [metadata appendFormat:@" %@=%@:%ld", depth == 0 ? @"domain" : @"underlying", domain, (long)current.code];
+    if ([domain isEqualToString:@"ModelManagerServices.ModelManagerError"] && current.code == 1007) {
+      // This older ModelManagerError mapping suggests a missing entitlement.
+      // Copy only an explicit com.apple.* entitlement name, if Apple supplies it.
+      NSString *entitlement = @"unreported";
+      NSRegularExpression *pattern = [NSRegularExpression regularExpressionWithPattern:
+        @"(?i)entitlement[\\s:=\\\"'()]{0,16}(com\\.apple\\.[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*)(?![A-Za-z0-9_.-])"
+        options:0 error:NULL];
+      NSDictionary *info = current.userInfo;
+      for (NSString *key in @[NSDebugDescriptionErrorKey, NSLocalizedDescriptionKey]) {
+        id detail = info[key];
+        if (![detail isKindOfClass:NSString.class] || [detail length] > 4096) continue;
+        NSTextCheckingResult *match = [pattern firstMatchInString:detail options:0 range:NSMakeRange(0, [detail length])];
+        if (match && [match rangeAtIndex:1].length <= 120) {
+          entitlement = [detail substringWithRange:[match rangeAtIndex:1]];
+          break;
+        }
+      }
+      [metadata appendFormat:@" entitlement=%@", entitlement];
+    }
+    id underlying = current.userInfo[NSUnderlyingErrorKey];
+    current = [underlying isKindOfClass:NSError.class] ? underlying : nil;
+  }
+  return metadata.length <= 512 ? metadata : [metadata substringToIndex:512];
+}
+
 static NSString *CWExtendedRewriteTypes(void) {
   // objc4 exposes extended protocol encodings used by XPC. Read metadata only.
   // https://github.com/apple-oss-distributions/objc4/blob/fb265098298302243cd7eeaa1f63f0ba7786dd9a/runtime/objc-internal.h#L1252
@@ -328,7 +371,7 @@ static NSString *CWExtendedRewriteTypes(void) {
               || !CWMethod(object_getClass(output), NO, @selector(rewrittenString), @encode(id), NULL, 0)) {
             NSString *code = [serviceError isKindOfClass:NSError.class] ?
               [NSString stringWithFormat:@"service_failed_%ld", (long)serviceError.code] : @"service_callback_rejected";
-            reply(CWReply(code, @"Apple rewriting failed. The transcript was preserved.", @"service_callback_rejected")); return;
+            reply(CWReply(code, @"Apple rewriting failed. The transcript was preserved.", CWErrorDiagnostics(serviceError))); return;
           }
           id text = [output rewrittenString];
           if (![text isKindOfClass:NSString.class] || [text length] == 0 || [text lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 8000) {

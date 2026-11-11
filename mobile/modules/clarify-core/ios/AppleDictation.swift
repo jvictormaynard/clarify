@@ -65,7 +65,11 @@ enum AppleDictationPreference {
       let report = try await ApplePrivateRewrite.report(source, preferences: preferences, operationID: operationID)
       try Task.checkCancellation()
       guard report.code == "ok", report.error.isEmpty else {
-        throw ClarifyError(L(report.error) + " [" + report.code + "]", code: "apple_direct_" + report.code)
+        // The bridge emits bounded ASCII metadata, never an Apple description.
+        let details = report.diagnostics.hasPrefix("service_error ") &&
+          report.diagnostics.utf8.count <= 512 && report.diagnostics.utf8.allSatisfy({ $0 >= 32 && $0 <= 126 }) ?
+          "\n" + report.diagnostics : ""
+        throw ClarifyError(L(report.error) + " [" + report.code + "]" + details, code: "apple_direct_" + report.code)
       }
       let text = report.result.trimmingCharacters(in: .whitespacesAndNewlines)
       guard !text.isEmpty, text.utf8.count <= AppleRewriteEngine.maxOutputBytes else {
