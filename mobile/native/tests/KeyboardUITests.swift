@@ -506,7 +506,12 @@ final class KeyboardUITests: XCTestCase {
         let receiver = try XCTUnwrap(pickerHost.hitTest(pickerPoint, with: nil))
         XCTAssertTrue(receiver === picker || receiver.isDescendant(of: picker), "A second finger on the picker must not reach toolbar actions")
         grid.isUserInteractionEnabled = false
-        XCTAssertTrue(pickerHost.hitTest(pickerPoint, with: nil) === toolbarCover)
+        if title == "a" {
+          XCTAssertFalse(toolbarCover.frame.contains(pickerPoint))
+          XCTAssertTrue(pickerHost.hitTest(pickerPoint, with: nil) === pickerHost)
+        } else {
+          XCTAssertTrue(pickerHost.hitTest(pickerPoint, with: nil) === toolbarCover)
+        }
         grid.isUserInteractionEnabled = true
         let foreignPoint = picker.convert(basePoint, to: grid)
         grid.beginPress("picker-foreign", at: foreignPoint); grid.endPress("picker-foreign", at: foreignPoint)
