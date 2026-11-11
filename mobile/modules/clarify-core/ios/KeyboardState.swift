@@ -64,6 +64,10 @@ struct KeyboardState {
   }
   static func startsSentence(after context: String) -> Bool {
     if context.isEmpty { return true }
+    // An integer prefix leaves the first letter of a line capitalized.
+    // Keep decimal and word contexts on the existing punctuation path.
+    let line = context.reversed().prefix(while: { !$0.isNewline })
+    if line.allSatisfy({ $0.isWhitespace || "0123456789".contains($0) }) { return true }
     // Closing quotes/brackets and any number of spaces may follow punctuation.
     // A newline starts a new sentence even after an unfinished previous line.
     for character in context.reversed() {
@@ -74,7 +78,7 @@ struct KeyboardState {
     return true
   }
   static func accents(for key: String) -> [String] {
-    let values: [String: String] = ["a": "aáàâãä", "e": "eéèêë", "i": "iíìîï",
+    let values: [String: String] = ["a": "aáàâãä", "e": "eéêèęėēë", "i": "iíìîï",
       "o": "oóòôõö", "u": "uúùûü", "c": "cç", "n": "nñ"]
     guard let value = values[key.lowercased()] else { return [] }
     return value.map { key == key.uppercased() ? String($0).uppercased() : String($0) }

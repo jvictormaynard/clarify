@@ -3,6 +3,16 @@ import XCTest
 @testable import KeyboardUI
 import KeyboardHostSupport
 
+private final class AccentGesture: UILongPressGestureRecognizer {
+  var sampleState: UIGestureRecognizer.State = .possible
+  var samplePoint = CGPoint.zero
+  override var state: UIGestureRecognizer.State {
+    get { sampleState }
+    set { sampleState = newValue }
+  }
+  override func location(in view: UIView?) -> CGPoint { samplePoint }
+}
+
 private final class SourceProcessState: NSObject {
   var pid: Int32 = 5127
   var source: Any? = "com.clarify.fixture.host"
@@ -26,22 +36,37 @@ private final class Field: NSObject, UITextDocumentProxy {
   var after = ""
   var contextAvailable = true
   var contextLimit = 50
-  var documentContextBeforeInput: String? { contextAvailable ? String(before.suffix(contextLimit)) : nil }
-  var documentContextAfterInput: String? { contextAvailable ? String(after.prefix(contextLimit)) : nil }
+  var afterContextLimit: Int?
+  var deferCaretContext = false
+  var retainedCaretContext: (before: String, after: String)?
+  func flushCaretContext() { retainedCaretContext = nil }
+  var documentContextBeforeInput: String? { contextAvailable ? String((retainedCaretContext?.before ?? before).suffix(contextLimit)) : nil }
+  var documentContextAfterInput: String? { contextAvailable ? String((retainedCaretContext?.after ?? after).prefix(afterContextLimit ?? contextLimit)) : nil }
   var documentInputMode: UITextInputMode? { nil }
   var selectedText: String?
   var hasText: Bool { !before.isEmpty || !after.isEmpty }
   var autocorrectionType: UITextAutocorrectionType = .yes
   var spellCheckingType: UITextSpellCheckingType = .yes
   var keyboardType: UIKeyboardType = .default
+  var keyboardAppearance: UIKeyboardAppearance = .default
+  var returnKeyType: UIReturnKeyType = .default
   var isSecureTextEntry = false
   var autocapitalizationType: UITextAutocapitalizationType = .sentences
   var didInsert: ((String) -> Void)?
+  var didAdjust: (() -> Void)?
   func insertText(_ text: String) {
     before += text; selectedText = nil; didInsert?(before)
   }
   func deleteBackward() { if !before.isEmpty { before.removeLast() } }
-  func adjustTextPosition(byCharacterOffset offset: Int) {}
+  func adjustTextPosition(byCharacterOffset offset: Int) {
+    if deferCaretContext, retainedCaretContext == nil { retainedCaretContext = (before, after) }
+    let text = before + after
+    let position = min(text.utf16.count, max(0, before.utf16.count + offset))
+    let index16 = text.utf16.index(text.utf16.startIndex, offsetBy: position)
+    guard let index = String.Index(index16, within: text) else { return }
+    before = String(text[..<index]); after = String(text[index...])
+    didAdjust?()
+  }
   func setMarkedText(_ markedText: String, selectedRange: NSRange) {}
   func unmarkText() {}
 }
@@ -188,18 +213,64 @@ final class KeyboardUITests: XCTestCase {
       }
     }
   }
+  @MainActor
+  func testReopeningAppliesHostInputTraitsWithoutATextChange() throws {
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))
+    let host = UIViewController(); window.rootViewController = host; window.makeKeyAndVisible()
+    defer { window.isHidden = true }
+    let keyboard = SelectionKeyboard()
+    host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
+    let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+    keyboard.field.before = "Q"
+    let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
+      (.light, .search, .dark), (.dark, .done, .light), (.default, .default, .dark)
+    ]
+    for (appearance, returnType, expectedStyle) in cases {
+      // The remote proxy can lag behind the host's current appearance.
+      keyboard.field.keyboardAppearance = appearance; keyboard.field.returnKeyType = returnType
+      host.setOverrideTraitCollection(UITraitCollection(userInterfaceStyle: expectedStyle), forChild: keyboard)
+      keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+      keyboard.view.layoutIfNeeded()
+      XCTAssertEqual(keyboard.traitCollection.userInterfaceStyle, expectedStyle)
+      XCTAssertEqual(keyboard.view.overrideUserInterfaceStyle, .unspecified)
+      XCTAssertEqual(keyboard.view.traitCollection.userInterfaceStyle, expectedStyle)
+      XCTAssertEqual(grid.traitCollection.userInterfaceStyle, expectedStyle)
+      XCTAssertEqual(grid.returnType, returnType)
+      XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
+      keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+    }
+  }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
     try await MainActor.run {
       let keyboard = SelectionKeyboard(); keyboard.loadViewIfNeeded()
       let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
       for punctuation in [".", "?", "!"] {
         keyboard.field.before = "Olá" + punctuation; keyboard.textDidChange(nil)
-        let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == L("espaço") })
+        let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
         space.sendActions(for: .touchUpInside)
         XCTAssertEqual(grid.model.shift, .once)
         let letter = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal)?.lowercased() == "q" })
         letter.sendActions(for: .touchUpInside)
         XCTAssertEqual(keyboard.field.before, "Olá" + punctuation + " Q")
+      }
+      let cases: [(UITextAutocapitalizationType, String, KeyboardState.Shift)] = [
+        (.sentences, "", .once), (.sentences, "word ", .off), (.words, "", .off),
+        (.none, "", .off), (.allCharacters, "", .caps)
+      ]
+      for (type, prefix, expected) in cases {
+        keyboard.field.autocapitalizationType = type
+        keyboard.field.before = prefix; keyboard.textDidChange(nil)
+        let mode = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "123" })
+        mode.sendActions(for: .touchUpInside)
+        let digit = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "1" })
+        digit.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, prefix + "1")
+        XCTAssertEqual(grid.model.shift, expected, "Apply host capitalization to local digit insertion without a notification")
+        let letters = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "ABC" })
+        letters.sendActions(for: .touchUpInside)
+        XCTAssertNotNil(self.descendants(grid).compactMap { $0 as? UIButton }.first {
+          $0.title(for: .normal) == (expected == .off ? "q" : "Q")
+        })
       }
     }
   }
@@ -263,6 +334,341 @@ final class KeyboardUITests: XCTestCase {
       grid.beginPress(6, at: first); grid.beginPress(7, at: second)
       grid.endPress(6, at: first); grid.endPress(7, at: second)
       XCTAssertTrue(text.hasSuffix("Qw"), "Two overlapping fingers consume one-shot shift only once")
+      let letters = text
+      let mode = try key("123"), modePoint = center(mode)
+      grid.beginPress("number-tap", at: modePoint)
+      XCTAssertEqual(grid.model.page, .numbers, "Show the number page while the finger is held")
+      XCTAssertTrue(mode.isDescendant(of: grid), "Keep UIKit's original touch receiver attached")
+      grid.endPress("number-tap", at: modePoint)
+      XCTAssertEqual(grid.model.page, .numbers, "A plain 123 tap must keep the number page")
+      XCTAssertEqual(text, letters)
+      try key("ABC").sendActions(for: .touchUpInside)
+      grid.beginPress("number-slide", at: center(try key("123")))
+      let one = center(try key("1"))
+      grid.movePress("number-slide", to: one); grid.endPress("number-slide", at: one)
+      grid.endPress("number-slide", at: one)
+      XCTAssertEqual(text, letters + "1", "A number slide inserts its release target exactly once")
+      XCTAssertEqual(grid.model.page, .letters)
+      for cancel in [true, false] {
+        grid.beginPress("aborted-slide", at: center(try key("123")))
+        let point = center(try key("1")); grid.movePress("aborted-slide", to: point)
+        if cancel { grid.cancelPress("aborted-slide") }
+        else { grid.endPress("aborted-slide", at: CGPoint(x: -30, y: -30)) }
+        grid.endPress("aborted-slide", at: point)
+        XCTAssertEqual(text, letters + "1", "Cancelled or outside slides must not insert")
+        XCTAssertEqual(grid.model.page, .letters)
+      }
+      grid.beginPress("number-owner", at: center(try key("123")))
+      let held = try key("1"), heldPoint = center(held), two = center(try key("2"))
+      grid.beginPress("held-digit", at: heldPoint)
+      grid.movePress("number-owner", to: two); grid.endPress("number-owner", at: two)
+      XCTAssertTrue(held.isDescendant(of: grid), "Defer the return to letters until the other finger finishes")
+      grid.endPress("held-digit", at: heldPoint)
+      XCTAssertEqual(text, letters + "121", "Changing the page must not lose another finger's digit")
+      XCTAssertEqual(grid.model.page, .letters)
+      grid.onInsert = { [weak grid] value in
+        text += value; grid?.returnType = .search; grid?.rebuild()
+      }
+      grid.beginPress("space-slide", at: center(try key("123")))
+      let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
+      grid.endPress("space-slide", at: center(space))
+      XCTAssertEqual(text, letters + "121 ")
+      XCTAssertEqual(grid.model.page, .letters)
+      XCTAssertNotNil(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("buscar") },
+                      "Apply host traits to the retained row when insertion changes pages")
+      grid.onInsert = { text += $0 }
+      @MainActor func shiftKey() throws -> UIButton {
+        try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Maiúsculas") })
+      }
+      let beforeShift = text, shift = try shiftKey(), lowerQ = try key("q"), lowerFrame = lowerQ.frame
+      let shiftPoint = center(shift), letterPoint = center(lowerQ)
+      grid.beginPress("shift-slide", at: shiftPoint)
+      XCTAssertTrue(shift.isDescendant(of: grid) && lowerQ.isDescendant(of: grid), "Casing must keep both UIKit touch receivers attached")
+      XCTAssertEqual(lowerQ.title(for: .normal), "Q")
+      XCTAssertEqual(lowerQ.frame, lowerFrame, "A casing change must keep the key's hit bounds")
+      let accent = try key("A")
+      XCTAssertTrue(accent.accessibilityCustomActions?.contains { $0.name == "Á" } == true)
+      grid.endPress("shift-slide", at: letterPoint); grid.endPress("shift-slide", at: letterPoint)
+      XCTAssertEqual(text, beforeShift + "Q", "A Shift slide inserts its capital exactly once")
+      XCTAssertEqual(lowerQ.title(for: .normal), "q")
+      grid.model.toggleShift(); grid.model.toggleShift(); grid.rebuild()
+      for cancel in [true, false] {
+        grid.beginPress("aborted-shift", at: center(try shiftKey()))
+        if cancel { grid.cancelPress("aborted-shift") }
+        else { grid.endPress("aborted-shift", at: CGPoint(x: -30, y: -30)) }
+        grid.endPress("aborted-shift", at: letterPoint)
+        XCTAssertEqual(text, beforeShift + "Q")
+        XCTAssertEqual(grid.model.shift, .off)
+        XCTAssertTrue(grid.model.shiftIsManual, "Cancelled Shift must preserve the user's explicit lowercase choice")
+      }
+      let chordShift = try shiftKey(), chordPoint = center(chordShift)
+      grid.beginPress("shift-chord", at: chordPoint)
+      for title in ["Q", "W"] {
+        let point = center(try key(title))
+        grid.beginPress("chord-letter", at: point); grid.endPress("chord-letter", at: point)
+        XCTAssertTrue(chordShift.isDescendant(of: grid))
+      }
+      grid.endPress("shift-chord", at: chordPoint)
+      XCTAssertEqual(text, beforeShift + "QQW")
+      XCTAssertEqual(grid.model.shift, .off, "A consumed Shift chord must not arm the next letter")
+      grid.beginPress("cancelled-owner", at: center(try shiftKey()))
+      let heldLetter = try key("Q"), heldLetterPoint = center(heldLetter)
+      grid.beginPress("held-letter", at: heldLetterPoint); grid.cancelPress("cancelled-owner")
+      XCTAssertTrue(heldLetter.isDescendant(of: grid))
+      grid.endPress("held-letter", at: heldLetterPoint)
+      XCTAssertEqual(text, beforeShift + "QQWq", "Releasing Shift must not lose another finger's letter")
+      let tapPoint = center(try shiftKey())
+      grid.beginPress("shift-tap", at: tapPoint); grid.endPress("shift-tap", at: tapPoint)
+      XCTAssertEqual(grid.model.shift, .once, "A plain Shift tap still arms one capital")
+      let capitalPoint = center(try key("Q"))
+      grid.beginPress("capital", at: capitalPoint); grid.endPress("capital", at: capitalPoint)
+      XCTAssertEqual(text, beforeShift + "QQWqQ")
+      XCTAssertEqual(grid.model.shift, .off)
+      let pageShift = center(try shiftKey()), pageMode = center(try key("123"))
+      grid.beginPress("page-shift", at: pageShift); grid.beginPress("page-mode", at: pageMode)
+      grid.endPress("page-mode", at: pageMode); grid.endPress("page-shift", at: pageShift)
+      XCTAssertEqual(grid.model.page, .numbers, "A late Shift release must not toggle another finger's page choice")
+      XCTAssertEqual(text, beforeShift + "QQWqQ")
+      grid.model.page = .letters; grid.model.shift = .off; grid.rebuild(); grid.layoutIfNeeded()
+      @MainActor func emit(_ gesture: AccentGesture, _ phase: UIGestureRecognizer.State, at point: CGPoint = .zero) {
+        gesture.sampleState = phase; gesture.samplePoint = point
+        _ = grid.perform(NSSelectorFromString("accent:"), with: gesture)
+      }
+      @MainActor func startAccent(_ title: String = "e") throws -> AccentGesture {
+        let letter = try key(title), gesture = AccentGesture()
+        letter.addGestureRecognizer(gesture)
+        grid.beginPress("accent", at: center(letter)); emit(gesture, .began)
+        // UIKit cancels the key's original touch when its recognizer accepts.
+        grid.cancelPress("accent"); grid.layoutIfNeeded()
+        return gesture
+      }
+      @MainActor func accentPoint(_ title: String) throws -> CGPoint {
+        let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+          $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
+        })
+        picker.layoutIfNeeded()
+        let choice = try XCTUnwrap(picker.arrangedSubviews.compactMap { $0 as? UIButton }.first {
+          $0.title(for: .normal) == title
+        })
+        return choice.convert(CGPoint(x: choice.bounds.midX, y: choice.bounds.midY), to: picker)
+      }
+      let beforeAccent = text, stationary = try startAccent(), otherChoice = try accentPoint("è")
+      emit(stationary, .ended, at: otherChoice); emit(stationary, .ended, at: otherChoice)
+      XCTAssertEqual(text, beforeAccent + "e", "Release must commit the displayed base letter exactly once")
+      let nextPoint = center(try key("q"))
+      grid.beginPress("after-accent", at: nextPoint); grid.endPress("after-accent", at: nextPoint)
+      XCTAssertEqual(text, beforeAccent + "eq", "Accent recognition must not suppress the next tap")
+      let dragged = try startAccent(), foreign = AccentGesture()
+      try key("a").addGestureRecognizer(foreign)
+      emit(foreign, .began); emit(foreign, .ended)
+      XCTAssertEqual(text, beforeAccent + "eq", "Another recognizer must not consume the active picker")
+      emit(dragged, .changed, at: try accentPoint("è")); emit(dragged, .ended)
+      emit(dragged, .ended)
+      XCTAssertEqual(text, beforeAccent + "eqè", "Release must keep the last highlighted drag choice")
+      for phase in [UIGestureRecognizer.State.cancelled, .failed] {
+        let cancelled = try startAccent()
+        emit(cancelled, .changed, at: try accentPoint("é")); emit(cancelled, phase)
+        emit(cancelled, .ended)
+        XCTAssertEqual(text, beforeAccent + "eqè", "Cancelled and stale callbacks must not insert")
+      }
+      let reentrant = try startAccent(), beforeCallback = text
+      grid.onInsert = { value in
+        text += value
+        if value == "e" {
+          guard let next = try? key("q") else { XCTFail("Missing next key during insertion"); return }
+          let point = center(next)
+          grid.beginPress("reentrant-next", at: point); grid.endPress("reentrant-next", at: point)
+        }
+      }
+      emit(reentrant, .ended)
+      XCTAssertEqual(text, beforeCallback + "eq", "Insertion callbacks must see the completed accent's suppression cleared")
+      grid.onInsert = { text += $0 }
+      let pickerHost = UIView(frame: CGRect(x: 0, y: 0, width: grid.bounds.width, height: grid.bounds.height + 58))
+      let toolbarCover = UIView(frame: CGRect(x: 0, y: 7, width: grid.bounds.width, height: 44))
+      grid.frame.origin.y = 58
+      pickerHost.addSubview(grid); pickerHost.addSubview(toolbarCover)
+      for (title, width) in [("e", CGFloat(393)), ("u", 393), ("e", 320)] {
+        pickerHost.frame.size.width = width; toolbarCover.frame.size.width = width
+        grid.frame.size.width = width; grid.layoutIfNeeded()
+        let letter = try key(title), beforeJitter = text, held = try startAccent(title)
+        let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+          $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
+        })
+        let basePoint = try accentPoint(title)
+        let sourcePoint = letter.convert(CGPoint(x: letter.bounds.midX, y: letter.bounds.midY), to: picker)
+        XCTAssertEqual(basePoint.x, sourcePoint.x, accuracy: 0.5, "The base choice must align with the held key")
+        XCTAssertLessThanOrEqual(picker.frame.maxY, letter.convert(letter.bounds, to: grid).minY)
+        XCTAssertGreaterThanOrEqual(picker.frame.minX, 6); XCTAssertLessThanOrEqual(picker.frame.maxX, grid.bounds.width - 6)
+        XCTAssertTrue(pickerHost.subviews.last === grid, "Sibling toolbars must not cover the picker above the held key")
+        let pickerPoint = picker.convert(basePoint, to: pickerHost)
+        let receiver = try XCTUnwrap(pickerHost.hitTest(pickerPoint, with: nil))
+        XCTAssertTrue(receiver === picker || receiver.isDescendant(of: picker), "A second finger on the picker must not reach toolbar actions")
+        grid.isUserInteractionEnabled = false
+        XCTAssertTrue(pickerHost.hitTest(pickerPoint, with: nil) === toolbarCover)
+        grid.isUserInteractionEnabled = true
+        let foreignPoint = picker.convert(basePoint, to: grid)
+        grid.beginPress("picker-foreign", at: foreignPoint); grid.endPress("picker-foreign", at: foreignPoint)
+        XCTAssertEqual(text, beforeJitter, "Only the held accent gesture may insert a choice")
+        emit(held, .changed, at: CGPoint(x: sourcePoint.x + 1, y: sourcePoint.y))
+        emit(held, .ended)
+        XCTAssertEqual(text, beforeJitter + title, "Small finger movement must retain the displayed base choice")
+      }
+      for choice in ["ę", "ė", "ē"] {
+        let letter = try key("e"), beforeChoice = text
+        XCTAssertTrue(letter.accessibilityCustomActions?.contains { $0.name == choice } == true)
+        let held = try startAccent()
+        emit(held, .changed, at: try accentPoint(choice)); emit(held, .ended); emit(held, .ended)
+        XCTAssertEqual(text, beforeChoice + choice, "A newly offered accent must commit exactly once")
+      }
+      let cancellationWindow = UIWindow(frame: pickerHost.bounds)
+      cancellationWindow.addSubview(pickerHost)
+      defer { withExtendedLifetime(cancellationWindow) { pickerHost.removeFromSuperview() } }
+      @MainActor func eAction() throws -> UIAccessibilityCustomAction {
+        try XCTUnwrap(try key("e").accessibilityCustomActions?.first { $0.name == "é" })
+      }
+      @MainActor func activateAccent(_ action: UIAccessibilityCustomAction) throws -> Bool {
+        try XCTUnwrap(action.actionHandler)(action)
+      }
+      let blockedAction = try eAction(), beforeAccessibility = text
+      for unavailable in ["hidden-grid", "disabled-grid", "disabled-key"] {
+        let letter = try key("e")
+        switch unavailable {
+        case "hidden-grid": grid.isHidden = true
+        case "disabled-grid": grid.isUserInteractionEnabled = false
+        default: letter.isEnabled = false
+        }
+        XCTAssertFalse(try activateAccent(blockedAction), "An unavailable key must reject its accent action")
+        XCTAssertEqual(text, beforeAccessibility)
+        grid.isHidden = false; grid.isUserInteractionEnabled = true; letter.isEnabled = true
+      }
+      let accessibilityOverlap = try startAccent()
+      XCTAssertFalse(try activateAccent(blockedAction), "A custom action must not consume a held accent picker")
+      XCTAssertEqual(text, beforeAccessibility)
+      emit(accessibilityOverlap, .ended)
+      XCTAssertEqual(text, beforeAccessibility + "e", "The held picker must keep its selected base letter")
+      let lowerAction = try eAction(), casingKey = try key("e")
+      grid.beginPress("accessibility-shift", at: center(try shiftKey()))
+      XCTAssertEqual(casingKey.title(for: .normal), "E")
+      XCTAssertFalse(try activateAccent(lowerAction), "A retained lowercase action must reject changed key casing")
+      grid.cancelPress("accessibility-shift")
+      XCTAssertEqual(text, beforeAccessibility + "e")
+      let detachedAction = try eAction()
+      grid.returnType = .done; grid.rebuild()
+      XCTAssertFalse(try activateAccent(detachedAction), "A rebuilt key must reject its old accent action")
+      XCTAssertEqual(text, beforeAccessibility + "e")
+      let currentAction = try eAction()
+      XCTAssertTrue(try activateAccent(currentAction)); XCTAssertTrue(try activateAccent(currentAction))
+      XCTAssertEqual(text, beforeAccessibility + "eéé", "A current accent action must remain repeatable")
+      let beforeDetachment = text
+      grid.removeFromSuperview(); XCTAssertNil(grid.window)
+      XCTAssertFalse(try activateAccent(currentAction), "A detached grid must reject its retained accent action")
+      XCTAssertEqual(text, beforeDetachment)
+      pickerHost.addSubview(grid); XCTAssertNotNil(grid.window)
+      XCTAssertTrue(try activateAccent(try eAction()))
+      XCTAssertEqual(text, beforeDetachment + "é", "Reattachment must restore the current accent action")
+      for cancellation in ["all", "hide", "detach"] {
+        XCTAssertNotNil(grid.window)
+        let beforeCancellation = text, held = try startAccent()
+        emit(held, .changed, at: try accentPoint("é"))
+        let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+          $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == "é" }
+        })
+        grid.model.shift = .caps; grid.rebuild()
+        switch cancellation {
+        case "hide": grid.isHidden = true
+        case "detach": grid.removeFromSuperview()
+        default: grid.cancelAllPresses()
+        }
+        XCTAssertNil(picker.superview, "Cancelling the keyboard must remove its accent picker: \(cancellation)")
+        emit(held, .changed); emit(held, .ended)
+        XCTAssertEqual(text, beforeCancellation, "A cancelled accent must reject late callbacks: \(cancellation)")
+        _ = try key("Q")
+        grid.isHidden = false
+        if grid.superview == nil { pickerHost.addSubview(grid) }
+        grid.model.shift = .off; grid.rebuild(); grid.layoutIfNeeded()
+        let restarted = try startAccent()
+        emit(held, .ended); emit(restarted, .ended)
+        let next = center(try key("q"))
+        grid.beginPress("after-cancellation", at: next); grid.endPress("after-cancellation", at: next)
+        XCTAssertEqual(text, beforeCancellation + "eq", "A stale owner must not consume a new picker or tap")
+      }
+      var clock: TimeInterval = 100, offsets: [Int] = [], finishes = 0
+      grid.cursorUptime = { clock }; grid.onMoveCursor = { offsets.append($0); return true }
+      grid.onEndCursor = { finishes += 1 }
+      @MainActor func spacePoint() throws -> CGPoint {
+        center(try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") }))
+      }
+      let cursorPoint = try spacePoint(), beforeCursor = text
+      grid.beginPress("cursor", at: cursorPoint); clock += 0.1; grid.updateSpaceHold()
+      grid.endPress("cursor", at: cursorPoint)
+      XCTAssertEqual(text, beforeCursor + " ", "A short Space press still inserts")
+      let afterTap = text
+      grid.beginPress("cursor", at: try spacePoint()); clock += 1; grid.updateSpaceHold()
+      XCTAssertFalse(try activateAccent(try eAction()), "Cursor mode must reject an accent action without claiming success")
+      XCTAssertEqual(text, afterTap)
+      let heldSpace = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
+      grid.model.shift = .once; grid.rebuild()
+      XCTAssertTrue(heldSpace.isDescendant(of: grid), "Cursor mode must keep the original UIKit receiver attached")
+      let other = center(try key("q"))
+      grid.beginPress("foreign", at: other); grid.cancelPress("foreign"); grid.endPress("foreign", at: other)
+      grid.movePress("cursor", to: cursorPoint.applying(CGAffineTransform(translationX: -12, y: -100)))
+      grid.movePress("cursor", to: cursorPoint)
+      grid.endPress("cursor", at: cursorPoint); grid.endPress("cursor", at: other)
+      XCTAssertEqual(offsets, [-2, 2]); XCTAssertEqual(text, afterTap, "Held release and a second finger must not insert")
+      XCTAssertEqual(grid.model.shift, .once)
+      for cancelled in [true, false] {
+        let point = try spacePoint()
+        grid.beginPress("cancel-cursor", at: point); clock += 1; grid.updateSpaceHold()
+        if cancelled { grid.cancelPress("cancel-cursor") } else { grid.isHidden = true; grid.isHidden = false }
+        grid.movePress("cancel-cursor", to: other); grid.endPress("cancel-cursor", at: other)
+        XCTAssertEqual(text, afterTap, "Cancellation, hiding and late releases must not insert")
+      }
+      let completed = finishes
+      grid.beginPress("early", at: try spacePoint()); grid.cancelPress("early")
+      grid.beginPress("early", at: try spacePoint()); grid.updateSpaceHold()
+      grid.endPress("early", at: try spacePoint())
+      XCTAssertEqual(text, afterTap + " ", "A reused touch ID must get a new hold interval")
+      XCTAssertEqual(finishes, completed + 2)
+      grid.model.shift = .off; grid.rebuild()
+      let beforeOverlap = text, overlapSpace = try spacePoint(), overlapQ = center(try key("q"))
+      grid.beginPress("pending-space", at: overlapSpace); grid.beginPress("overlap-letter", at: overlapQ)
+      clock += 1; grid.updateSpaceHold()
+      grid.endPress("overlap-letter", at: overlapQ); grid.endPress("pending-space", at: overlapSpace)
+      XCTAssertEqual(text, beforeOverlap + "q ", "An overlapping tap must keep normal typing instead of entering cursor mode")
+      let beforeReentry = text, point = try spacePoint()
+      grid.onMoveCursor = { _ in grid.cancelPress("reentrant-cursor"); return true }
+      grid.beginPress("reentrant-cursor", at: point); clock += 1; grid.updateSpaceHold()
+      grid.movePress("reentrant-cursor", to: CGPoint(x: point.x - 20, y: point.y))
+      grid.endPress("reentrant-cursor", at: other)
+      XCTAssertEqual(text, beforeReentry, "Movement callbacks must not revive a cancelled owner")
+    }
+  }
+  func testHeldDeleteDoesNotRestartAfterReentrantCancellation() async throws {
+    for cancelOnDelete in [1, 2] {
+      let cancelled = expectation(description: "Delete callback cancels its press")
+      let lateDelete = expectation(description: "Cancelled hold must not delete again")
+      lateDelete.isInverted = true
+      let grid = await MainActor.run { KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)) }
+      let cancelAction = try await MainActor.run {
+        grid.layoutIfNeeded()
+        let key = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Apagar") })
+        let begin = try XCTUnwrap(key.actions(forTarget: grid, forControlEvent: .touchDown)?.first)
+        let cancel = try XCTUnwrap(key.actions(forTarget: grid, forControlEvent: .touchCancel)?.first)
+        var deletions = 0
+        grid.onDelete = { [weak grid] in
+          deletions += 1
+          if deletions == cancelOnDelete {
+            _ = grid?.perform(NSSelectorFromString(cancel)); cancelled.fulfill()
+          } else if deletions > cancelOnDelete { lateDelete.fulfill() }
+        }
+        // Unhosted UIKit tests have no UIApplication to dispatch target actions.
+        _ = grid.perform(NSSelectorFromString(begin))
+        XCTAssertEqual(deletions, 1, "Delete must begin before observing repeat cancellation")
+        return cancel
+      }
+      await fulfillment(of: [cancelled], timeout: 2)
+      await fulfillment(of: [lateDelete], timeout: 0.55)
+      await MainActor.run { _ = grid.perform(NSSelectorFromString(cancelAction)); grid.onDelete = nil }
     }
   }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
@@ -292,7 +698,7 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(store.keyboardAdditions(scope: "guest").map { $0.1.term }, ["helllo"])
       keyboard.field.selectedText = nil; keyboard.selectionDidChange(nil)
       let space = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
-        .first { $0.title(for: .normal) == L("espaço") })
+        .first { $0.accessibilityLabel == L("espaço") })
       space.sendActions(for: .touchUpInside)
       XCTAssertEqual(keyboard.field.before, "helllo ", "A newly saved word must not wait for the vocabulary cache to expire")
     }
@@ -1208,6 +1614,141 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "obrigaddo ")
       field.autocorrectionType = .yes; field.before = "victor@obrigaddo"
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "victor@obrigaddo ")
+      var time: TimeInterval = 10
+      let shortcut = TypingAssistant(autocorrectionEnabled: false, now: { time })
+      @MainActor func start(_ text: String = "word") {
+        shortcut.reset(); field.before = text; field.after = ""; field.selectedText = nil
+        field.contextAvailable = true; field.isSecureTextEntry = false; field.keyboardType = .default
+        field.didInsert = nil; field.didAdjust = nil; field.deferCaretContext = false
+        field.afterContextLimit = nil; field.flushCaretContext(); time += 1
+      }
+      start("1QQQQeq"); shortcut.insert(" ", into: field); time += 0.1
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "1QQQQeq. ")
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "1QQQQeq.  ")
+      start(String(repeating: "word ", count: 20) + "word")
+      shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+      XCTAssertTrue(field.before.hasSuffix("word. "), "Bounded proxy context must support the shortcut")
+      for text in ["", "word.", "word!", "word ", "\n"] {
+        start(text); shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+        XCTAssertEqual(field.before, text + "  ")
+      }
+      start(); shortcut.insert(" ", into: field); time += 1
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); field.documentIdentifier = UUID()
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); field.after = "changed"
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); field.selectedText = "selection"
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); shortcut.reset()
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      start(); shortcut.insert(" ", into: field); shortcut.delete(in: field); field.before = "word "
+      shortcut.insert(" ", into: field); XCTAssertEqual(field.before, "word  ")
+      for type in [UIKeyboardType.emailAddress, .URL, .numberPad] {
+        start(); field.keyboardType = type
+        shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+        XCTAssertEqual(field.before, "word  ")
+      }
+      start(); field.isSecureTextEntry = true
+      shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ")
+      start(); field.contextAvailable = false
+      shortcut.insert(" ", into: field); shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ")
+      start(); field.didInsert = { value in
+        if value == "word " { shortcut.insert("q", into: field) }
+      }
+      shortcut.insert(" ", into: field); field.didInsert = nil; field.before = "word "
+      shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ", "Reentrant input must invalidate the earlier Space")
+      start(); shortcut.insert(" ", into: field); shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "word"); XCTAssertEqual(field.after, " ")
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); shortcut.endCursor()
+      shortcut.insert(" ", into: field)
+      XCTAssertEqual(field.before, "word  ", "Moving away and back must invalidate the pending double-Space shortcut")
+      for change in 0..<6 {
+        start(); shortcut.prepareCursor(in: field)
+        switch change {
+        case 0: field.documentIdentifier = UUID()
+        case 1: field.selectedText = "selected"
+        case 2: field.isSecureTextEntry = true
+        case 3: field.contextAvailable = false
+        case 4: field.after = "external edit"
+        default: shortcut.reset()
+        }
+        XCTAssertFalse(shortcut.moveCursor(-1, in: field))
+        XCTAssertEqual(field.before, "word", "Changed or unavailable documents must not move")
+      }
+      start(); field.didAdjust = { shortcut.endCursor() }; shortcut.prepareCursor(in: field)
+      XCTAssertFalse(shortcut.moveCursor(-1, in: field)); field.didAdjust = nil
+      XCTAssertFalse(shortcut.moveCursor(1, in: field), "A cancelled movement callback must not rearm the cursor session")
+      for text in ["abcdef", String(repeating: "abcdefghij", count: 12)] {
+        start(text); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+        XCTAssertTrue(shortcut.moveCursor(-1, in: field))
+        field.flushCaretContext()
+        XCTAssertTrue(shortcut.moveCursor(-1, in: field), "A later proxy update must recognize the first owned movement")
+        XCTAssertTrue(shortcut.moveCursor(-1, in: field), "Further movement must work while context is delayed")
+        XCTAssertEqual(field.before, String(text.dropLast(3))); XCTAssertEqual(field.after, String(text.suffix(3)))
+        field.flushCaretContext()
+        XCTAssertTrue(shortcut.moveCursor(2, in: field))
+        field.flushCaretContext(); shortcut.endCursor()
+        XCTAssertEqual(field.before, String(text.dropLast())); XCTAssertEqual(field.after, String(text.suffix(1)))
+      }
+      start("abcdef"); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertTrue(shortcut.moveCursor(1, in: field))
+      field.retainedCaretContext = ("abcde", "f")
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field), "An intermediate proxy update after a round trip must remain owned")
+      field.flushCaretContext()
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "abcd"); XCTAssertEqual(field.after, "ef")
+      start("a👩🏼‍🏫e\u{301}"); shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "a👩🏼‍🏫")
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "a")
+      XCTAssertTrue(shortcut.moveCursor(2, in: field)); XCTAssertEqual(field.before, "a👩🏼‍🏫e\u{301}")
+      start("abcdef"); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); field.flushCaretContext(); field.after = "external edit"
+      XCTAssertFalse(shortcut.moveCursor(-1, in: field)); XCTAssertEqual(field.before, "abcde")
+      for editBefore in [true, false] {
+        start("abcdef"); field.after = "ghi"; shortcut.prepareCursor(in: field)
+        if editBefore { field.before = "Xabcdef" } else { field.after = "ghij" }
+        XCTAssertFalse(shortcut.moveCursor(-1, in: field), "A baseline must reject prefix- or suffix-preserving external edits")
+        XCTAssertEqual(field.before, editBefore ? "Xabcdef" : "abcdef")
+      }
+      start("abcdef"); field.deferCaretContext = true; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); field.flushCaretContext(); field.after = "foo"
+      XCTAssertFalse(shortcut.moveCursor(-1, in: field), "A left move must not permit an external extension on the right")
+      XCTAssertEqual(field.before, "abcde")
+      start("1QQQQeq. Q"); shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(-1, in: field)); XCTAssertTrue(shortcut.moveCursor(-1, in: field))
+      field.afterContextLimit = 1
+      XCTAssertTrue(shortcut.moveCursor(-2, in: field), "A confirmed left move must tolerate a shorter following window")
+      XCTAssertTrue(shortcut.moveCursor(-2, in: field)); XCTAssertEqual(field.before, "1QQQ")
+      start("1QQQQeq.X"); field.after = " Q"; field.afterContextLimit = 1
+      shortcut.prepareCursor(in: field)
+      field.didAdjust = { field.retainedCaretContext = (field.before, "") }
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); XCTAssertEqual(field.before, "1QQQQeq.X ")
+      field.didAdjust = nil; field.flushCaretContext()
+      XCTAssertTrue(shortcut.moveCursor(1, in: field), "A confirmed right move must accept newly exposed following text")
+      XCTAssertEqual(field.before, "1QQQQeq.X Q"); XCTAssertEqual(field.after, "")
+      for change in 0..<6 {
+        start("abcdef"); field.after = "ghi"; shortcut.prepareCursor(in: field)
+        XCTAssertTrue(shortcut.moveCursor(1, in: field))
+        switch change {
+        case 0: field.documentIdentifier = UUID()
+        case 1: field.selectedText = "selected"
+        case 2: field.isSecureTextEntry = true
+        case 3: field.contextAvailable = false
+        case 4: field.after = "unrelated"
+        default: field.before = "external"
+        }
+        XCTAssertFalse(shortcut.moveCursor(1, in: field), "A window refresh must retain the other cursor guards")
+      }
+      start("abcdef"); field.after = "g"; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); field.after = String(repeating: "h", count: 65)
+      field.afterContextLimit = 65
+      XCTAssertFalse(shortcut.moveCursor(1, in: field), "A newly exposed tail must stay within the refresh bound")
+      start("abcdef"); field.after = "g"; shortcut.prepareCursor(in: field)
+      XCTAssertTrue(shortcut.moveCursor(1, in: field)); shortcut.endCursor(); field.after = "h"
+      XCTAssertFalse(shortcut.moveCursor(1, in: field), "Refresh permission must end with the cursor gesture")
     }
   }
   func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {
@@ -1585,8 +2126,14 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertNotNil(preview)
         if let preview = preview {
           XCTAssertTrue(keyboard.view.bounds.contains(preview.frame))
-          // The A preview extends above the first key row, as in the reference.
-          XCTAssertLessThan(preview.frame.minY, grid.frame.minY)
+          // The grid includes a top inset; compare with an actual first-row
+          // key rather than treating the container's edge as the key row.
+          let firstRowKey = descendants(grid).compactMap { $0 as? UIButton }
+            .first { $0.title(for: .normal)?.lowercased() == "q" }
+          XCTAssertNotNil(firstRowKey)
+          if let firstRowKey = firstRowKey {
+            XCTAssertLessThan(preview.frame.minY, firstRowKey.convert(firstRowKey.bounds, to: keyboard.view).minY)
+          }
         }
         let renderer = UIGraphicsImageRenderer(bounds: keyboard.view.bounds)
         let image = renderer.image { keyboard.view.layer.render(in: $0.cgContext) }

@@ -78,6 +78,349 @@ final class KeyboardExtensionTests: XCTestCase {
     }, evaluatedWith: nil)
     wait(for: [inserted], timeout: 3)
   }
+  private func captureKeyboardReference(_ name: String, uppercase: Bool, in app: XCUIApplication) throws {
+    let expected = uppercase ? "Q" : "q"
+    let firstLetter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", expected)).firstMatch
+    XCTAssertTrue(firstLetter.waitForExistence(timeout: 5), "Reference case did not settle: \(name)")
+    captureKeyboardAppearance(name, in: app)
+    var keys: [[String: Any]] = []
+    for letter in "qwertyuiopasdfghjklzxcvbnm" {
+      let lower = String(letter), upper = lower.uppercased()
+      let key = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", lower, upper)).firstMatch
+      XCTAssertTrue(key.exists, "Missing reference letter \(lower): \(name)")
+      let frame = key.frame
+      keys.append(["letter": lower, "label": key.label, "x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height])
+    }
+    let data = try JSONSerialization.data(withJSONObject: ["name": name, "uppercase": uppercase, "keys": keys,
+      "inputLanguage": app.staticTexts["input-language"].value as? String ?? "unavailable",
+      "os": ProcessInfo.processInfo.operatingSystemVersionString,
+      "coordinateMeaning": "Accessibility frames in screen points; not visible bounds or adaptive touch targets"], options: [.sortedKeys])
+    let geometry = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+    geometry.name = "\(name)-geometry"; geometry.lifetime = .keepAlways; add(geometry)
+  }
+  private func captureKeyboardAppearance(_ name: String, in app: XCUIApplication) {
+    let language = app.staticTexts["input-language"].value as? String ?? "unavailable"
+    let inputMode = XCTAttachment(string: language)
+    inputMode.name = "\(name)-input-language"; inputMode.lifetime = .keepAlways; add(inputMode)
+    let screen = XCTAttachment(screenshot: app.screenshot())
+    screen.name = name; screen.lifetime = .keepAlways; add(screen)
+    // AX frames are reference coordinates, not visible shapes or adaptive targets.
+    let tree = XCTAttachment(string: app.debugDescription)
+    tree.name = "\(name)-accessibility"; tree.lifetime = .keepAlways; add(tree)
+  }
+  private func selectClarifyKeyboard(in app: XCUIApplication) {
+    let keyboard = app.buttons["clarify.keyboard.record"]
+    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+    // The first keyboard can still be loading after Settings changes its list.
+    // Wait for either input view before deciding whether a switch is needed.
+    let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
+    wait(for: [inputReady], timeout: 30)
+    if !keyboard.exists {
+      XCTAssertTrue(globe.exists, app.debugDescription)
+      globe.press(forDuration: 1)
+      let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
+      XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
+    }
+    XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
+  }
+  private func performKeySlide(_ name: String, from sourceElement: XCUIElement, to destinationElement: XCUIElement, in app: XCUIApplication) throws {
+    let field = app.textFields["composer"]
+    let source = sourceElement.frame, destination = destinationElement.frame
+    let window = app.windows.firstMatch, windowFrame = window.frame
+    XCTAssertTrue(!source.isEmpty && !destination.isEmpty && windowFrame.contains(source) && windowFrame.contains(destination))
+    let origin = window.coordinate(withNormalizedOffset: .zero)
+    let start = origin.withOffset(CGVector(dx: source.midX - windowFrame.minX, dy: source.midY - windowFrame.minY))
+    let finish = origin.withOffset(CGVector(dx: destination.midX - windowFrame.minX, dy: destination.midY - windowFrame.minY))
+    captureKeyboardAppearance("\(name)-before", in: app)
+    let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
+    // Anchor both coordinates to the window: page/case changes replace keys.
+    start.press(forDuration: 0.1, thenDragTo: finish)
+    let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
+    captureKeyboardAppearance("\(name)-after", in: app)
+    func rect(_ value: CGRect) -> [String: CGFloat] {
+      ["x": value.minX, "y": value.minY, "width": value.width, "height": value.height]
+    }
+    let data = try JSONSerialization.data(withJSONObject: ["name": name, "startedUTC": started, "endedUTC": ended,
+      "startedUptime": startedUptime, "endedUptime": endedUptime, "sourceAXFrame": rect(source), "destinationAXFrame": rect(destination),
+      "syntheticResult": field.value as? String ?? "", "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
+    let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+    trace.name = "\(name)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+  }
+  private func checkNumberSlide(_ name: String, in app: XCUIApplication) throws {
+    let field = app.textFields["composer"]
+    XCTAssertTrue(["", "Type here"].contains(field.value as? String ?? ""), "The gesture needs a fresh draft")
+    let numbers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label == %@", "more", "123")).firstMatch
+    let letter = app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch
+    XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription)
+    // Q and 1 share the measured first-row position while the page changes.
+    try performKeySlide(name, from: numbers, to: letter, in: app)
+    expectText("1", in: app)
+    XCTAssertTrue(app.keys.matching(NSPredicate(format: "label IN %@", ["q", "Q"])).firstMatch.waitForExistence(timeout: 5),
+                  "Releasing the number slide must return to letters")
+    XCTAssertTrue(app.keys["Q"].waitForExistence(timeout: 5),
+                  "An initial numeric prefix must preserve sentence capitalization")
+  }
+  private func checkTemporaryShiftSlide(_ name: String, in app: XCUIApplication) throws {
+    expectText("1", in: app)
+    let upper = app.keys["Q"]
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), app.debugDescription); upper.tap()
+    expectText("1Q", in: app)
+    let lower = app.keys["q"]
+    XCTAssertTrue(lower.waitForExistence(timeout: 5), "The setup must consume sentence capitalization")
+    let shift = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label IN %@", "shift",
+      ["Caps lock", "Shift", "shift", "Maiúsculas", "maiúsculas"])).firstMatch
+    XCTAssertTrue(shift.waitForExistence(timeout: 5), app.debugDescription)
+    try performKeySlide(name, from: shift, to: lower, in: app)
+    expectText("1QQ", in: app)
+    XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5),
+                  "Temporary Shift must insert a capital and return to lowercase")
+  }
+  private func checkCapsLock(_ name: String, in app: XCUIApplication) throws {
+    expectText("1QQ", in: app)
+    XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5), "Caps Lock must start from lowercase")
+    let shift = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ OR label IN %@", "shift",
+      ["Caps lock", "Shift", "shift", "Maiúsculas", "maiúsculas"])).firstMatch
+    XCTAssertTrue(shift.waitForExistence(timeout: 5), app.debugDescription)
+    let frame = shift.frame, window = app.windows.firstMatch, windowFrame = window.frame
+    XCTAssertTrue(!frame.isEmpty && windowFrame.contains(frame))
+    let coordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: frame.midX - windowFrame.minX, dy: frame.midY - windowFrame.minY))
+    captureKeyboardAppearance("\(name)-before", in: app)
+    func perform(_ phase: String, source: CGRect, action: () -> Void) throws {
+      let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
+      action()
+      let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
+      captureKeyboardAppearance("\(name)-\(phase)", in: app)
+      let data = try JSONSerialization.data(withJSONObject: ["name": name, "phase": phase,
+        "startedUTC": started, "endedUTC": ended, "startedUptime": startedUptime, "endedUptime": endedUptime,
+        "sourceAXFrame": ["x": source.minX, "y": source.minY, "width": source.width, "height": source.height],
+        "syntheticResult": app.textFields["composer"].value as? String ?? "",
+        "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"], options: [.sortedKeys])
+      let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+      trace.name = "\(name)-\(phase)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+    }
+    // Keep both Shift taps anchored to the host window while its key changes.
+    try perform("enabled", source: frame) { coordinate.doubleTap() }
+    let upper = app.keys["Q"]
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), "Double-tap Shift must enable capitals")
+    try perform("first", source: upper.frame) { upper.tap() }
+    expectText("1QQQ", in: app)
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), "Caps Lock must survive the first letter")
+    try perform("second", source: upper.frame) { upper.tap() }
+    expectText("1QQQQ", in: app)
+    XCTAssertTrue(upper.waitForExistence(timeout: 5), "Caps Lock must survive the second letter")
+    try perform("after", source: frame) { coordinate.tap() }
+    expectText("1QQQQ", in: app)
+    XCTAssertTrue(app.keys["q"].waitForExistence(timeout: 5), "A Shift tap must turn Caps Lock off")
+  }
+  private func checkAccentHold(_ name: String, accentColumn: String = "r", in app: XCUIApplication) throws {
+    expectText("1QQQQ", in: app)
+    let letter = app.keys["e"]
+    XCTAssertTrue(letter.waitForExistence(timeout: 5), "The accent hold must start from lowercase")
+    let window = app.windows.firstMatch, windowFrame = window.frame, source = letter.frame
+    XCTAssertTrue(!source.isEmpty && windowFrame.contains(source))
+    let coordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: source.midX - windowFrame.minX, dy: source.midY - windowFrame.minY))
+    captureKeyboardAppearance("\(name)-before", in: app)
+    func perform(_ phase: String, frame: CGRect, target: CGPoint? = nil, action: () -> Void) throws {
+      let started = Date().timeIntervalSince1970, startedUptime = ProcessInfo.processInfo.systemUptime
+      action()
+      let ended = Date().timeIntervalSince1970, endedUptime = ProcessInfo.processInfo.systemUptime
+      captureKeyboardAppearance("\(name)-\(phase)", in: app)
+      var values: [String: Any] = ["name": name, "phase": phase,
+        "startedUTC": started, "endedUTC": ended, "startedUptime": startedUptime, "endedUptime": endedUptime,
+        "sourceAXFrame": ["x": frame.minX, "y": frame.minY, "width": frame.width, "height": frame.height],
+        "syntheticResult": app.textFields["composer"].value as? String ?? "",
+        "hostCaret": app.staticTexts["input-caret"].value as? String ?? "unavailable",
+        "timingScope": "XCTest action API bounds, not actual touch delivery or physical latency"]
+      if let target { values["targetPoint"] = ["x": target.x, "y": target.y] }
+      let data = try JSONSerialization.data(withJSONObject: values, options: [.sortedKeys])
+      let trace = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+      trace.name = "\(name)-\(phase)-action-trace"; trace.lifetime = .keepAlways; add(trace)
+    }
+    try perform("released", frame: source) { coordinate.press(forDuration: 0.8) }
+    expectText("1QQQQe", in: app)
+    let next = app.keys["q"]
+    XCTAssertTrue(next.waitForExistence(timeout: 5), "Releasing the accent hold must restore the letter keys")
+    try perform("next", frame: next.frame) { next.tap() }
+    expectText("1QQQQeq", in: app)
+    let space = app.keys.matching(NSPredicate(format: "identifier == %@ OR label IN %@", "space",
+      ["space", "espaço", "espacio"])).firstMatch
+    XCTAssertTrue(space.waitForExistence(timeout: 5), "The space shortcut needs the visible space key")
+    let spaceFrame = space.frame
+    XCTAssertTrue(!spaceFrame.isEmpty && windowFrame.contains(spaceFrame))
+    let spaceCoordinate = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: spaceFrame.midX - windowFrame.minX, dy: spaceFrame.midY - windowFrame.minY))
+    try perform("double-space", frame: spaceFrame) { spaceCoordinate.doubleTap() }
+    expectText("1QQQQeq. ", in: app)
+    let capital = app.keys["Q"]
+    XCTAssertTrue(capital.waitForExistence(timeout: 5), "The space shortcut must restore sentence capitals")
+    try perform("after-double-space", frame: capital.frame) { capital.tap() }
+    expectText("1QQQQeq. Q", in: app)
+    func caret() throws -> Int {
+      let raw = try XCTUnwrap(app.staticTexts["input-caret"].value as? String)
+      let offsets = try JSONDecoder().decode([String: Int].self, from: Data(raw.utf8))
+      let start = try XCTUnwrap(offsets["start"])
+      XCTAssertEqual(start, offsets["end"], "Cursor movement must leave a collapsed insertion point")
+      return start
+    }
+    let original = "1QQQQeq. Q"
+    XCTAssertEqual(try caret(), original.utf16.count)
+    try perform("space-held", frame: spaceFrame) { spaceCoordinate.press(forDuration: 0.6) }
+    expectText(original, in: app)
+    XCTAssertEqual(try caret(), original.utf16.count, "Holding without dragging must not move the cursor")
+    try perform("cursor-left", frame: spaceFrame) {
+      spaceCoordinate.press(forDuration: 0.6, thenDragTo: spaceCoordinate.withOffset(CGVector(dx: -80, dy: 0)))
+    }
+    expectText(original, in: app)
+    let left = try caret()
+    XCTAssertGreaterThanOrEqual(left, 0); XCTAssertLessThan(left, original.utf16.count)
+    let firstMarker = app.keys.matching(NSPredicate(format: "label IN %@", ["x", "X"])).firstMatch
+    XCTAssertTrue(firstMarker.waitForExistence(timeout: 5) && firstMarker.isHittable)
+    let firstValue = firstMarker.label
+    // This fixture string is ASCII, so public UTF-16 offsets are also String offsets.
+    let firstExpected = String(original.prefix(left)) + firstValue + String(original.dropFirst(left))
+    try perform("cursor-left-insert", frame: firstMarker.frame) { firstMarker.tap() }
+    expectText(firstExpected, in: app)
+    XCTAssertEqual(try caret(), left + 1)
+    try perform("cursor-right", frame: spaceFrame) {
+      spaceCoordinate.press(forDuration: 0.6, thenDragTo: spaceCoordinate.withOffset(CGVector(dx: 80, dy: 0)))
+    }
+    expectText(firstExpected, in: app)
+    let right = try caret()
+    XCTAssertGreaterThan(right, left + 1); XCTAssertLessThanOrEqual(right, firstExpected.utf16.count)
+    let nextMarker = app.keys.matching(NSPredicate(format: "label IN %@", ["v", "V"])).firstMatch
+    XCTAssertTrue(nextMarker.waitForExistence(timeout: 5) && nextMarker.isHittable)
+    let nextExpected = String(firstExpected.prefix(right)) + nextMarker.label + String(firstExpected.dropFirst(right))
+    try perform("cursor-right-insert", frame: nextMarker.frame) { nextMarker.tap() }
+    expectText(nextExpected, in: app)
+    XCTAssertEqual(try caret(), right + 1)
+    let accentSource = app.keys["e"], column = app.keys[accentColumn]
+    XCTAssertTrue(accentSource.waitForExistence(timeout: 5) && accentSource.isHittable)
+    XCTAssertTrue(column.waitForExistence(timeout: 5) && column.isHittable)
+    let accentFrame = accentSource.frame, columnFrame = column.frame
+    XCTAssertTrue(!accentFrame.isEmpty && windowFrame.contains(accentFrame) && windowFrame.contains(columnFrame))
+    // The captured menus place é above R in Clarify/pt-BR and above W in en-US.
+    let targetPoint = CGPoint(x: columnFrame.midX, y: accentFrame.minY - accentFrame.height)
+    XCTAssertTrue(windowFrame.contains(targetPoint), "The accent drag must end inside the host window")
+    let dragStart = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: accentFrame.midX - windowFrame.minX, dy: accentFrame.midY - windowFrame.minY))
+    let dragEnd = window.coordinate(withNormalizedOffset: .zero).withOffset(
+      CGVector(dx: targetPoint.x - windowFrame.minX, dy: targetPoint.y - windowFrame.minY))
+    try perform("accent-slide", frame: accentFrame, target: targetPoint) {
+      dragStart.press(forDuration: 0.8, thenDragTo: dragEnd)
+    }
+    let accentExpected = String(nextExpected.prefix(right + 1)) + "é" + String(nextExpected.dropFirst(right + 1))
+    expectText(accentExpected, in: app)
+    XCTAssertEqual(try caret(), right + 2, "A drag must insert one selected accent")
+    let afterSlide = app.keys["q"]
+    XCTAssertTrue(afterSlide.waitForExistence(timeout: 5) && afterSlide.isHittable)
+    try perform("after-accent-slide", frame: afterSlide.frame) { afterSlide.tap() }
+    expectText(String(accentExpected.prefix(right + 2)) + "q" + String(accentExpected.dropFirst(right + 2)), in: app)
+    XCTAssertEqual(try caret(), right + 3, "The next tap must work after the accent drag")
+  }
+  private func captureNativeLanguage(_ language: String, names: [String], group: String) throws {
+    let app = XCUIApplication(); app.terminate()
+    let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+    settings.terminate(); settings.launch()
+    open("General", in: settings); open("Keyboard", in: settings); open("Keyboards", in: settings)
+    func row(_ names: [String], exact: Bool = false) -> XCUIElement {
+      let predicates = names.map { NSPredicate(format: exact ? "label == %@" : "label BEGINSWITH %@", $0) }
+      return settings.cells.matching(NSCompoundPredicate(orPredicateWithSubpredicates: predicates)).firstMatch
+    }
+    if !row(names).exists {
+      let add = settings.cells["AddNewKeyboard"]
+      XCTAssertTrue(add.waitForExistence(timeout: 5), settings.debugDescription); add.tap()
+      // The regional row can be far below the initial viewport in this list.
+      let search = settings.searchFields["Search"]
+      XCTAssertTrue(search.waitForExistence(timeout: 5), settings.debugDescription)
+      search.tap(); search.typeText(group)
+      // iOS can list regional choices directly or group them under a language.
+      let choices = row(names), grouped = row([group], exact: true)
+      var selected = false
+      for _ in 0..<8 {
+        if choices.exists && choices.isHittable { choices.tap(); selected = true; break }
+        if grouped.exists && grouped.isHittable {
+          grouped.tap()
+          XCTAssertTrue(choices.waitForExistence(timeout: 5), settings.debugDescription)
+          choices.tap(); selected = true; break
+        }
+        settings.swipeUp()
+      }
+      XCTAssertTrue(selected, "Exact native keyboard unavailable: \(language). \(settings.debugDescription)")
+      // iOS can default to adding this language to an existing bilingual keyboard.
+      let regionalSetup = settings.navigationBars.matching(NSPredicate(format: "identifier IN %@ OR label IN %@", names, names)).firstMatch
+      let separate = settings.cells.matching(NSPredicate(format: "label == %@", "Add New Keyboard")).firstMatch
+      if regionalSetup.exists && separate.waitForExistence(timeout: 2) {
+        separate.tap()
+        let layout = settings.cells.matching(NSPredicate(format: "label == %@", "QWERTY")).firstMatch
+        XCTAssertTrue(layout.waitForExistence(timeout: 5), settings.debugDescription); layout.tap()
+      }
+      let done = settings.navigationBars.buttons["Done"]
+      if done.waitForExistence(timeout: 2) {
+        let ready = expectation(for: NSPredicate { _, _ in done.isEnabled && done.isHittable }, evaluatedWith: nil)
+        wait(for: [ready], timeout: 5)
+        done.tap()
+      }
+      XCTAssertTrue(row(names).waitForExistence(timeout: 5), "Keyboard was not added: \(language). \(settings.debugDescription)")
+    }
+    app.launchArguments = ["--native-keyboard-reference"]; app.launch()
+    app.textFields["composer"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
+    let observed = app.staticTexts["input-language"]
+    if observed.value as? String != language {
+      let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
+      XCTAssertTrue(globe.waitForExistence(timeout: 5), app.debugDescription); globe.press(forDuration: 1)
+      let choices = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", names)).firstMatch
+      XCTAssertTrue(choices.waitForExistence(timeout: 5), app.debugDescription); choices.tap()
+    }
+    let exactLanguage = expectation(for: NSPredicate(format: "value == %@", language), evaluatedWith: observed)
+    wait(for: [exactLanguage], timeout: 10)
+    XCTAssertFalse(app.buttons["clarify.keyboard.record"].exists, "The language reference must use Apple's keyboard")
+    try captureKeyboardReference("apple-\(language)-uppercase", uppercase: true, in: app)
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Q")).firstMatch.tap()
+    expectText("Q", in: app)
+    try captureKeyboardReference("apple-\(language)-lowercase", uppercase: false, in: app)
+    try capturePagesAndDarkAppearance("apple-\(language)", in: app)
+    XCTAssertEqual(observed.value as? String, language, "The language must remain selected through all pages")
+    app.terminate()
+    app.launch(); app.textFields["composer"].tap()
+    let sameLanguage = expectation(for: NSPredicate(format: "value == %@", language), evaluatedWith: app.staticTexts["input-language"])
+    wait(for: [sameLanguage], timeout: 10)
+    try checkNumberSlide("apple-\(language)-number-slide", in: app)
+    try checkTemporaryShiftSlide("apple-\(language)-shift-slide", in: app)
+    try checkCapsLock("apple-\(language)-caps-lock", in: app)
+    try checkAccentHold("apple-\(language)-accent-hold", accentColumn: language == "en-US" ? "w" : "r", in: app)
+    app.terminate()
+  }
+  private func capturePagesAndDarkAppearance(_ prefix: String, in app: XCUIApplication) throws {
+    func control(_ labels: [String], identifier: String = "") -> XCUIElement {
+      app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@ OR (identifier != '' AND identifier == %@)", labels, identifier)).firstMatch
+    }
+    func pages(_ suffix: String) {
+      let numbers = control(["numbers", "123"], identifier: "more")
+      XCTAssertTrue(numbers.waitForExistence(timeout: 5), app.debugDescription); numbers.tap()
+      XCTAssertTrue(control(["1"]).waitForExistence(timeout: 5), app.debugDescription)
+      captureKeyboardAppearance("\(prefix)-\(suffix)-numbers", in: app)
+      let symbols = control(["symbols", "#+="], identifier: "shift")
+      XCTAssertTrue(symbols.waitForExistence(timeout: 5), app.debugDescription); symbols.tap()
+      XCTAssertTrue(control(["["]).waitForExistence(timeout: 5), app.debugDescription)
+      captureKeyboardAppearance("\(prefix)-\(suffix)-symbols", in: app)
+      let letters = control(["letters", "ABC"], identifier: "more")
+      XCTAssertTrue(letters.waitForExistence(timeout: 5), app.debugDescription); letters.tap()
+      XCTAssertTrue(control(["q"]).waitForExistence(timeout: 5), app.debugDescription)
+    }
+    pages("default")
+    app.buttons["Toggle appearance"].tap()
+    try captureKeyboardReference("\(prefix)-dark-lowercase", uppercase: false, in: app)
+    pages("dark")
+    app.buttons["Toggle backdrop"].tap()
+    try captureKeyboardReference("\(prefix)-dark-blue-lowercase", uppercase: false, in: app)
+    app.buttons["Toggle backdrop"].tap()
+    app.buttons["Toggle appearance"].tap()
+    XCTAssertTrue(control(["q"]).waitForExistence(timeout: 5), app.debugDescription)
+  }
   private func activateHost(_ app: XCUIApplication) {
     app.activate()
     // Settings can return before SpringBoard finishes scaling the host window.
@@ -114,6 +457,16 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
       try checkTrace(in: app, opening: "Native keyboard opening \(index)", monotonic: true)
     }
+    app.terminate()
+    app.launchArguments = ["--native-keyboard-reference"]; app.launch()
+    app.textFields["composer"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertFalse(app.buttons["clarify.keyboard.record"].exists, "The reference must use Apple's keyboard")
+    try captureKeyboardReference("apple-default-uppercase", uppercase: true, in: app)
+    app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch.tap()
+    expectText("Q", in: app)
+    try captureKeyboardReference("apple-default-lowercase", uppercase: false, in: app)
+    try capturePagesAndDarkAppearance("apple", in: app)
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false
@@ -148,24 +501,16 @@ final class KeyboardExtensionTests: XCTestCase {
     activateHost(app)
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
-    let globe = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "next keyboard")).firstMatch
-    // The first keyboard can still be loading after Settings changes its list.
-    // Wait for either input view before deciding whether a switch is needed.
-    let inputReady = expectation(for: NSPredicate { _, _ in keyboard.exists || globe.exists }, evaluatedWith: nil)
-    wait(for: [inputReady], timeout: 30)
-    if !keyboard.exists {
-      XCTAssertTrue(globe.exists, app.debugDescription)
-      globe.press(forDuration: 1)
-      let clarify = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Clarify")).firstMatch
-      XCTAssertTrue(clarify.waitForExistence(timeout: 5), app.debugDescription); clarify.tap()
-    }
-    XCTAssertTrue(keyboard.waitForExistence(timeout: 30), app.debugDescription)
+    selectClarifyKeyboard(in: app)
     XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
                   "The installed extension must receive Full Access before testing activation")
     try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
+    try captureKeyboardReference("clarify-default-uppercase", uppercase: true, in: app)
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch
     XCTAssertTrue(letter.waitForExistence(timeout: 5), app.debugDescription); letter.tap()
     expectText("Q", in: app)
+    try captureKeyboardReference("clarify-default-lowercase", uppercase: false, in: app)
+    try capturePagesAndDarkAppearance("clarify", in: app)
     let space = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch
     XCTAssertTrue(space.isHittable, "The bottom keyboard row must be usable")
     space.tap()
@@ -234,5 +579,21 @@ final class KeyboardExtensionTests: XCTestCase {
       }, evaluatedWith: nil)
       wait(for: [back], timeout: 30)
     }
+    // Test this interaction only after the original typing and activation gates.
+    app.terminate(); app.launch(); app.textFields["composer"].tap()
+    selectClarifyKeyboard(in: app)
+    try checkNumberSlide("clarify-number-slide", in: app)
+    try checkTemporaryShiftSlide("clarify-shift-slide", in: app)
+    try checkCapsLock("clarify-caps-lock", in: app)
+    try checkAccentHold("clarify-accent-hold", in: app)
+  }
+  // Keep the original installed acceptance first, before changing enabled languages.
+  func testZ1NativeEnglishUSReference() throws {
+    continueAfterFailure = false; executionTimeAllowance = 300
+    try captureNativeLanguage("en-US", names: ["English (US)", "English (United States)"], group: "English")
+  }
+  func testZ2NativePortugueseBrazilReference() throws {
+    continueAfterFailure = false; executionTimeAllowance = 300
+    try captureNativeLanguage("pt-BR", names: ["Portuguese (Brazil)", "Português (Brasil)"], group: "Portuguese")
   }
 }

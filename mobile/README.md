@@ -202,6 +202,10 @@ The practice step has a local text field in the guide. Continue is enabled only
 when that field contains non-whitespace text; it does not use a global transcript
 or require another app or manual confirmation. Practice text is not persisted.
 
+Hold the keyboard Space bar, then drag left or right to move the text cursor.
+Release your finger at the position where you want to type. A held Space bar
+does not insert a space. Vertical movement across wrapped lines is not supported.
+
 Tap the keyboard microphone once to start continuous recording. There is no hold
 or upward lock gesture. A panel within the same keyboard height provides separate
 cancel and finish actions, with the globe still available. Its waveform uses the

@@ -7,6 +7,13 @@ private final class KeyButton: UIButton {
   var acceptsPoint: ((CGPoint) -> Bool)?
   weak var grid: KeyGridView?
   var isGlobe = false
+  var isShift = false
+  var isSpace = false
+  var startsNumberSlide = false
+  var titleVerticalOffset: CGFloat = 0
+  override func titleRect(forContentRect contentRect: CGRect) -> CGRect {
+    super.titleRect(forContentRect: contentRect).offsetBy(dx: 0, dy: titleVerticalOffset)
+  }
   // Keep the original UIKit touch identity, but let the grid transfer a press
   // to a neighbouring key. UIButton's default tracking drops such releases.
   override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) { grid?.track(touches, phase: .began, event: event) }
@@ -35,6 +42,10 @@ final class KeyGridView: UIView {
   var onDelete: (() -> Void)?
   var onNextKeyboard: ((UIButton, UIEvent?) -> Void)?
   var onKeyPress: (() -> Void)?
+  var onPrepareCursor: (() -> Void)?
+  var onMoveCursor: ((Int) -> Bool)?
+  var onEndCursor: (() -> Void)?
+  var cursorUptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
   weak var previewContainer: UIView?
   var model = KeyboardState()
   var needsGlobe = false
@@ -43,14 +54,33 @@ final class KeyGridView: UIView {
   private var repeatTimer: Timer?
   private var lastShift = Date.distantPast
   private var accentBar: UIStackView?
+  private weak var activeAccentGesture: UILongPressGestureRecognizer?
   private var accentKeys: [UIButton] = []
   private var selectedAccent: String?
   private var suppressKey = false
   private let preview = KeyPreview()
   private var touchRows: [(view: UIView, keys: [KeyButton])] = []
   private var presses: [AnyHashable: KeyButton] = [:]
+  private var numberSlide: (id: AnyHashable, key: KeyButton, row: UIStackView)?
+  private var shiftSlide: (id: AnyHashable, key: KeyButton, used: Bool)?
+  private struct SpacePress {
+    let token = UUID()
+    let id: AnyHashable
+    let key: KeyButton
+    let started: TimeInterval
+    var x: CGFloat
+    var remainder: CGFloat = 0
+    var active = false
+    var movable = true
+  }
+  private var spacePress: SpacePress?
+  private var spaceTimer: Timer?
   private var rebuildPending = false
   private var layoutSignature = ""
+  private var usesModernKeyAppearance: Bool {
+    if #available(iOS 26.0, *) { return true }
+    return false
+  }
 
   func track(_ touches: Set<UITouch>, phase: UITouch.Phase, event: UIEvent?) {
     for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
@@ -64,12 +94,48 @@ final class KeyGridView: UIView {
     }
   }
   func beginPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
-    guard presses[id] == nil, accentBar == nil, let key = nearestKey(at: point) else { return }
+    guard presses[id] == nil, accentBar == nil, spacePress?.active != true,
+          let key = nearestKey(at: point) else { return }
+    if spacePress != nil { finishSpacePress() }
+    let startsCursor = key.isSpace && presses.isEmpty
+    if key.startsNumberSlide, model.page == .letters, presses.isEmpty,
+       let bottom = stack.arrangedSubviews.last as? UIStackView {
+      numberSlide = (id, key, bottom)
+      model.page = .numbers; rebuild()
+    }
     presses[id] = key; key.isHighlighted = true
+    guard presses[id] === key else { return }
+    if key.isShift, model.page == .letters, model.shift == .off, presses.count == 1 {
+      shiftSlide = (id, key, false); refreshLetterCasing()
+    }
+    if startsCursor {
+      let press = SpacePress(id: id, key: key, started: cursorUptime(), x: point.x)
+      spacePress = press
+      let timer = Timer(timeInterval: 0.45, repeats: false) { [weak self] _ in
+        guard self?.spacePress?.token == press.token else { return }
+        self?.updateSpaceHold()
+      }
+      spaceTimer = timer; RunLoop.main.add(timer, forMode: .common)
+      onPrepareCursor?()
+    }
     if key.isGlobe { onNextKeyboard?(key, event) } else { key.sendActions(for: .touchDown) }
   }
   func movePress(_ id: AnyHashable, to point: CGPoint, event: UIEvent? = nil) {
     guard let previous = presses[id], accentBar == nil else { return }
+    if var space = spacePress, space.id == id {
+      guard point.x.isFinite else { return }
+      if space.active {
+        let distance = space.remainder + min(192, max(-192, point.x - space.x))
+        let offset = Int(distance / 6)
+        space.x = point.x; space.remainder = distance - CGFloat(offset) * 6
+        spacePress = space
+        if offset != 0, space.movable, onMoveCursor?(offset) != true,
+           spacePress?.token == space.token { spacePress?.movable = false }
+        return
+      }
+      if releaseKey(at: point) === space.key { spacePress?.x = point.x }
+      else { finishSpacePress() }
+    }
     if previous.isGlobe { onNextKeyboard?(previous, event); return }
     // A small release margin tolerates finger motion at the outer keyboard edge.
     guard let next = releaseKey(at: point), next !== previous else { return }
@@ -82,15 +148,64 @@ final class KeyGridView: UIView {
   func endPress(_ id: AnyHashable, at point: CGPoint, event: UIEvent? = nil) {
     movePress(id, to: point, event: event)
     guard let key = presses.removeValue(forKey: id) else { return }
+    if spacePress?.id == id {
+      let consumed = spacePress?.active == true
+      finishSpacePress()
+      if consumed { key.isHighlighted = false; key.sendActions(for: .touchCancel); finishPresses(); return }
+    }
+    let slide = numberSlide
+    let ownsSlide = slide?.id == id
+    let shift = shiftSlide
+    let ownsShift = shift?.id == id
+    let inside = releaseKey(at: point) != nil && accentBar == nil
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
-    if key.isGlobe { onNextKeyboard?(key, event) }
-    else { key.sendActions(for: releaseKey(at: point) != nil && accentBar == nil ? .touchUpInside : .touchCancel) }
+    if ownsSlide, key === slide?.key { key.sendActions(for: .touchCancel) }
+    else if ownsShift, key === shift?.key,
+            (!inside || shift?.used == true || model.page != .letters) { key.sendActions(for: .touchCancel) }
+    else if key.isGlobe { onNextKeyboard?(key, event) }
+    else { key.sendActions(for: inside ? .touchUpInside : .touchCancel) }
+    if ownsSlide {
+      numberSlide = nil
+      if key !== slide?.key || !inside { model.page = .letters }
+      // Refresh the retained row too, even if insertion already changed pages.
+      layoutSignature = ""; rebuild()
+    }
+    if ownsShift { shiftSlide = nil; refreshLetterCasing() }
     finishPresses()
   }
   func cancelPress(_ id: AnyHashable) {
     guard let key = presses.removeValue(forKey: id) else { return }
+    if spacePress?.id == id { finishSpacePress() }
     if !presses.values.contains(where: { $0 === key }) { key.isHighlighted = false }
-    key.sendActions(for: .touchCancel); finishPresses()
+    key.sendActions(for: .touchCancel)
+    if shiftSlide?.id == id { shiftSlide = nil; refreshLetterCasing() }
+    if numberSlide?.id == id { numberSlide = nil; model.page = .letters; layoutSignature = ""; rebuild() }
+    finishPresses()
+  }
+  // Both the timer and controlled native tests use this elapsed-time boundary.
+  func updateSpaceHold() {
+    guard let space = spacePress, !space.active, presses.count == 1,
+          presses[space.id] === space.key, cursorUptime() - space.started >= 0.45 else { return }
+    spaceTimer?.invalidate(); spaceTimer = nil
+    spacePress?.active = true
+    space.key.isHighlighted = false; preview.removeFromSuperview()
+    setCursorTitlesHidden(true)
+  }
+  private func setCursorTitlesHidden(_ hidden: Bool) {
+    for key in touchRows.flatMap({ $0.keys }) {
+      key.titleLabel?.alpha = hidden ? 0 : 1; key.imageView?.alpha = hidden ? 0 : 1
+    }
+  }
+  private func finishSpacePress() {
+    guard spacePress != nil else { return }
+    spaceTimer?.invalidate(); spaceTimer = nil; spacePress = nil
+    setCursorTitlesHidden(false)
+    onEndCursor?()
+  }
+  func cancelAllPresses() {
+    clearAccentPicker()
+    for id in Array(presses.keys) { cancelPress(id) }
+    finishPresses()
   }
   private func finishPresses() {
     if presses.isEmpty, rebuildPending { rebuildPending = false; rebuild() }
@@ -123,8 +238,12 @@ final class KeyGridView: UIView {
     return result
   }
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    if !isHidden, isUserInteractionEnabled, alpha > 0.01, let bar = accentBar,
+       bar.frame.contains(point), let hit = bar.hitTest(bar.convert(point, from: self), with: event) {
+      return hit
+    }
     let hit = super.hitTest(point, with: event)
-    // Leave the accent picker and UIKit's hidden/disabled/outside rules intact.
+    // Keep ordinary keys inside UIKit's hidden/disabled/outside rules.
     guard hit != nil, accentBar == nil else { return hit }
     return nearestKey(at: point) ?? hit
   }
@@ -132,22 +251,26 @@ final class KeyGridView: UIView {
   override init(frame: CGRect) {
     super.init(frame: frame)
     isMultipleTouchEnabled = true
-    stack.axis = .vertical; stack.spacing = 10; stack.distribution = .fillEqually
+    let modern = usesModernKeyAppearance
+    // The iOS 26 portrait reference has 43-point keys on a 54-point row pitch.
+    // Keep the existing input-view height and the toolbar's interaction area.
+    stack.axis = .vertical; stack.spacing = modern ? 11 : 10; stack.distribution = .fillEqually
     addSubview(stack); stack.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      stack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6)
+      stack.topAnchor.constraint(equalTo: topAnchor, constant: modern ? 12 : 4),
+      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: modern ? -3 : -6),
+      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: modern ? 6.5 : 6),
+      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: modern ? -6.5 : -6)
     ])
     rebuild()
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window == nil { for id in Array(presses.keys) { cancelPress(id) }; stopDelete(); preview.removeFromSuperview() }
+    if window == nil { cancelAllPresses(); stopDelete(); preview.removeFromSuperview() }
   }
-  deinit { repeatTimer?.invalidate() }
+  override var isHidden: Bool { didSet { if isHidden { cancelAllPresses() } } }
+  deinit { repeatTimer?.invalidate(); spaceTimer?.invalidate() }
 
   func rebuild() {
     guard accentBar == nil, presses.isEmpty else { rebuildPending = true; return }
@@ -156,7 +279,9 @@ final class KeyGridView: UIView {
     layoutSignature = signature
     preview.removeFromSuperview()
     stopDelete()
-    stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+    // UIKit must keep the view that received touchesBegan attached while the
+    // finger slides onto the new page. Rebuild the rows around its bottom row.
+    stack.arrangedSubviews.filter { $0 !== numberSlide?.row }.forEach { $0.removeFromSuperview() }
     let rows = model.rows
     for (index, letters) in rows.enumerated() {
       let row = UIStackView(); row.axis = .horizontal; row.spacing = 6
@@ -165,6 +290,7 @@ final class KeyGridView: UIView {
         let title = model.page == .letters ? "" : (model.page == .numbers ? "#+=" : "123")
         let mode = key(title, special: true) { [weak self] in self?.changeShiftOrSymbols() }
         if model.page == .letters {
+          mode.isShift = true
           mode.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (model.shift == .once ? "shift.fill" : "shift")), for: .normal)
           mode.accessibilityLabel = model.shift == .caps ? L("Desativar maiúsculas") : L("Maiúsculas")
         }
@@ -174,39 +300,48 @@ final class KeyGridView: UIView {
         let button = key(text) { [weak self] in
           guard let self = self else { return }
           if self.suppressKey { self.suppressKey = false; return }
-          let value = text.allSatisfy(\.isLetter) ? (self.model.shift == .off ? text.lowercased() : text.uppercased()) : text
+          let value = text.allSatisfy(\.isLetter) ?
+            (self.model.shift == .off && self.shiftSlide == nil ? text.lowercased() : text.uppercased()) : text
           self.insert(value)
         }
         if !KeyboardState.accents(for: text).isEmpty {
           let long = UILongPressGestureRecognizer(target: self, action: #selector(accent(_:)))
           long.minimumPressDuration = 0.35; button.addGestureRecognizer(long)
           // VoiceOver exposes accents without requiring a drag.
-          button.accessibilityCustomActions = KeyboardState.accents(for: text).dropFirst().map { value in
-            UIAccessibilityCustomAction(name: value) { [weak self] _ in self?.insert(value); return true }
-          }
+          configureAccentActions(button, title: text)
         }
         row.addArrangedSubview(button)
       }
       if index == 2 {
         let delete = key("", special: true) {}
         delete.setImage(UIImage(systemName: "delete.left"), for: .normal); delete.accessibilityLabel = L("Apagar")
-        delete.accessibleAction = { [weak self] in self?.onDelete?() }
+        delete.accessibleAction = { [weak self] in
+          guard let self, self.spacePress?.active != true else { return }; self.onDelete?()
+        }
         delete.addTarget(self, action: #selector(beginDelete), for: .touchDown)
         delete.addTarget(self, action: #selector(stopDelete), for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
         row.addArrangedSubview(delete)
       }
-      if index == 2, model.page == .letters {
+      if index == 2, model.page == .letters || usesModernKeyAppearance {
         row.distribution = .fill
         let buttons = row.arrangedSubviews
-        // The middle seven keys keep the first row's width. Separate gaps let
-        // shift/delete keep the narrower proportions of the Apple reference.
+        // Keep wider gaps beside the side controls on every iOS 26 page.
         let middle = UIStackView(); middle.axis = .horizontal; middle.spacing = 6
         for button in buttons.dropFirst().dropLast() {
           row.removeArrangedSubview(button); button.removeFromSuperview(); middle.addArrangedSubview(button)
         }
         row.insertArrangedSubview(middle, at: 1); row.spacing = 14
-        for button in middle.arrangedSubviews {
-          button.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.1, constant: -5.4).isActive = true
+        if model.page == .letters {
+          // The middle seven letters keep the first row's key width.
+          for button in middle.arrangedSubviews {
+            button.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.1, constant: -5.4).isActive = true
+          }
+        } else {
+          // Add one display pixel to each side control without moving punctuation.
+          let edgePixel = 1 / max(traitCollection.displayScale, 1)
+          row.spacing -= edgePixel
+          middle.distribution = .fillEqually
+          buttons.first!.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15, constant: -13.1 + edgePixel).isActive = true
         }
         buttons.first!.widthAnchor.constraint(equalTo: buttons.last!.widthAnchor).isActive = true
       }
@@ -220,32 +355,56 @@ final class KeyGridView: UIView {
           multiplier: model.page == .letters && index == 1 ? 0.9 : 1,
           constant: model.page == .letters && index == 1 ? -0.6 : 0)
       ])
-      stack.addArrangedSubview(container)
+      stack.insertArrangedSubview(container, at: index)
     }
-    let bottom = UIStackView(); bottom.axis = .horizontal; bottom.spacing = 6
-    // Attach the row before activating constraints against the outer stack.
-    stack.addArrangedSubview(bottom)
-    let mode = key(model.page == .letters ? "123" : "ABC", special: true) { [weak self] in
-      guard let self = self else { return }
-      self.model.page = self.model.page == .letters ? .numbers : .letters; self.rebuild()
+    if let slide = numberSlide {
+      let title = model.page == .letters ? "123" : "ABC"
+      slide.key.setTitle(title, for: .normal); slide.key.accessibilityLabel = title
+      slide.key.startsNumberSlide = model.page == .letters
+    } else {
+      let bottom = UIStackView(); bottom.axis = .horizontal; bottom.spacing = 6
+      // Attach the row before activating constraints against the outer stack.
+      stack.addArrangedSubview(bottom)
+      let mode = key(model.page == .letters ? "123" : "ABC", special: true) { [weak self] in
+        guard let self = self else { return }
+        self.model.page = self.model.page == .letters ? .numbers : .letters; self.rebuild()
+      }
+      mode.startsNumberSlide = model.page == .letters
+      bottom.addArrangedSubview(mode)
+      let wideBottomControls = usesModernKeyAppearance && !needsGlobe
+      // With the system globe below the grid, the side controls each occupy a
+      // quarter of the row's key pitch; subtract their visible inter-key gaps.
+      mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.113,
+        constant: wideBottomControls ? -4.5 : 0).isActive = true
+      if needsGlobe {
+        let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
+        globe.isGlobe = true
+        globe.accessibilityLabel = L("Próximo teclado")
+        globe.accessibleAction = { [weak self, weak globe] in
+          guard let self, self.spacePress?.active != true, let globe else { return }
+          self.onNextKeyboard?(globe, nil)
+        }
+        globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
+        bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
+      }
+      let space = key(L("espaço")) { [weak self] in self?.insert(" ") }
+      space.isSpace = true
+      if usesModernKeyAppearance { space.setTitle("", for: .normal) }
+      bottom.addArrangedSubview(space)
+      let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
+      let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
+      if usesModernKeyAppearance && returnType == .default {
+        enter.setTitle("", for: .normal)
+        enter.setImage(UIImage(systemName: "return"), for: .normal)
+        enter.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .regular), forImageIn: .normal)
+      }
+      if returnType != .default {
+        enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
+      }
+      bottom.addArrangedSubview(enter)
+      enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.23,
+        constant: wideBottomControls ? -4.5 : 0).isActive = true
     }
-    bottom.addArrangedSubview(mode)
-    mode.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.113).isActive = true
-    if needsGlobe {
-      let globe = key("", special: true) {}; globe.setImage(UIImage(systemName: "globe"), for: .normal)
-      globe.isGlobe = true
-      globe.accessibilityLabel = L("Próximo teclado")
-      globe.accessibleAction = { [weak self, weak globe] in if let globe = globe { self?.onNextKeyboard?(globe, nil) } }
-      globe.addTarget(self, action: #selector(nextKeyboard(_:event:)), for: .allTouchEvents)
-      bottom.addArrangedSubview(globe); globe.widthAnchor.constraint(equalTo: mode.widthAnchor).isActive = true
-    }
-    bottom.addArrangedSubview(key(L("espaço")) { [weak self] in self?.insert(" ") })
-    let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
-    let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
-    if returnType != .default {
-      enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
-    }
-    bottom.addArrangedSubview(enter); enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: 0.23).isActive = true
     func buttons(in view: UIView) -> [KeyButton] {
       view.subviews.flatMap { child in
         if let key = child as? KeyButton { return [key] }
@@ -261,25 +420,27 @@ final class KeyGridView: UIView {
   }
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
     let button = KeyButton(type: .custom)
+    let modern = usesModernKeyAppearance
     button.grid = self; button.isMultipleTouchEnabled = true
     button.restingColor = UIColor { traits in
       // Lift the system material below each dark key instead of covering it
       // with a fixed gray that can match the host application's background.
       if traits.userInterfaceStyle == .dark {
         let stronger = traits.accessibilityContrast == .high
+        // The iOS 26 gray tint was measured over both black and blue materials.
         return UIAccessibility.isReduceTransparencyEnabled
           ? UIColor(white: stronger ? 0.6 : 0.47, alpha: 1)
-          : UIColor(white: 1, alpha: stronger ? 0.36 : 0.24)
+          : UIColor(white: modern && !stronger ? 0.71 : 1, alpha: stronger ? 0.36 : 0.24)
       }
-      return special ? UIColor(white: 0.68, alpha: 1) : .white
+      return special && !modern ? UIColor(white: 0.68, alpha: 1) : .white
     }
-    button.backgroundColor = button.restingColor; button.layer.cornerRadius = 10
-    button.layer.cornerCurve = .continuous
-    button.layer.shadowColor = UIColor.black.cgColor; button.layer.shadowOpacity = 0.12
+    button.backgroundColor = button.restingColor; button.layer.cornerRadius = modern ? 8 : 10
+    button.layer.cornerCurve = modern ? .circular : .continuous
+    button.layer.shadowColor = UIColor.black.cgColor; button.layer.shadowOpacity = modern ? 0 : 0.12
     button.layer.shadowOffset = CGSize(width: 0, height: 1); button.layer.shadowRadius = 0
-    button.setTitle(title, for: .normal); button.setTitleColor(.label, for: .normal); button.tintColor = .label
-    button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 16 : 25)
-    button.accessibilityLabel = title; button.accessibilityTraits = .keyboardKey
+    configureTitle(button, title: title)
+    button.setTitleColor(.label, for: .normal); button.tintColor = .label
+    button.accessibilityTraits = .keyboardKey
     button.acceptsPoint = { [weak self, weak button] point in
       guard let self = self, let button = button else { return false }
       guard self.accentBar == nil, button.isDescendant(of: self.stack) else {
@@ -292,15 +453,80 @@ final class KeyGridView: UIView {
       guard let self = self else { return }
       if highlighted {
         self.onKeyPress?()
-        if title.count == 1, self.accentBar == nil, let container = self.previewContainer {
-          self.preview.show(title, key: key.convert(key.bounds, to: container), in: container, color: key.restingColor)
+        let currentTitle = key.title(for: .normal) ?? title
+        if currentTitle.count == 1, self.showsPressPreview(for: key), self.accentBar == nil, let container = self.previewContainer {
+          self.preview.show(currentTitle, key: key.convert(key.bounds, to: container), in: container, color: key.restingColor)
         }
       } else { self.preview.removeFromSuperview() }
     }
-    button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+    button.addAction(UIAction { [weak self] _ in
+      guard let self, self.spacePress?.active != true else { return }; action()
+    }, for: .touchUpInside)
     return button
   }
-  private func insert(_ text: String) { model.didInsert(text); onInsert?(text); rebuild() }
+  private func showsPressPreview(for key: KeyButton) -> Bool {
+    // A Shift slide changes casing without the popup used by a direct tap.
+    guard usesModernKeyAppearance, let slide = shiftSlide else { return true }
+    return presses[slide.id] !== key
+  }
+  private func configureTitle(_ button: KeyButton, title: String) {
+    button.setTitle(title, for: .normal); button.accessibilityLabel = title
+    let modern = usesModernKeyAppearance
+    let uppercaseLetter = title.count == 1 && title.allSatisfy(\.isUppercase)
+    let compactGlyph = uppercaseLetter || (title.count == 1 && "0123456789".contains(title))
+    let bracketGlyph = title.count == 1 && "()[]{}".contains(title)
+    let sentenceMark = title == "?" || title == "!"
+    let strokeGlyph = title == "/" || title == "\\" || title == "|"
+    let asteriskGlyph = title == "*"
+    let singleGlyphSize: CGFloat = modern && strokeGlyph ? 20 :
+      (modern && compactGlyph ? 21 : (modern && (bracketGlyph || sentenceMark) ? 22.5 : 25))
+    button.titleLabel?.font = .systemFont(ofSize: modern && asteriskGlyph ? 34 :
+      (title.count > 1 ? 16 : singleGlyphSize))
+    button.titleVerticalOffset = 0
+    // The iOS 26 references use distinct glyph sizes and positions in these groups.
+    // Offset titles only; keep key bounds and touch ownership unchanged.
+    if modern, title.count == 1 {
+      if title.allSatisfy(\.isLowercase) { button.titleVerticalOffset = -7.0 / 3.0 }
+      else if compactGlyph { button.titleVerticalOffset = -4.0 / 3.0 }
+      else if bracketGlyph || strokeGlyph || title == "-" { button.titleVerticalOffset = -3 }
+      else if sentenceMark { button.titleVerticalOffset = -1 }
+      else if asteriskGlyph { button.titleVerticalOffset = 5 }
+      else if title == "#" { button.titleVerticalOffset = -5.0 / 3.0 }
+    }
+  }
+  private func configureAccentActions(_ button: KeyButton, title: String) {
+    button.accessibilityCustomActions = KeyboardState.accents(for: title).dropFirst().map { value in
+      UIAccessibilityCustomAction(name: value) { [weak self, weak button] _ in
+        guard let self, let button, self.window != nil, !self.isHidden, self.isUserInteractionEnabled, self.alpha > 0.01,
+              button.isEnabled, button.isUserInteractionEnabled, !button.isHidden, button.alpha > 0.01,
+              button.isDescendant(of: self.stack), button.title(for: .normal) == title,
+              self.accentBar == nil, self.spacePress?.active != true else { return false }
+        self.insert(value); return true
+      }
+    }
+  }
+  private func refreshLetterCasing() {
+    // Keep UIKit's touch receivers attached while Shift changes their titles.
+    let upper = shiftSlide != nil || model.shift != .off
+    for button in touchRows.flatMap({ $0.keys }) {
+      if button.isShift {
+        button.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (upper ? "shift.fill" : "shift")), for: .normal)
+      } else if let title = button.title(for: .normal), title.count == 1, title.allSatisfy(\.isLetter) {
+        let next = upper ? title.uppercased() : title.lowercased()
+        if next != title {
+          configureTitle(button, title: next); configureAccentActions(button, title: next)
+          if button.isHighlighted, showsPressPreview(for: button), accentBar == nil, let container = previewContainer {
+            preview.show(next, key: button.convert(button.bounds, to: container), in: container, color: button.restingColor)
+          }
+        }
+      }
+    }
+  }
+  private func insert(_ text: String) {
+    guard spacePress?.active != true else { return }
+    if text.contains(where: \.isLetter) { shiftSlide?.used = true }
+    model.didInsert(text); onInsert?(text); rebuild()
+  }
   private func changeShiftOrSymbols() {
     if model.page == .letters {
       let now = Date(); model.toggleShift(caps: now.timeIntervalSince(lastShift) < 0.3); lastShift = now
@@ -309,38 +535,72 @@ final class KeyGridView: UIView {
   }
   @objc private func nextKeyboard(_ button: UIButton, event: UIEvent?) { onNextKeyboard?(button, event) }
   @objc private func beginDelete() {
-    stopDelete(); onDelete?()
-    repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-      guard let self = self else { return }; self.onDelete?()
-      self.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in self?.onDelete?() }
+    guard spacePress?.active != true else { return }
+    stopDelete()
+    let delay = Timer(timeInterval: 0.4, repeats: false) { [weak self] fired in
+      guard let self, self.repeatTimer === fired else { return }
+      let repeating = Timer(timeInterval: 0.08, repeats: true) { [weak self] fired in
+        guard let self, self.repeatTimer === fired else { return }; self.onDelete?()
+      }
+      // Claim the next timer before calling out: deletion can cancel this press.
+      self.repeatTimer = repeating; RunLoop.main.add(repeating, forMode: .common)
+      self.onDelete?()
     }
+    repeatTimer = delay; RunLoop.main.add(delay, forMode: .common)
+    onDelete?()
   }
   @objc private func stopDelete() { repeatTimer?.invalidate(); repeatTimer = nil }
+  private func clearAccentPicker() {
+    accentBar?.removeFromSuperview(); accentBar = nil; accentKeys = []
+    activeAccentGesture = nil; selectedAccent = nil; suppressKey = false
+  }
   @objc private func accent(_ gesture: UILongPressGestureRecognizer) {
     guard let button = gesture.view as? UIButton, let title = button.title(for: .normal) else { return }
     if gesture.state == .began {
+      guard accentBar == nil, spacePress?.active != true else { return }
       preview.removeFromSuperview()
       suppressKey = true
-      let choices = KeyboardState.accents(for: title)
+      var choices = KeyboardState.accents(for: title)
       let bar = UIStackView(); bar.axis = .horizontal; bar.distribution = .fillEqually; bar.spacing = 2
-      let width = min(bounds.width - 12, CGFloat(choices.count) * 42)
+      let modern = usesModernKeyAppearance
+      let cellWidth: CGFloat = modern ? 37 : 42
+      // Extended rows need room to keep the held key over its base choice.
+      let fittedCellWidth = choices.count > 7 ? min(cellWidth, bounds.width / 10) : cellWidth
+      let preferredWidth = CGFloat(choices.count) * fittedCellWidth + (modern ? CGFloat(choices.count - 1) * bar.spacing : 0)
+      let width = min(bounds.width - 12, preferredWidth)
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
-      bar.frame = CGRect(x: min(max(6, center.x - width / 2), bounds.width - width - 6), y: 0, width: width, height: 46)
+      let cell = (width - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
+      var baseIndex = 0, origin: CGFloat = 6, distance = CGFloat.greatestFiniteMagnitude
+      // Keep the base choice over the held key, including keys near the right edge.
+      for index in choices.indices {
+        let relativeCenter = cell / 2 + CGFloat(index) * (cell + bar.spacing)
+        let candidate = min(max(6, center.x - relativeCenter), bounds.width - width - 6)
+        let gap = abs(candidate + relativeCenter - center.x)
+        if gap < distance { baseIndex = index; origin = candidate; distance = gap }
+      }
+      let base = choices.removeFirst(); choices.insert(base, at: baseIndex)
+      bar.frame = CGRect(x: origin, y: center.y - (modern ? 62 : 52), width: width, height: modern ? 48 : 46)
       bar.backgroundColor = .secondarySystemBackground; bar.layer.cornerRadius = 8
       accentKeys = choices.map { value in let key = key(value) {}; bar.addArrangedSubview(key); return key }
-      accentBar = bar; addSubview(bar); selectedAccent = title
+      accentBar = bar; activeAccentGesture = gesture; addSubview(bar); selectedAccent = title
+      // The picker extends above the grid into the controller's toolbar area.
+      superview?.bringSubviewToFront(self)
     }
-    if let bar = accentBar {
+    guard activeAccentGesture === gesture, let bar = accentBar else { return }
+    if gesture.state == .began || gesture.state == .changed {
       let point = gesture.location(in: bar)
-      let index = gesture.state == .began ? 0 : max(0, min(accentKeys.count - 1, Int(point.x / max(1, bar.bounds.width) * CGFloat(accentKeys.count))))
+      bar.layoutIfNeeded()
+      let index = gesture.state == .began ? (accentKeys.firstIndex { $0.title(for: .normal) == title } ?? 0) :
+        (accentKeys.indices.min { abs(accentKeys[$0].frame.midX - point.x) < abs(accentKeys[$1].frame.midX - point.x) } ?? 0)
       for (i, key) in accentKeys.enumerated() { key.backgroundColor = i == index ? .systemBlue : .clear; key.setTitleColor(i == index ? .white : .label, for: .normal) }
       selectedAccent = accentKeys[index].title(for: .normal)
     }
     if [.ended, .cancelled, .failed].contains(gesture.state) {
-      let selection = selectedAccent; accentBar?.removeFromSuperview(); accentBar = nil; accentKeys = []
+      let selection = selectedAccent
+      // Finish this press before insertion calls back into the grid.
+      clearAccentPicker()
       if gesture.state == .ended, let selection = selection { insert(selection) }
-      // Long-press recognition cancels UIButton's touch-up, so the next tap is valid.
-      suppressKey = false
+      finishPresses()
     }
   }
 }

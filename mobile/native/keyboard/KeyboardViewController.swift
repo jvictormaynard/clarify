@@ -287,6 +287,18 @@ class KeyboardViewController: UIInputViewController {
     cancel.addAction(UIAction { [weak self] _ in self?.cancelRecording() }, for: .touchUpInside)
     keys.previewContainer = view
     keys.onKeyPress = { [weak self] in self?.feedback.type() }
+    keys.onPrepareCursor = { [weak self] in
+      guard let self, self.attached else { return }
+      self.typing.prepareCursor(in: self.textDocumentProxy)
+    }
+    keys.onMoveCursor = { [weak self] offset in
+      guard let self, self.attached, !self.keys.isHidden else { return false }
+      self.dictationEdit = nil
+      let accepted = self.typing.moveCursor(offset, in: self.textDocumentProxy)
+      self.updateCapitalization(); self.updateSuggestions()
+      return accepted
+    }
+    keys.onEndCursor = { [weak self] in self?.typing.endCursor() }
     keys.onInsert = { [weak self] text in
       guard let self = self else { return }
       self.dictationEdit = nil
@@ -374,20 +386,22 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+    updateInputTraits()
     ClarifyKeyboardHeightDidAppear(self)
   }
   override func textDidChange(_ textInput: UITextInput?) {
     super.textDidChange(textInput)
+    updateInputTraits()
     // Context is used only locally for casing; it is never saved or sent to Groq.
-    let proxy = textDocumentProxy
-    let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
-    let returnType = proxy.returnKeyType ?? .default
-    let changed = view.overrideUserInterfaceStyle != appearance || keys.returnType != returnType
-    view.overrideUserInterfaceStyle = appearance
-    keys.returnType = returnType
     updateCapitalization()
-    if changed { keys.rebuild() }
     updateSuggestions()
+  }
+  private func updateInputTraits() {
+    // UIKit updates the controller's appearance traits even when the proxy's
+    // keyboardAppearance still describes the previous host appearance.
+    // Let the view inherit those traits instead of pinning it to stale data.
+    let returnType = textDocumentProxy.returnKeyType ?? .default
+    if keys.returnType != returnType { keys.returnType = returnType; keys.rebuild() }
   }
   private func updateCapitalization() {
     let proxy = textDocumentProxy
@@ -403,15 +417,17 @@ class KeyboardViewController: UIInputViewController {
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
     super.selectionDidChange(textInput)
+    updateInputTraits()
     updateCapitalization()
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated); attached = true; feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
+    super.viewWillAppear(animated); attached = true; updateInputTraits(); feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshFromStore() }
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    keys.cancelAllPresses()
     waveform.update(level: 0, recording: false)
     dictationEdit = nil; undoDictation.isHidden = true
     invalidateActivationSource()

@@ -1,7 +1,13 @@
 import UIKit
 
 @main
-final class KeyboardHostApp: UIResponder, UIApplicationDelegate {}
+final class KeyboardHostApp: UIResponder, UIApplicationDelegate {
+  func application(_ application: UIApplication, shouldAllowExtensionPointIdentifier identifier: UIApplication.ExtensionPointIdentifier) -> Bool {
+    // Use the ordinary text field for the Apple reference. Secure entry changes
+    // keyboard traits, so it is not an equivalent appearance reference.
+    identifier != .keyboard || !ProcessInfo.processInfo.arguments.contains("--native-keyboard-reference")
+  }
+}
 
 final class KeyboardHostScene: UIResponder, UIWindowSceneDelegate {
   var window: UIWindow?
@@ -16,10 +22,13 @@ final class KeyboardHostController: UIViewController {
   private let field = UITextField()
   private let trace = UILabel()
   private let returnTrace = UILabel()
+  private let inputLanguage = UILabel()
+  private let inputCaret = UILabel()
   private var heights: [CGFloat] = []
   private var sampledHeights: [CGFloat] = []
   private var visibleHeights: [CGFloat] = []
   private var displayLink: CADisplayLink?
+  private var blueBackdrop = false
   override func viewDidLoad() {
     super.viewDidLoad(); view.backgroundColor = .systemBackground
     field.borderStyle = .roundedRect; field.placeholder = "Type here"; field.accessibilityIdentifier = "composer"
@@ -27,6 +36,8 @@ final class KeyboardHostController: UIViewController {
     field.isSecureTextEntry = ProcessInfo.processInfo.arguments.contains("--system-keyboard")
     trace.text = "Keyboard frame trace"; trace.accessibilityIdentifier = "keyboard-frames"
     returnTrace.text = "Return trace"; returnTrace.accessibilityIdentifier = "return-trace"
+    inputLanguage.text = "Input language"; inputLanguage.accessibilityIdentifier = "input-language"
+    inputCaret.text = "Input caret"; inputCaret.accessibilityIdentifier = "input-caret"
     NotificationCenter.default.addObserver(self, selector: #selector(publishReturnTrace), name: UIApplication.didBecomeActiveNotification, object: nil)
     let dismiss = UIButton(type: .system); dismiss.setTitle("Dismiss", for: .normal)
     dismiss.addAction(UIAction { [weak self] _ in self?.field.resignFirstResponder() }, for: .touchUpInside)
@@ -34,7 +45,21 @@ final class KeyboardHostController: UIViewController {
     reset.addAction(UIAction { [weak self] _ in self?.heights = []; self?.sampledHeights = []; self?.visibleHeights = []; self?.publishTrace() }, for: .touchUpInside)
     let activate = UIButton(type: .system); activate.setTitle("Open activation fixture", for: .normal)
     activate.addAction(UIAction { _ in UIApplication.shared.open(URL(string: "clarify://fixture-preflight")!) }, for: .touchUpInside)
-    for element in [field, trace, returnTrace, dismiss, reset, activate] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
+    let appearance = UIButton(type: .system); appearance.setTitle("Toggle appearance", for: .normal)
+    appearance.addAction(UIAction { [weak self] _ in
+      guard let self = self else { return }
+      let dark = self.view.window?.overrideUserInterfaceStyle != .dark
+      self.view.window?.overrideUserInterfaceStyle = dark ? .dark : .light
+      self.field.keyboardAppearance = dark ? .dark : .light
+      self.field.reloadInputViews()
+    }, for: .touchUpInside)
+    let backdrop = UIButton(type: .system); backdrop.setTitle("Toggle backdrop", for: .normal)
+    backdrop.addAction(UIAction { [weak self] _ in
+      guard let self = self else { return }
+      self.blueBackdrop.toggle()
+      self.view.backgroundColor = self.blueBackdrop ? UIColor(red: 0.12, green: 0.26, blue: 0.4, alpha: 1) : .systemBackground
+    }, for: .touchUpInside)
+    for element in [field, trace, returnTrace, inputLanguage, inputCaret, dismiss, reset, activate, appearance, backdrop] { element.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(element) }
     NSLayoutConstraint.activate([
       trace.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
       trace.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), trace.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
@@ -42,6 +67,10 @@ final class KeyboardHostController: UIViewController {
       reset.topAnchor.constraint(equalTo: dismiss.topAnchor), reset.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       returnTrace.topAnchor.constraint(equalTo: reset.bottomAnchor, constant: 16), returnTrace.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       activate.topAnchor.constraint(equalTo: returnTrace.bottomAnchor, constant: 16), activate.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      appearance.topAnchor.constraint(equalTo: activate.bottomAnchor, constant: 12), appearance.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      backdrop.topAnchor.constraint(equalTo: appearance.bottomAnchor, constant: 12), backdrop.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      inputLanguage.topAnchor.constraint(equalTo: backdrop.bottomAnchor, constant: 12), inputLanguage.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
+      inputCaret.topAnchor.constraint(equalTo: inputLanguage.bottomAnchor, constant: 12), inputCaret.leadingAnchor.constraint(equalTo: trace.leadingAnchor),
       field.leadingAnchor.constraint(equalTo: trace.leadingAnchor), field.trailingAnchor.constraint(equalTo: trace.trailingAnchor),
       field.heightAnchor.constraint(equalToConstant: 44), field.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8)
     ])
@@ -54,6 +83,16 @@ final class KeyboardHostController: UIViewController {
   }
   @objc private func sampleFrame() {
     guard field.isFirstResponder else { return }
+    let language = field.textInputMode?.primaryLanguage ?? "unavailable"
+    if inputLanguage.accessibilityValue != language { inputLanguage.accessibilityValue = language }
+    if !field.isSecureTextEntry, let selection = field.selectedTextRange {
+      let offsets = ["start": field.offset(from: field.beginningOfDocument, to: selection.start),
+        "end": field.offset(from: field.beginningOfDocument, to: selection.end)]
+      if let data = try? JSONSerialization.data(withJSONObject: offsets, options: [.sortedKeys]),
+         let value = String(data: data, encoding: .utf8), inputCaret.accessibilityValue != value {
+        inputCaret.accessibilityValue = value
+      }
+    } else { inputCaret.accessibilityValue = "unavailable" }
     let height = view.keyboardLayoutGuide.layoutFrame.height
     let visible = view.bounds.maxY - (field.layer.presentation()?.frame.maxY ?? field.frame.maxY) - 8
     let changed = (height > 0 && sampledHeights.last != height) || (visible > 0 && visibleHeights.last != visible)

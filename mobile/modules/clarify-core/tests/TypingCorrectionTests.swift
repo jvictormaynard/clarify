@@ -3,10 +3,10 @@ import XCTest
 
 final class TypingCorrectionTests: XCTestCase {
   func testSentenceStartsAfterTerminalPunctuationQuotesAndWhitespace() {
-    for text in ["", "Olá.", "Olá! ", "Olá?  ", "Olá!\u{00a0}", "“Olá.” ", "Olá\n", "Olá\n  "] {
+    for text in ["", "1", "123 ", "Olá\n42", "Olá.", "Olá! ", "Olá?  ", "Olá!\u{00a0}", "“Olá.” ", "Olá\n", "Olá\n  "] {
       XCTAssertTrue(KeyboardState.startsSentence(after: text), text)
     }
-    for text in ["Olá", "Olá, ", "12.3", "https://example.com"] {
+    for text in ["Olá", "Olá, ", "word1", "word 1", "12.3", "Olá\n12.3", "https://example.com"] {
       XCTAssertFalse(KeyboardState.startsSentence(after: text), text)
     }
     var state = KeyboardState(); state.didInsert(" "); XCTAssertEqual(state.shift, .once)
