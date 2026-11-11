@@ -75,5 +75,9 @@ final class ContractsTests: XCTestCase {
     XCTAssertEqual(KeyboardState.accents(for: "C"), ["C", "Ç"])
     XCTAssertEqual(KeyboardState.accents(for: "e"), ["e", "é", "ê", "è", "ę", "ė", "ē", "ë"])
     XCTAssertEqual(KeyboardState.accents(for: "E"), ["E", "É", "Ê", "È", "Ę", "Ė", "Ē", "Ë"])
+    XCTAssertEqual(KeyboardState.accents(for: "i"), ["i", "ī", "į", "ï", "ì", "î", "í"])
+    XCTAssertEqual(KeyboardState.accents(for: "I"), ["I", "Ī", "Į", "Ï", "Ì", "Î", "Í"])
+    XCTAssertEqual(KeyboardState.accents(for: "u"), ["u", "ū", "û", "ù", "ü", "ú"])
+    XCTAssertEqual(KeyboardState.accents(for: "U"), ["U", "Ū", "Û", "Ù", "Ü", "Ú"])
   }
 }
