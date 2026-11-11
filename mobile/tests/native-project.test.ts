@@ -4,9 +4,36 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 const require = createRequire(import.meta.url);
 const { getConfig } = require('expo/config');
 const withClarifyKeyboard = require('../plugins/with-clarify-keyboard.cjs');
+const withClarifySounds = require('../plugins/with-clarify-sounds.cjs');
+
+test('the containing app bundles the shared dictation sounds once', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-sounds-'));
+  try {
+    const template = path.join(path.dirname(require.resolve('expo/package.json')), 'template.tgz');
+    const projectFile = path.join(root, 'project.pbxproj');
+    fs.writeFileSync(projectFile, execFileSync('tar', ['-xOzf', template, 'package/ios/HelloWorld.xcodeproj/project.pbxproj']));
+    const project = require('xcode').project(projectFile);
+    project.parseSync();
+    const config = withClarifySounds(structuredClone(require('../app.json').expo));
+    const modRequest = { projectRoot: process.cwd(), platformProjectRoot: root };
+    await config.mods.ios.dangerous({ ...config, modRequest });
+    for (let i = 0; i < 2; i++) {
+      await config.mods.ios.xcodeproj({ ...config, modRequest, modResults: project });
+    }
+    const resources = project.pbxResourcesBuildPhaseObj(project.getFirstTarget().uuid).files;
+    for (const name of ['dictation-start.wav', 'dictation-stop.wav']) {
+      const copied = fs.readFileSync(path.join(root, 'ClarifySounds', name));
+      assert.deepEqual(copied, fs.readFileSync(path.resolve('../assets/sounds', name)));
+      assert.equal(resources.filter((file: { comment: string }) => file.comment === `${name} in Resources`).length, 1);
+      const file = project.hasFile(`ClarifySounds/${name}`);
+      assert.ok(file, 'the resource path must resolve from the generated iOS project');
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 test('keyboard source composition excludes account credential access', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-keyboard-sources-'));

@@ -78,6 +78,48 @@ class QtRecordingSessionTests(unittest.TestCase):
                 worker.is_alive(), "readiness reader retained a stopped WAV"
             )
 
+    def test_dictation_cues_surround_capture_and_stop_once(self):
+        from clarify.desktop import qml_runtime
+
+        for cancel, cue_fails in ((False, False), (True, False), (False, True)):
+            with (
+                self.subTest(cancel=cancel, cue_fails=cue_fails),
+                TemporaryDirectory() as directory,
+            ):
+                events = []
+                process = Mock()
+                process.poll.return_value = None
+                process.terminate.side_effect = lambda: events.append("closed")
+
+                def cue(starting):
+                    events.append("start" if starting else "stop")
+                    if cue_fails:
+                        raise OSError("Output device unavailable")
+
+                def launch(*args, **kwargs):
+                    events.append("capture")
+                    return process
+
+                recorder = QtRecorder(cue_player=cue)
+                recorder.sox = "sox"
+                with patch.object(qml_runtime.subprocess, "Popen", side_effect=launch):
+                    recorder.start(Path(directory) / "recording.wav", threading.Event())
+                    (recorder.cancel if cancel else recorder.stop)()
+                    recorder.cancel()
+                    self._drain_readiness(recorder)
+                self.assertEqual(events, ["start", "capture", "closed", "stop"])
+
+    def test_cancel_during_start_cue_does_not_open_microphone(self):
+        from clarify.desktop import qml_runtime
+
+        cancelled = threading.Event()
+        recorder = QtRecorder(cue_player=lambda _starting: cancelled.set())
+        recorder.sox = "sox"
+        with patch.object(qml_runtime.subprocess, "Popen") as launch:
+            with self.assertRaisesRegex(RuntimeError, "cancelled"):
+                recorder.start(Path("unused.wav"), cancelled)
+        launch.assert_not_called()
+
     def test_cancel_cleans_wav_with_readiness_read_in_progress(self):
         from clarify.desktop import qml_runtime
 
@@ -631,6 +673,8 @@ class QtRecordingSessionTests(unittest.TestCase):
             self.assertEqual([s.closed for s in streams], [1, 1])
 
     def test_snapshot_owns_provider_cancellation_until_completion(self):
+        now = [10.0]
+
         class Recorder:
             def __init__(self):
                 self.path = None
@@ -641,25 +685,31 @@ class QtRecordingSessionTests(unittest.TestCase):
                 path.write_bytes(b"RIFF" + b"0" * 1196)
 
             def stop(self):
-                return None
+                now[0] += 2.0  # Output playback/finalization is not speech time.
 
             def cancel(self):
                 self.cancelled = True
 
         with TemporaryDirectory() as directory:
             recorder = Recorder()
-            with patch(
-                "clarify.desktop.qml_runtime._data_directory",
-                return_value=Path(directory),
+            with (
+                patch(
+                    "clarify.desktop.qml_runtime._data_directory",
+                    return_value=Path(directory),
+                ),
+                patch(
+                    "clarify.desktop.qml_runtime.time.monotonic",
+                    side_effect=lambda: now[0],
+                ),
             ):
                 session = QtRecordingSession(recorder)
                 session.start()
+                now[0] = 11.0
                 snapshot = session.stop()
 
                 self.assertIs(snapshot.cancel_token, session.provider_cancel_token)
                 self.assertFalse(snapshot.cancel_token.cancelled)
-                self.assertIsNotNone(snapshot.duration_seconds)
-                self.assertGreaterEqual(snapshot.duration_seconds, 0.0)
+                self.assertEqual(snapshot.duration_seconds, 1.0)
                 self.assertTrue(session.audio_path.exists())
 
                 session.complete()
