@@ -217,6 +217,7 @@ class QmlWorkflowBridge(QObject):
             else None
         )
         self._state = workflow_service.state
+        self._completion_id = ""
         self._result_visible = False
         self._settings_visible = False
         self._files_visible = False
@@ -328,6 +329,10 @@ class QmlWorkflowBridge(QObject):
     @Property(str, notify=targetExecutableChanged)
     def targetExecutable(self) -> str:
         return self._target_executable
+
+    @Property(str, notify=surfaceChanged)
+    def completionId(self) -> str:
+        return self._completion_id
 
     @Property(str, notify=statusChanged)
     def writingStyleCaption(self):
@@ -543,7 +548,18 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(object)
     def _on_workflow_state(self, state: WorkflowState) -> None:
+        previous = self._state
         self._state = state
+        if state.phase is WorkflowPhase.COMPLETED:
+            if self.refinementFailed:
+                self._completion_id = ""
+            elif (
+                previous.phase is not WorkflowPhase.COMPLETED
+                or previous.operation_id != state.operation_id
+            ):
+                self._completion_id = f"workflow:{state.operation_id}"
+        elif state.phase is not WorkflowPhase.READY:
+            self._completion_id = ""
         if state.phase is WorkflowPhase.RECORDING:
             if self._hold_cancel_pending:
                 self._hold_cancel_pending = False
@@ -584,7 +600,18 @@ class QmlWorkflowBridge(QObject):
 
     @Slot(object)
     def _on_voice_translation_state(self, state: Any) -> None:
+        previous_phase = self._voice_phase()
+        previous_operation = getattr(self._voice_runtime_state(), "operation_id", 0)
         self._voice_state = state
+        if self._voice_phase() is VoiceTranslationPhase.COMPLETED:
+            operation = getattr(self._voice_runtime_state(), "operation_id", 0)
+            if (
+                previous_phase is not VoiceTranslationPhase.COMPLETED
+                or previous_operation != operation
+            ):
+                self._completion_id = f"voice:{operation}"
+        elif self._voice_phase() is not VoiceTranslationPhase.READY:
+            self._completion_id = ""
         self._notify_all()
 
     @Slot()
@@ -724,7 +751,7 @@ class QmlWorkflowBridge(QObject):
         return self._button_recording and self.recording and not self._stop_requested
 
     def _start_recording(self, from_button: bool) -> None:
-        if self._quick_paste_busy or not self._processing_allowed():
+        if self.busy or not self._processing_allowed():
             return
         if self._state.phase in (
             WorkflowPhase.COMPLETED,
@@ -733,7 +760,10 @@ class QmlWorkflowBridge(QObject):
         ):
             self._run_when_ready(lambda: self._start_recording(from_button))
             return
-        if self._state.phase is not WorkflowPhase.READY:
+        if (
+            self._state.phase is not WorkflowPhase.READY
+            or not self._dismiss_files_before_workflow()
+        ):
             return
         self._settings_visible = False
         self._result_visible = False

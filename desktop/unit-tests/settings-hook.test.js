@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { vi } from 'vitest';
 import { test } from './support/react-fixture';
 import { setup } from './support/settings-controller';
 const clone=x=>structuredClone(x);
@@ -418,10 +419,26 @@ test('settings dialog preserves its main destination and local review context', 
  c.requestCloseSettings();await Promise.resolve();c=h.render();assert.equal(c.settingsOpen,false);assert.equal(c.page,'style');assert.equal(c.state.selectedScope,'local_asr_refinement');
 });
 
-test('settings dialog save excludes main-page drafts', async () => {
+test('settings dialog saves dictation setup and excludes workspace drafts', async () => {
  const h=await setup();let c=h.render();await c.navigate('style');c=h.render();c.setPrompt('keep the style draft');
- await c.navigate('privacy');c=h.render();c.setRetention('30');c=h.render();await c.saveSettings();c=h.render();
- assert.equal(h.persisted.historyRetentionDays,30);assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');assert.equal(c.prompt,'keep the style draft');assert.equal(c.dirty,true);
+ c.setSnippets([{trigger:'draft',replacement:'pending',enabled:true,case_sensitive:false}]);
+ await c.navigate('dictation');c=h.render();assert.equal(c.settingsOpen,true);assert.equal(c.mainPage,'style');
+ c.setPrompt('saved dictation instructions');c.setRecording({maximum:'90',warning:'5',enabled:false,threshold:'0.05',speech:'0.1',silence:'0.5'});
+ await c.navigate('privacy');c=h.render();c.setRetention('30');c=h.render();c.requestCloseSettings();c=h.render();
+ assert.equal(c.settingsDismissRequested,true);await c.saveSettings(true);c=h.render();assert.equal(c.settingsOpen,false);
+ assert.equal(h.persisted.historyRetentionDays,30);assert.equal(h.persisted.routes.transcription.prompt,'saved dictation instructions');
+ assert.equal(h.persisted.recordingControls.max_duration_seconds,90);assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');
+ assert.equal(h.persisted.snippets[0].trigger,'sig');assert.equal(c.hasSettingsDrafts(),false);assert.equal(c.dirty,true);
+ await c.navigate('dictation');c=h.render();c.setPrompt('discard dictation instructions');c=h.render();
+ await c.discardSettings(true);c=h.render();assert.equal(c.settingsOpen,false);
+ await vi.waitFor(()=>assert.equal(h.render().prompt,'keep the style draft'));c=h.render();assert.equal(c.page,'style');
+ await c.navigate('dictation');c=h.render();assert.equal(c.prompt,'saved dictation instructions');
+ for (const [operation,method] of [['saveSettings','save'],['discardSettings','load']]) {
+  c.setPrompt('captured '+operation);c=h.render();c.requestCloseSettings();c=h.render();
+  const gate=h.pause(method);const completing=c[operation](true);await gate.started;
+  c=h.render();c.setPrompt('newer '+operation);gate.release();await completing;c=h.render();
+  assert.equal(c.settingsOpen,true);assert.equal(c.prompt,'newer '+operation);assert.equal(c.hasSettingsDrafts(),true);
+ }
 });
 
 test('continuing settings editing revokes a pending save-and-close', async () => {

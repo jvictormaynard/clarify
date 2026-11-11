@@ -1,10 +1,6 @@
 import { t } from "../i18n";
 import type { HotkeyDefinition, TextAction } from "./bridge";
 
-export function applicationName(executable: string) {
-  return executable.split(/[\\/]/).pop()?.replace(/\.exe$/i, "") || executable;
-}
-
 export const profileName = (id: string) => t(id === "default" ? "Serviço de texto" : id === "legacy-rewrite" ? "Reescrita" : id === "legacy-translation" ? "Tradução" : id);
 
 export const actionDisplayName = (action: Pick<TextAction, "id" | "name">) =>

@@ -698,7 +698,7 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
     def test_selected_output_language_is_frozen_before_text_capture(self):
         from workflows import RunTextAction
 
-        from writing_styles import ApplicationWritingStyles, WritingStyle
+        from shared.writing_style_policy import WritingStyle
 
         for language in ("es", "auto"):
             with self.subTest(language=language):
@@ -706,9 +706,7 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
                     replace(
                         self.repo.load(),
                         ui=replace(self.repo.load().ui, language=language),
-                        application_writing_styles=ApplicationWritingStyles(
-                            default_style=WritingStyle.FORMAL
-                        ),
+                        dictation_writing_style=WritingStyle.FORMAL,
                     )
                 )
                 provider, registry = self.provider()
@@ -720,9 +718,7 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
                     replace(
                         self.repo.load(),
                         ui=replace(self.repo.load().ui, language="de"),
-                        application_writing_styles=ApplicationWritingStyles(
-                            default_style=WritingStyle.CASUAL
-                        ),
+                        dictation_writing_style=WritingStyle.CASUAL,
                     )
                 )
                 self.drain()

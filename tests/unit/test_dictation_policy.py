@@ -31,14 +31,14 @@ class DictationPolicyTests(unittest.TestCase):
             fresh = repo.load()
             self.assertEqual(fresh.ui.language, "auto")
             self.assertEqual(fresh.dictation_cleanup_level, "clarity")
-            self.assertEqual(fresh.application_writing_styles.default_style, "natural")
+            self.assertEqual(fresh.dictation_writing_style, "natural")
             repo.apply(fresh)
             self.assertEqual(repo.load().dictation_cleanup_level, "clarity")
             path.write_text(json.dumps({"schema_version": 6, "history_enabled": True}))
             legacy = repo.load()
             self.assertEqual(legacy.ui.language, "en")
             self.assertIsNone(legacy.dictation_cleanup_level)
-            self.assertIsNone(legacy.application_writing_styles.default_style)
+            self.assertIsNone(legacy.dictation_writing_style)
 
     def test_enum_is_bounded_and_policy_is_immutable(self):
         for invalid in ("", "legacy", "Preserve", "formal", 1, [], {}):
@@ -69,7 +69,7 @@ class DictationPolicyTests(unittest.TestCase):
     def test_v2_migration_keeps_legacy_and_roundtrip_is_atomic(self):
         old = {"schema_version": 2, "history_enabled": True}
         migrated = migrate_config_payload(old)
-        self.assertEqual(migrated["schema_version"], 6)
+        self.assertEqual(migrated["schema_version"], 7)
         self.assertEqual(migrate_config_payload(migrated), migrated)
         self.assertIsNone(AppConfig.from_mapping(migrated).dictation_cleanup_level)
         self.assertIsNone(

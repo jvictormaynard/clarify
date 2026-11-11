@@ -1,6 +1,5 @@
 from pathlib import Path
 import tempfile
-from types import SimpleNamespace
 import unittest
 
 from PySide6.QtWidgets import QApplication
@@ -112,77 +111,47 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_style_preference_saves_only_its_rule_and_can_remove_it(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            repositories = ApplicationRepositories(
-                config=LocalConfigRepository(
-                    root / "config.json", secret_store=MemorySecretStore()
-                ),
-                usage_stats=LocalUsageStatsRepository(root / "usage_stats.json"),
-            )
-            target = SimpleNamespace(executable=r"C:\Apps\Editor.exe")
-            from tests.support.settings import _MicrophoneBackend
-            from microphone_controls import MicrophoneInventory
+    def test_general_tone_saves_without_other_drafts_and_app_rule_command_is_retired(
+        self,
+    ):
+        from clarify.desktop.qml_web_settings import SettingsProtocol
 
-            settings = QmlSettingsController(
-                repositories,
-                application_target=lambda: target,
-                microphone_backend=_MicrophoneBackend(
-                    MicrophoneInventory.unavailable("fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            repositories = ApplicationRepositories(
+                LocalConfigRepository(
+                    Path(directory) / "config.json", secret_store=MemorySecretStore()
                 ),
+                LocalUsageStatsRepository(Path(directory) / "usage.json"),
             )
+            settings = QmlSettingsController(repositories)
             try:
-                settings.selectWorkflow("refinement")
-                settings.setRoutePrompt("Unrelated unsaved text")
-                before = repositories.config.load().workflow("refinement").prompt
-                self.assertTrue(
-                    settings.savePreference(
-                        "setApplicationWritingStyle", [target.executable, "informal"]
-                    )
-                )
-                self.assertEqual(
-                    settings.applicationWritingStyles,
-                    [{"executable": r"c:\apps\editor.exe", "style": "informal"}],
-                )
-                self.assertEqual(settings.applicationStyleTarget, r"c:\apps\editor.exe")
+                original = repositories.config.load()
+                settings.setLanguage("pt")
+                settings.setProviderApiKey("pending-key")
                 self.assertTrue(
                     settings.savePreference("setDictationWritingStyle", ["formal"])
                 )
-                self.assertEqual(settings.dictationWritingStyle, "formal")
-                styles = repositories.config.load().application_writing_styles
-                self.assertEqual(styles.resolve(None).requested_style, "formal")
-                self.assertEqual(
-                    styles.resolve(target.executable).requested_style, "informal"
+                saved = repositories.config.load()
+                self.assertEqual(saved.dictation_writing_style, "formal")
+                self.assertEqual(saved.ui, original.ui)
+                self.assertEqual(saved.gemini.api_key, original.gemini.api_key)
+                reply = SettingsProtocol(settings).dispatch(
+                    {
+                        "id": 1,
+                        "method": "savePreference",
+                        "args": [
+                            "setApplicationWritingStyle",
+                            [r"C:\Apps\Editor.exe", "casual"],
+                        ],
+                    }
                 )
-                self.assertEqual(
-                    repositories.config.load().workflow("refinement").prompt, before
+                self.assertIn("error", reply)
+                self.assertEqual(repositories.config.load(), saved)
+                self.assertNotIn(
+                    "applicationWritingStyles", SettingsProtocol(settings).snapshot()
                 )
-                self.assertEqual(settings.routePrompt, "Unrelated unsaved text")
-                from unittest.mock import patch
-
-                with patch.object(
-                    settings._text_actions,
-                    "_library",
-                    side_effect=ValueError("Catalog unavailable"),
-                ):
-                    self.assertTrue(
-                        settings.savePreference(
-                            "setDictationCleanupLevel", ["preserve"]
-                        )
-                    )
-                    self.assertEqual(settings.dictationCleanupLevel, "preserve")
-                self.assertTrue(
-                    settings.savePreference(
-                        "setApplicationWritingStyle", [target.executable, ""]
-                    )
-                )
-                self.assertEqual(settings.applicationWritingStyles, [])
-                self.assertEqual(
-                    repositories.config.load()
-                    .application_writing_styles.resolve(target.executable)
-                    .requested_style,
-                    "formal",
+                self.assertNotIn(
+                    "applicationStyleTarget", SettingsProtocol(settings).snapshot()
                 )
             finally:
                 settings.shutdown()

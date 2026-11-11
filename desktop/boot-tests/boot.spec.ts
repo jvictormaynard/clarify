@@ -67,13 +67,13 @@ test("production Settings boots, reads the controller and reloads without browse
     const scripts = await page.locator("script[src]").evaluateAll(nodes => nodes.map(node => node.getAttribute("src")));
     expect(scripts.length).toBeGreaterThan(0);
     expect(scripts.every(source => source?.startsWith("/assets/") && source.endsWith(".js"))).toBe(true);
-    await expect(page.getByRole("combobox", { name: "Microphone", exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Welcome back", exact: true })).toBeVisible({ timeout: 30000 });
     expect(calls).toContain("snapshot");
     await openSettings(page, "Privacy");
     await expect(page.getByText("Save history", { exact: true })).toBeVisible();
     await closeSettings(page);
     await page.reload();
-    await expect(page.getByRole("combobox", { name: "Microphone", exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Welcome back", exact: true })).toBeVisible({ timeout: 30000 });
     await page.waitForLoadState("networkidle");
     boot.assertHealthy();
   } finally {
@@ -106,7 +106,7 @@ test("boot validator rejects initialization exceptions", async ({ page }) => {
 test("boot validator rejects console errors even when the application mounts", async ({ page }) => {
   const boot = observeBuiltBoot(page);
   await page.goto("/");
-  await expect(page.getByRole("combobox", { name: "Microphone", exact: true })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole("heading", { level: 1, name: "Welcome back", exact: true })).toBeVisible({ timeout: 30000 });
   await page.evaluate(() => console.error("boot console regression"));
   expect(() => boot.assertHealthy()).toThrow(/console: boot console regression/);
 });

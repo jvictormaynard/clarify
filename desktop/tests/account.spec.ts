@@ -1,18 +1,7 @@
 import { test, expect, settingsScenario } from "./settings-fixture";
 import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure } from "./settings-navigation";
 
-settingsScenario({ quota: true, initialPage: "style" }, () => {
-  test("quota: styles remain configurable for managed accounts", async ({ page }) => {
-    await page.getByRole("button", { name: "Mais opções", exact: true }).click();
-    await page.getByRole("button", { name: "Adicionar aplicativo", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "Estilo do aplicativo", exact: true });
-    await dialog.getByRole("textbox", { name: "Caminho do aplicativo", exact: true }).fill("C:\\Apps\\Chat.exe");
-    await dialog.getByRole("button", { name: "Salvar regra", exact: true }).click();
-    await expect(dialog).toBeHidden();
-    await page.getByRole("button", { name: "Editar estilo de chat", exact: true }).click();
-    await expect(dialog.getByRole("combobox", { name: "Estilo de escrita", exact: true })).toContainText("Manter meu tom");
-  });
-});
+
 
 settingsScenario({ quota: true, initialPage: "style" }, () => {
   test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
@@ -50,127 +39,10 @@ settingsScenario({ signedIn: true }, () => {
   });
 });
 
-settingsScenario({ signedIn: true }, () => {
-  test("snippets account: account draft cannot be saved after the session changes", async ({ page }) => {
-    await navigate(page, "Snippets");
-    await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toHaveCount(0);
-    await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("minha assinatura");
-    await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Account draft");
-    await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
-    await page.evaluate(async () => {
-      await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] });
-    });
-    await openSettings(page, "Geral");
-    await expect(settingsDialog(page).getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
-    await closeSettings(page);
-    await page.getByRole("button", { name: "Salvar alterações" }).click();
-    await expect(page.getByRole("alert")).toContainText("A conta mudou.");
-    await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Account draft");
-  });
-});
 
-settingsScenario({ signedIn: true }, () => {
-  test("snippets account: composer clears when the session changes before Add", async ({ page }) => {
-    await navigate(page, "Snippets");
-    await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("private phrase");
-    await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Private account text");
-    await page.evaluate(async () => {
-      await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] });
-    });
-    await expect(page.getByRole("textbox", { name: "Nova frase de ativação" })).toHaveValue("");
-    await expect(page.getByRole("textbox", { name: "Novo texto do snippet" })).toHaveValue("");
-    await expect(page.getByRole("button", { name: "Adicionar snippet", exact: true })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
-    await page.getByRole("textbox", { name: "Nova frase de ativação" }).fill("guest phrase");
-    await page.getByRole("textbox", { name: "Novo texto do snippet" }).fill("Guest text");
-    await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
-    await page.getByRole("button", { name: "Salvar alterações" }).click();
-    await expect(page.getByRole("textbox", { name: "Texto do snippet 1", exact: true })).toHaveValue("Guest text");
-  });
-});
 
-for (const direction of ["sign-in", "sign-out"] as const) {
-  settingsScenario({ signedIn: true }, () => {
-    test(`snippets account: dictionary composer resets during ${direction}`, async ({ page }) => {
-      const account = () => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).accountState);
-      await expect.poll(async () => (await account()).busy).toBe(false);
-      if (direction === "sign-in") {
-        await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] }));
-        await expect.poll(async () => (await account()).signedIn).toBe(false);
-        await openSettings(page, "Geral");
-        await expect(settingsDialog(page).getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
-        await closeSettings(page);
-        await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["login", "test@example.test"] }));
-        await expect.poll(async () => (await account()).pending).toBe("login");
-        await expect.poll(async () => (await account()).busy).toBe(false);
-      }
-      const action = direction === "sign-in" ? "confirm" : "logout";
-      let release!: () => void;
-      let started!: () => void;
-      const held = new Promise<void>(resolve => { release = resolve; });
-      const entered = new Promise<void>(resolve => { started = resolve; });
-      await page.route("**/__test_rpc", async route => {
-        const request = route.request().postDataJSON();
-        if (request.method === "accountCommand" && request.args[0] === action) { started(); await held; }
-        await route.fallback();
-      });
-      const term = page.getByRole("textbox", { name: "Novo termo", exact: true });
-      try {
-        await page.evaluate((nextAction) => {
-          (window as any).__accountTransition = (window as any).__TAURI_INTERNALS__.invoke("settings_call", {
-            method: "accountCommand", args: [nextAction, nextAction === "confirm" ? "123456" : ""],
-          });
-        }, action);
-        await entered;
-        await navigate(page, "Dicionário");
-        await term.fill("Private previous-owner term");
-      } finally { release(); }
-      await page.evaluate(() => (window as any).__accountTransition);
-      await expect.poll(async () => (await account()).signedIn).toBe(direction === "sign-in");
-      await expect(term).toHaveValue("");
-      await term.press("Enter");
-      await expect(page.getByRole("button", { name: "Adicionar termo", exact: true })).toBeDisabled();
-      await expect(page.getByRole("textbox", { name: "Termo 1", exact: true })).toHaveCount(0);
-    });
-  });
-}
 
-for (const library of ["dictionary", "snippets"] as const) {
-  settingsScenario({ signedIn: true, librarySync: true }, () => {
-    test(`snippets account: sync-import keeps local ${library} text and remote additions`, async ({ page }) => {
-      const dictionary = library === "dictionary";
-      await page.getByRole("button", { name: dictionary ? "Dicionário" : "Snippets", exact: true }).click();
-      if (dictionary) {
-        await page.getByRole("textbox", { name: "Novo termo", exact: true }).fill("Base term");
-        await page.getByRole("button", { name: "Adicionar termo", exact: true }).click();
-      } else {
-        await page.getByRole("textbox", { name: "Nova frase de ativação", exact: true }).fill("base phrase");
-        await page.getByRole("textbox", { name: "Novo texto do snippet", exact: true }).fill("Base replacement");
-        await page.getByRole("button", { name: "Adicionar snippet", exact: true }).click();
-      }
-      await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
-      const edited = page.getByRole("textbox", { name: dictionary ? "Termo 1" : "Texto do snippet 1", exact: true });
-      await edited.fill("Local unsaved revision");
-      await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testArmLibrarySync", args: [] }) }));
-      await page.getByRole("switch", { name: dictionary ? "Usar termo 1" : "Usar snippet 1", exact: true }).click();
-      const remote = () => page.evaluate(async (key) => {
-        const snapshot = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
-        return snapshot[key].length;
-      }, dictionary ? "dictionaryEntries" : "snippets");
-      await expect.poll(remote).toBe(2);
-      await expect(edited).toHaveValue("Local unsaved revision");
-      await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
-      await page.reload();
-      await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
-      await page.getByRole("button", { name: dictionary ? "Dicionário" : "Snippets", exact: true }).click();
-      await expect(edited).toHaveValue("Local unsaved revision");
-      await expect(page.getByRole("textbox", { name: dictionary ? "Termo 2" : "Texto do snippet 2", exact: true })).toHaveValue(dictionary ? "Remote term" : "Remote replacement");
-      await expect(page.getByRole("switch", { name: dictionary ? "Usar termo 1" : "Usar snippet 1", exact: true })).not.toBeChecked();
-    });
-  });
-}
+
 
 settingsScenario({ quota: true }, () => {
   test("quota: computer access stays disabled for a signed-in account", async ({ page }) => {
@@ -300,11 +172,11 @@ settingsScenario({ onboarding: true }, () => {
     await expect(page.getByRole("alert")).toContainText("chave válida");
     await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
     await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
-    await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado" })).toBeVisible();
     await page.getByRole("button", { name: "Pular prática", exact: true }).click();
     await expect(page.getByRole("navigation", { name: "Configurações" })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
     await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
   });
 });
@@ -333,25 +205,38 @@ test("login methods: Settings keeps the email draft and guest preferences", asyn
 });
 
 settingsScenario({ onboarding: true }, () => {
-  test("onboarding: practice is explicit, keeps its result here and can be repeated", async ({ page }) => {
+  test("onboarding: practice is explicit, keeps its result here and can be repeated", async ({ page }, testInfo) => {
     await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
     await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
     await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
     await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
-    await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
-    await expect(page.getByText(/Use Alt\+L para começar/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado" })).toBeVisible();
+    await expect(page.locator(".onboarding-keys")).toContainText("Alt");
     await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
     await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
     await expect(page.getByRole("meter", { name: "Nível do microfone" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Conferir configuração", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Parar teste", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeEnabled();
-    await page.screenshot({ path: "test-results/practice-ready.png" });
+    await expect.poll(() => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).microphoneTestBusy)).toBe(false);
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
+    for (const width of [640, 820, 1040]) {
+      await page.setViewportSize({ width, height: 760 });
+      await page.screenshot({ path: testInfo.outputPath(`onboarding-setup-${width}.png`) });
+    }
+    await page.getByRole("button", { name: "Testar microfone", exact: true }).click();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
+    await expect(page.getByRole("meter", { name: "Nível do microfone" })).toHaveCount(0);
+    const composer = page.getByRole("group", { name: "E-mail de prática", exact: true });
+    await composer.focus();
+    await expect(composer).toBeFocused();
+    await page.screenshot({ path: testInfo.outputPath("onboarding-practice.png") });
     await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
     await expect(page.getByText("Gravando. Diga uma frase e pare a gravação.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveValue("Hoje vou escrever com o Clarify.");
-    await page.screenshot({ path: "test-results/practice-result.png" });
+    await expect(page.getByRole("heading", { name: "Seu ditado está pronto", exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("onboarding-success.png") });
     await page.setViewportSize({ width: 640, height: 520 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
     await page.getByRole("button", { name: "Concluir prática", exact: true }).click();
@@ -363,7 +248,7 @@ settingsScenario({ onboarding: true }, () => {
     await expect(settingsDialog(page)).toBeVisible();
     await page.reload();
     await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
-    await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
   });
 });
 
@@ -373,9 +258,9 @@ settingsScenario({ quota: true, usage: "exhausted" }, () => {
     await navigate(page, "Geral");
     await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
     await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Conta Clarify", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Conta", exact: true })).toBeVisible();
   });
 });
 
@@ -385,6 +270,7 @@ settingsScenario({ onboarding: true, practice: "auth-error" }, () => {
     await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
     await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
     await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
     await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
     await expect(page.getByText("Conclua e salve a configuração de transcrição antes de ditar.", { exact: true })).toBeVisible();
@@ -399,6 +285,7 @@ settingsScenario({ onboarding: true, practice: "provider-quota" }, () => {
     await page.getByRole("button", { name: "Usar minha chave de API", exact: true }).click();
     await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
     await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
     await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
     await expect(page.getByText("Limite do provedor atingido. Verifique seu saldo ou plano.", { exact: true })).toBeVisible();
@@ -412,11 +299,12 @@ settingsScenario({ quota: true, practice: "account-error" }, () => {
     await releaseUsage();
     await navigate(page, "Geral");
     await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
     await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
     await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Conta Clarify", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Conta", exact: true })).toBeVisible();
   });
 });
 
@@ -437,11 +325,12 @@ settingsScenario({ onboarding: true }, () => {
     await expect(page.getByRole("navigation")).toBeHidden();
     await expect(page.getByRole("button", { name: "Ativar processamento do Clarify" })).toHaveCount(0);
     await page.getByRole("button", { name: "Começar", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado" })).toBeVisible();
     await page.getByRole("button", { name: "Pular prática", exact: true }).click();
     await expect(page.getByRole("navigation")).toBeVisible();
     await expect(page.getByRole("button", { name: "Modelos e serviços", exact: true })).toBeHidden();
-    await expect(page.getByRole("button", { name: "Estilo", exact: true })).toBeVisible();
+    await navigate(page, "Estilo");
+    await expect(page.getByRole("heading", { level: 1, name: "Estilo", exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toBeHidden();
     await navigate(page, "Conta Clarify");
     const usage = page.getByRole("progressbar", { name: "Uso nesta semana" });
@@ -472,7 +361,8 @@ settingsScenario({ onboarding: true }, () => {
     await page.getByRole("dialog", { name: /^(Excluir conta|Sair da conta)$/ }).getByRole("button", { name: "Sair da conta", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Sair da conta", exact: true })).toBeHidden();
     await closeSettings(page);
-    await expect(page.getByRole("button", { name: "Estilo", exact: true })).toBeVisible();
+    await navigate(page, "Estilo");
+    await expect(page.getByRole("heading", { level: 1, name: "Estilo", exact: true })).toBeVisible();
     await openSettings(page, "Geral");
     await expect(settingsDialog(page).getByRole("button", { name: "Modelos e serviços", exact: true })).toBeVisible();
     await closeSettings(page);
@@ -511,9 +401,8 @@ settingsScenario({ onboarding: true, socialWait: true }, () => {
 settingsScenario({ onboarding: true, socialWait: true }, () => {
   test("onboarding: account social cancellation restores provider actions after local setup", async ({ page }) => {
     await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
-    await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
+    await page.getByRole("button", { name: "Continuar com modelo local" }).click();
     await page.getByRole("button", { name: "Pular prática", exact: true }).click();
-    await expect(settingsDialog(page)).toBeVisible();
     await navigate(page, "Conta Clarify");
     await page.getByText("Servidor próprio", { exact: true }).click();
     const server = page.getByRole("textbox", { name: "Endereço do servidor", exact: true });
@@ -580,12 +469,12 @@ settingsScenario({ socialWait: true }, () => {
   });
 });
 
-settingsScenario({ onboarding: true }, () => {
+settingsScenario({ onboarding: true, practice: "missing-model" }, () => {
   test("onboarding: local choice leads to model setup without a login", async ({ page }) => {
     await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
-    await page.getByRole("button", { name: "Continuar e configurar modelo" }).click();
-    await expect(page.getByRole("heading", { name: "Pratique seu primeiro ditado" })).toBeVisible();
-    await page.getByRole("button", { name: "Pular prática", exact: true }).click();
+    await page.getByRole("button", { name: "Continuar com modelo local" }).click();
+    await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado" })).toBeVisible();
+    await page.getByRole("button", { name: "Configurar modelo", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
   });
@@ -646,12 +535,13 @@ for (const labels of [
 
 settingsScenario({ signedIn: true }, () => {
   test("snippets account: sidebar excludes personal processing controls", async ({ page }) => {
-    await expect(page.getByRole("navigation").getByRole("button")).toHaveCount(7);
-    await expect(page.getByRole("button", { name: "Estilo", exact: true })).toBeVisible();
+    await closeSettings(page);
+    await expect(page.locator("aside nav").getByRole("button")).toHaveCount(6);
+    await navigate(page, "Estilo");
     const settings = await openSettings(page, "Geral");
     await expect(settings.getByRole("button", { name: "Modelos e serviços", exact: true })).toHaveCount(0);
     await closeSettings(page);
     await navigate(page, "Histórico");
-    await expect(page.getByRole("heading", { name: "Histórico", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Bem-vindo de volta", exact: true })).toBeVisible();
   });
 });

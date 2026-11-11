@@ -16,7 +16,6 @@ import { mergeSettings, settingsValuesEqual } from "./state";
 import { useDraft } from "./use-draft";
 import { dictionaryIdentity } from "./dictionary-identity";
 import { useTextActions } from "./use-text-actions";
-import { useAppStyleEditor } from "./use-app-style-editor";
 import { useTextProfileEditor } from "./use-text-profile-editor";
 
 type RouteOverride = { model?: string; endpoint?: string };
@@ -195,10 +194,10 @@ export function useSettings() {
     if (snapshot) setSnippetDraft(libraryDraft(entries, snippetsRef.current, snapshot.snippets, snapshot.snippetContext, identify));
     setSaved(false);
   };
-  const [page, setPage, pageRef] = useDraft<PageId>("dictation");
-  const [mainPage, setMainPage] = useDraft<MainPageId>("dictation");
+  const [page, setPage, pageRef] = useDraft<PageId>("history");
+  const [mainPage, setMainPage] = useDraft<MainPageId>("history");
   const [settingsOpen, setSettingsOpen, settingsOpenRef] = useDraft(false);
-  const [settingsSection, setSettingsSection] = useDraft<SettingsSectionId>("general");
+  const [settingsSection, setSettingsSection] = useDraft<SettingsSectionId>("dictation");
   const [settingsDismissRequested, renderSettingsDismissRequested] = useState(false);
   const settingsCloseEpoch = useRef(0);
   const setSettingsDismissRequested = (value: boolean) => {
@@ -285,18 +284,23 @@ export function useSettings() {
   const snippetsDirty = useMemo(() => snippets !== null && !settingsValuesEqual(snippets, state?.snippets), [snippets, state?.snippets]);
   const dictionaryDirty = useMemo(() => dictionary !== null && !settingsValuesEqual(dictionary, state?.dictionaryEntries), [dictionary, state?.dictionaryEntries]);
   const routeDirty = (routeScope: string) => {
-    const draft = routes[routeScope];
+    const draft = routesRef.current[routeScope];
     if (!draft) return false;
-    const baseline = routeScope === state?.selectedScope ? {
-      prompt: state.routePrompt, model: state.routeModelId, endpoint: state.routeCustomEndpoint,
+    const snapshot = current.current;
+    const baseline = routeScope === snapshot?.selectedScope ? {
+      prompt: snapshot.routePrompt, model: snapshot.routeModelId, endpoint: snapshot.routeCustomEndpoint,
     } : routeBaselines.current[routeScope];
     return (draft.prompt !== undefined && draft.prompt !== baseline?.prompt) ||
       (draft.override?.model !== undefined && draft.override.model !== baseline?.model) ||
       (draft.override?.endpoint !== undefined && draft.override.endpoint !== baseline?.endpoint);
   };
-  const recordingDirty = !!recording && !!state && !settingsValuesEqual(
-    { ...recording, enabled: state.recordingControls.vad.enabled }, recordingDraft(state.recordingControls),
-  );
+  const hasRecordingDraft = () => {
+    const draft = recordingRef.current, snapshot = current.current;
+    return !!draft && !!snapshot && !settingsValuesEqual(
+      { ...draft, enabled: snapshot.recordingControls.vad.enabled }, recordingDraft(snapshot.recordingControls),
+    );
+  };
+  const recordingDirty = hasRecordingDraft();
   const retentionDirty = !!state && retention !== String(state.historyRetentionDays ?? "");
   const providerDirty = !!apiKey || (!!state && endpoint !== state.providerBaseUrl) || !!state?.providerDirty;
   const dirtyRef = useRef(false);
@@ -386,11 +390,16 @@ export function useSettings() {
   }, [execute, setAccountPending]);
 
   const textActions = useTextActions(state, run);
-  const appStyleEditor = useAppStyleEditor(state, run);
   const textProfileEditor = useTextProfileEditor(state, run);
   const actionsCaptureRef = useRef(false); actionsCaptureRef.current = textActions.capturing;
-  dirtyRef.current ||= textActions.dirty || appStyleEditor.dirty || textProfileEditor.dirty;
-  const { closing, setClosing, closeWindow, closeRequest } = useSettingsWindow(dirtyRef, setError, awaitAcceptedOperations);
+  dirtyRef.current ||= textActions.dirty || textProfileEditor.dirty;
+  const libraryCloseGuard = useRef<(() => boolean) | null>(null);
+  const registerLibraryCloseGuard = useCallback((guard: () => boolean) => {
+    libraryCloseGuard.current = guard;
+    return () => { if (libraryCloseGuard.current === guard) libraryCloseGuard.current = null; };
+  }, []);
+  const blockClose = useCallback(() => libraryCloseGuard.current?.() ?? false, []);
+  const { closing, setClosing, closeWindow, closeRequest } = useSettingsWindow(dirtyRef, setError, awaitAcceptedOperations, blockClose);
 
   useEffect(() => {
     let live = true;
@@ -463,14 +472,14 @@ export function useSettings() {
   const captureDrafts = (all = false, settingsOnly = false) => {
     const activePage = pageRef.current;
     const activeScope = current.current?.selectedScope ?? "transcription";
-    const captureRoutes = settingsOnly ? {} : all ? routesRef.current :
+    const captureRoutes = settingsOnly ? (routesRef.current.transcription ? { transcription: routesRef.current.transcription } : {}) : all ? routesRef.current :
       isWorkflowPage(activePage) && routesRef.current[activeScope]
         ? { [activeScope]: routesRef.current[activeScope] } : {};
     return {
       dictionary: !settingsOnly && (all || activePage === "dictionary") ? dictionaryRef.current : null,
       snippets: !settingsOnly && (all || activePage === "snippets") ? snippetsRef.current : null,
       routes: captureRoutes,
-      recording: !settingsOnly && (all || activePage === "dictation") ? recordingRef.current : null,
+      recording: (settingsOnly || all || activePage === "dictation") ? recordingRef.current : null,
       retention: all || settingsOnly || activePage === "privacy" || activePage === "general" ? retentionRef.current : null,
       endpoint: all || settingsOnly || activePage === "models" ? endpointRef.current : null,
       apiKey: all || settingsOnly || activePage === "models" ? apiKeyRef.current : "",
@@ -478,7 +487,7 @@ export function useSettings() {
   };
   const hasLocalDrafts = () => !!dictionaryRef.current || !!snippetsRef.current || !!recordingRef.current ||
     retentionRef.current !== null || endpointRef.current !== null || !!apiKeyRef.current ||
-    Object.keys(routesRef.current).length > 0 || textActions.isDirty() || appStyleEditor.isDirty() || textProfileEditor.isDirty();
+    Object.keys(routesRef.current).length > 0 || textActions.isDirty() || textProfileEditor.isDirty();
   const waitingForDraftRoute = () => routeLoadingRef.current && isWorkflowPage(pageRef.current);
   const clearCapturedDrafts = (captured: ReturnType<typeof captureDrafts>) => {
     if (dictionaryRef.current === captured.dictionary) setDictionaryDraft(null);
@@ -492,7 +501,7 @@ export function useSettings() {
   const reset = async (all = false, settingsOnly = false) => {
     if (resettingRef.current || savingRef.current || (!all && waitingForDraftRoute())) return false;
     const captured = captureDrafts(all, settingsOnly);
-    if (all) { if (!await textActions.close(true)) return false; appStyleEditor.close(true); }
+    if (all) { if (!await textActions.close(true)) return false; }
     if (all || settingsOnly) textProfileEditor.close(true);
     setDiscardingDrafts(true);
     try {
@@ -526,7 +535,6 @@ export function useSettings() {
       return false;
     }
     if (all && textActions.isDirty() && !await textActions.save()) return false;
-    if (all && appStyleEditor.isDirty() && !await appStyleEditor.save()) return false;
     if ((all || settingsOnly) && textProfileEditor.isDirty() && !await textProfileEditor.save()) return false;
     setSaving(true);
     try {
@@ -619,11 +627,13 @@ export function useSettings() {
     } finally { setSaving(false); }
   };
   const navigate = async (id: PageId, requestedScope?: string) => {
+    if (id === "shortcuts") id = "dictation";
     const snapshot = current.current;
     if (!snapshot) return;
     const targetScope = requestedScope ?? (id === "style" || id === "text"
       ? snapshot.selectedScope === "transcription" ? snapshot.routeProviderId === "local_asr" ? "local_asr_refinement" : "refinement" : reviewScope.current
       : defaultWorkflowScope(id));
+    if (!requestedScope && isSettingsSection(id) && settingsOpenRef.current && pageRef.current === id && !routeLoadingRef.current) return true;
     const epoch = ++navigationEpoch.current;
     const resolved = workflowPage(id, targetScope);
     const destination = resolved === "text" ? "style" : resolved;
@@ -661,7 +671,8 @@ export function useSettings() {
     if (epoch === navigationEpoch.current) setRouteLoading(false);
   };
 
-  const hasSettingsDrafts = () => !!current.current?.providerDirty || !!apiKeyRef.current ||
+  // Async dismissal must observe edits and baselines from the latest input event.
+  const hasSettingsDrafts = () => routeDirty("transcription") || hasRecordingDraft() || !!current.current?.providerDirty || !!apiKeyRef.current ||
     textProfileEditor.isDirty() ||
     (endpointRef.current !== null && endpointRef.current !== current.current?.providerBaseUrl) ||
     (retentionRef.current !== null && retentionRef.current !== String(current.current?.historyRetentionDays ?? ""));
@@ -881,7 +892,7 @@ export function useSettings() {
   };
 
   return {
-    state, page, mainPage, settingsOpen, settingsSection, settingsDismissRequested, setSettingsDismissRequested,
+    registerLibraryCloseGuard, state, page, mainPage, settingsOpen, settingsSection, settingsDismissRequested, setSettingsDismissRequested,
     requestCloseSettings, saveSettings, discardSettings, hasSettingsDrafts,
     error, busy, accountPending, navigating: routeLoading, routeLoading,
     saving, discardingDrafts, validatingProvider, selectingProvider, confirming, saved,
@@ -894,7 +905,7 @@ export function useSettings() {
     cancelDiscard, discardAndClose, saveAndClose, confirmMutation,
     captureHotkey, captureMouseHotkey, selectProvider, validateProvider,
     selectRouteProvider, setTextRouteEnabled, useLocalModel,
-    textActions, appStyleEditor, textProfileEditor,
+    textActions, textProfileEditor,
   };
 }
 

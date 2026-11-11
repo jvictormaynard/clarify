@@ -139,6 +139,9 @@ they do not acquire the financial write mutex.
 
 Desktop startup opens Settings for an unfinished setup;
 `AppConfig.onboarding_completed` is saved through the existing config transaction.
+Desktop practice uses the existing workflow with a safe text destination. Workflow
+and readiness changes publish Settings notifications, including asynchronous local
+model checks; the Electron renderer does not poll for practice state.
 Legacy profiles retain their choices. The iOS app stores separate app-only
 presentation and setup preferences. General onboarding appears once when first
 shown and can be dismissed. Existing signed-in installations and legacy setup
@@ -184,6 +187,9 @@ this interval. Conflicting edits require an explicit resolution. Each account
 has its own persistent cache; guest words, guest snippets, settings, keys and history
 remain on the device. Processing responses include the updated shared allowance,
 and a foreground refresh catches changes made on another device.
+
+`shared/history.ts` owns the local-calendar history grouping and date labels used
+by mobile and desktop. Each UI owns its midnight refresh timer.
 
 `shared/ui_strings.json` owns Portuguese, English and Spanish UI and email copy.
 Clients select the device UI language, independently of dictation language, and
@@ -265,6 +271,12 @@ certificate pinning, operation identity and open delivery evidence.
 The desktop uses one retained Electron child for the React Settings
 window and the React pill. `qml_electron.py` adapts the existing Qt controllers
 to explicit workflow commands and property-change events over private pipes.
+On Windows, the packaged N-API helper returns `MA_NOACTIVATE` for the passive
+pill. Native mouse capture and release remain with Windows. The helper is removed
+before focusable panels and restored when the pill becomes passive. Packaging
+builds it with pinned node-gyp and the pinned Electron headers; it has no renderer
+API or synthetic input path.
+
 The Python engine retains recording, provider, clipboard, account and storage
 ownership. Qt still supplies its event loop, native hotkeys and the file-import
 panel during this migration. The QML presentation remains a recovery path if
@@ -305,7 +317,10 @@ the reviewed desktop projection and does not add unused mobile strings.
 The Settings frontend separates window composition (`desktop/src/app.tsx`),
 feature pages (`pages/`), reusable controls (`components/`), and application state
 (`settings/`). `settings/use-settings.ts` owns local drafts, navigation and
-contextual save/discard operations. Its operation boundary controls action-local
+contextual save/discard operations. General writing tone is one configuration
+value, independent of the target application. Config schema 7 migrates the older
+general tone, drops executable-specific rules and prevents older readers from
+overwriting the new format. An unset legacy tone remains unset. Its operation boundary controls action-local
 pending state, errors and success updates. Navigation stays available during
 microphone tests, refreshes and saves; it does not stage free-text drafts.
 `savePreference` persists one allowlisted choice without committing other drafts.
