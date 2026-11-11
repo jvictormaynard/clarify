@@ -560,6 +560,30 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(text, beforeReentry, "Movement callbacks must not revive a cancelled owner")
     }
   }
+  func testHeldDeleteDoesNotRestartAfterReentrantCancellation() async throws {
+    for cancelOnDelete in [1, 2] {
+      let cancelled = expectation(description: "Delete callback cancels its press")
+      let lateDelete = expectation(description: "Cancelled hold must not delete again")
+      lateDelete.isInverted = true
+      let grid = await MainActor.run { KeyGridView(frame: CGRect(x: 0, y: 0, width: 393, height: 220)) }
+      try await MainActor.run {
+        grid.layoutIfNeeded()
+        let key = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Apagar") })
+        let point = key.convert(CGPoint(x: key.bounds.midX, y: key.bounds.midY), to: grid)
+        var deletions = 0
+        grid.onDelete = { [weak grid] in
+          deletions += 1
+          if deletions == cancelOnDelete {
+            grid?.cancelPress("delete-owner"); cancelled.fulfill()
+          } else if deletions > cancelOnDelete { lateDelete.fulfill() }
+        }
+        grid.beginPress("delete-owner", at: point)
+      }
+      await fulfillment(of: [cancelled], timeout: 2)
+      await fulfillment(of: [lateDelete], timeout: 0.55)
+      await MainActor.run { grid.cancelAllPresses(); grid.onDelete = nil }
+    }
+  }
   func testCustomVocabularyIsNotReplacedAndQuotedWordsStillCorrect() async {
     await MainActor.run {
       let field = Field(), assistant = TypingAssistant()

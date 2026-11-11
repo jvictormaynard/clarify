@@ -528,11 +528,18 @@ final class KeyGridView: UIView {
   @objc private func nextKeyboard(_ button: UIButton, event: UIEvent?) { onNextKeyboard?(button, event) }
   @objc private func beginDelete() {
     guard spacePress?.active != true else { return }
-    stopDelete(); onDelete?()
-    repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-      guard let self = self else { return }; self.onDelete?()
-      self.repeatTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in self?.onDelete?() }
+    stopDelete()
+    let delay = Timer(timeInterval: 0.4, repeats: false) { [weak self] fired in
+      guard let self, self.repeatTimer === fired else { return }
+      let repeating = Timer(timeInterval: 0.08, repeats: true) { [weak self] fired in
+        guard let self, self.repeatTimer === fired else { return }; self.onDelete?()
+      }
+      // Claim the next timer before calling out: deletion can cancel this press.
+      self.repeatTimer = repeating; RunLoop.main.add(repeating, forMode: .common)
+      self.onDelete?()
     }
+    repeatTimer = delay; RunLoop.main.add(delay, forMode: .common)
+    onDelete?()
   }
   @objc private func stopDelete() { repeatTimer?.invalidate(); repeatTimer = nil }
   @objc private func accent(_ gesture: UILongPressGestureRecognizer) {
