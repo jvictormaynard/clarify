@@ -489,7 +489,8 @@ final class KeyboardUITests: XCTestCase {
       pickerHost.addSubview(grid); pickerHost.addSubview(toolbarCover)
       for (title, width) in [("e", CGFloat(393)), ("u", 393), ("e", 320),
                              ("i", 320), ("i", 393), ("i", 430), ("u", 320), ("u", 430),
-                             ("a", 320), ("a", 393), ("a", 430)] {
+                             ("a", 320), ("a", 393), ("a", 430),
+                             ("o", 320), ("o", 393), ("o", 402), ("o", 430)] {
         pickerHost.frame.size.width = width; toolbarCover.frame.size.width = width
         grid.frame.size.width = width; grid.layoutIfNeeded()
         let letter = try key(title), beforeJitter = text, held = try startAccent(title)
@@ -516,7 +517,7 @@ final class KeyboardUITests: XCTestCase {
         let foreignPoint = picker.convert(basePoint, to: grid)
         grid.beginPress("picker-foreign", at: foreignPoint); grid.endPress("picker-foreign", at: foreignPoint)
         XCTAssertEqual(text, beforeJitter, "Only the held accent gesture may insert a choice")
-        if title == "i" || title == "u" || title == "a" {
+        if title == "i" || title == "u" || title == "a" || title == "o" {
           let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: pickerHost.bounds).image { pickerHost.layer.render(in: $0.cgContext) })
           capture.name = "accent-\(title)-\(Int(width))-reference"; capture.lifetime = .keepAlways; self.add(capture)
         }
@@ -525,7 +526,7 @@ final class KeyboardUITests: XCTestCase {
         XCTAssertEqual(text, beforeJitter + title, "Small finger movement must retain the displayed base choice")
       }
       for (title, choice) in [("e", "ę"), ("e", "ė"), ("e", "ē"), ("i", "ī"), ("i", "į"), ("u", "ū"),
-                              ("a", "å"), ("a", "æ")] {
+                              ("a", "å"), ("a", "æ"), ("o", "ō"), ("o", "ø"), ("o", "œ")] {
         let letter = try key(title), beforeChoice = text
         XCTAssertTrue(letter.accessibilityCustomActions?.contains { $0.name == choice } == true)
         let held = try startAccent(title)

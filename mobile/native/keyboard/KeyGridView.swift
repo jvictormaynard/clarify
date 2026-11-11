@@ -565,7 +565,7 @@ final class KeyGridView: UIView {
       let modern = usesModernKeyAppearance
       let cellWidth: CGFloat = modern ? 37 : 42
       // Extended rows need room to keep the held key over its base choice.
-      let fittedCellWidth = choices.count > 7 ? min(cellWidth, bounds.width / 10) : cellWidth
+      let fittedCellWidth = choices.count > 7 ? min(cellWidth, bounds.width / CGFloat(choices.count + 2)) : cellWidth
       let preferredWidth = CGFloat(choices.count) * fittedCellWidth + (modern ? CGFloat(choices.count - 1) * bar.spacing : 0)
       let width = min(bounds.width - 12, preferredWidth)
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
