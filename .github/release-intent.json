@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "component": "desktop",
-  "version": "0.16.2",
-  "base_sha": "352643b1a779a850398a8de86cd07f3aacf0b229",
-  "notes": "Refresh desktop preparation on current main after the mobile 0.14.2 build 74 metadata merge. Preserve mobile identity and earlier immutable v0.16.0 failed build. Desktop 0.16.1 had green preparation-merge CI but no tag or candidate before main advanced. Retain the reviewed desktop features and dependency integration, the mobile catalog barrier and deterministic weekly-reset ledger test. The old Windows fixture startup cause remains unconfirmed; all validation stays enabled. Require exact preparation-merge main CI, an immutable stable candidate, Windows acceptance of its final digest and explicit publication. No iOS signing or App Store publication is authorized here.",
+  "version": "0.17.0",
+  "base_sha": "45d25c1677663a2ea1bba9179ad534ee543798fc",
+  "notes": "Prepare the desktop redesign and fixed dictation dock from PR #304 after its merge and exact green main CI. Include localized daily history, onboarding and animated library/mobile guides, shared page controls, general writing style with application rules removed, passive native input, hover quick menus and recording/completion feedback. Final source requirements and engineering reviews found no actionable defects at db4399b6c4ba6e804d48a03471f20173d8ed264e. Jota source-preview validation is recorded separately from acceptance of the final immutable stable candidate. Preserve mobile release identity. Candidate creation and public publication remain separate gated actions.",
   "evidence": {
-    "report_url": "https://github.com/jvictormaynard/clarify/issues/279"
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/304"
   }
 }
