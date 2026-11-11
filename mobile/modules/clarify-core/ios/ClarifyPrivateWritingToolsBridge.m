@@ -25,7 +25,6 @@
 - (id)initWithAttributedString:(id)text range:(NSRange)range options:(id)options error:(NSError **)error;
 - (void)requestRewritingOfInput:(id)input rewritingType:(id)type completionHandler:(void (^)(id, NSError *))completion;
 - (void)requestCancellationForToken:(unsigned long long)token cancelModelInvocations:(bool)cancel;
-- (void)requestCancellationForToken:(unsigned long long)token cancelModelInvocations:(bool)cancel;
 - (id)rewrittenString;
 @end
 
