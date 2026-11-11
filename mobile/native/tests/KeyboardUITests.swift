@@ -221,6 +221,8 @@ final class KeyboardUITests: XCTestCase {
     let keyboard = SelectionKeyboard()
     host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
     let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
+    grid.rebuildTraceEnabled = true
+    defer { grid.rebuildTraceEnabled = false }
     keyboard.field.before = "Q"
     let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
       (.light, .search, .dark), (.dark, .done, .light), (.default, .default, .dark)
@@ -239,6 +241,7 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
       keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
     }
+    XCTAssertGreaterThan(grid.rebuildTraceCount, 0, "The isolated rebuild-boundary trace must be exercised")
   }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
     try await MainActor.run {

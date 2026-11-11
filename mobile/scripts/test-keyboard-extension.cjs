@@ -89,6 +89,6 @@ try {
   // This directory is created by this process and contains only the generated fixture.
   fs.rmSync(fixture, { recursive: true, force: true });
   fs.writeFileSync(path.join(results, 'summary.json'), JSON.stringify({ runtime, device: device.name, strictOpeningHeight, keyboardHeightDiagnostics, internalManualReturn,
-    completeKeyboardAcceptance: !internalManualReturn && !strictOpeningHeight && !keyboardHeightDiagnostics && exitCode === 0, exitCode }, null, 2));
+    nativeRebuildBoundaryDiagnostic: true, completeKeyboardAcceptance: false, exitCode }, null, 2));
 }
 process.exitCode = exitCode;

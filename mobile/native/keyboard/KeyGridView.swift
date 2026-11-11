@@ -77,6 +77,24 @@ final class KeyGridView: UIView {
   private var spaceTimer: Timer?
   private var rebuildPending = false
   private var layoutSignature = ""
+  var rebuildTraceEnabled = false
+  private(set) var rebuildTraceCount = 0
+  private var rebuildTraceDepth = 0
+  private func traceRebuildBoundary(_ phase: String) {
+    guard rebuildTraceEnabled, rebuildTraceCount < 64 else { return }
+    rebuildTraceCount += 1
+    let record: [String: Any] = ["phase": phase, "depth": rebuildTraceDepth,
+      "instance": String(describing: ObjectIdentifier(self)), "event": rebuildTraceCount,
+      "uptime": ProcessInfo.processInfo.systemUptime, "mainThread": Thread.isMainThread,
+      "requestedSignature": "\(model.page):\(model.shift):\(needsGlobe):\(returnType.rawValue)",
+      "publishedSignature": layoutSignature, "stackAttached": stack.superview === self,
+      "rowParentsValid": stack.arrangedSubviews.allSatisfy { $0.superview === stack },
+      "rowCount": stack.arrangedSubviews.count, "childCount": stack.subviews.count,
+      "pressCount": presses.count, "hasAccent": accentBar != nil,
+      "caller": Array(Thread.callStackSymbols.prefix(24))]
+    if let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+       let text = String(data: data, encoding: .utf8) { print("KEYGRID_REBUILD_BOUNDARY " + text) }
+  }
   private var usesModernKeyAppearance: Bool {
     if #available(iOS 26.0, *) { return true }
     return false
@@ -273,6 +291,9 @@ final class KeyGridView: UIView {
   deinit { repeatTimer?.invalidate(); spaceTimer?.invalidate() }
 
   func rebuild() {
+    let tracing = rebuildTraceEnabled
+    if tracing { rebuildTraceDepth += 1; traceRebuildBoundary("entry") }
+    defer { if tracing { traceRebuildBoundary("exit"); rebuildTraceDepth -= 1 } }
     guard accentBar == nil, presses.isEmpty else { rebuildPending = true; return }
     let signature = "\(model.page):\(model.shift):\(needsGlobe):\(returnType.rawValue)"
     guard layoutSignature != signature else { return }
@@ -281,7 +302,9 @@ final class KeyGridView: UIView {
     stopDelete()
     // UIKit must keep the view that received touchesBegan attached while the
     // finger slides onto the new page. Rebuild the rows around its bottom row.
+    traceRebuildBoundary("remove-before")
     stack.arrangedSubviews.filter { $0 !== numberSlide?.row }.forEach { $0.removeFromSuperview() }
+    traceRebuildBoundary("remove-after")
     let rows = model.rows
     for (index, letters) in rows.enumerated() {
       let row = UIStackView(); row.axis = .horizontal; row.spacing = 6
@@ -415,7 +438,9 @@ final class KeyGridView: UIView {
     // A second tap can arrive before the next display frame. Publish the new
     // hit regions now, rather than leaving freshly created keys at zero size.
     if bounds.width > 0, bounds.height > 0 {
+      traceRebuildBoundary("layout-before")
       setNeedsLayout(); layoutIfNeeded(); stack.setNeedsLayout(); stack.layoutIfNeeded()
+      traceRebuildBoundary("layout-after")
     }
   }
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
