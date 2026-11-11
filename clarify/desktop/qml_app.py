@@ -22,6 +22,17 @@ from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
 
 
+def _can_capture_settings_shortcut(workflow, voice_translation, audio_batch, practice):
+    # Idle practice permits editing its shortcut, while account changes stay blocked.
+    return (
+        workflow.state.phase.value
+        in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}
+        and not voice_translation.active
+        and not audio_batch.running
+        and not practice.busy
+    )
+
+
 def _branding_icon_path() -> Path:
     """Resolve the bundled branding icon for source and frozen launches."""
 
@@ -592,7 +603,9 @@ def main(argv: list[str] | None = None) -> int:
     def practice_can_start() -> bool:
         return capture_idle() and not settings_work_busy()
 
-    local_practice_model = LocalModelReadiness(scheduler)
+    local_practice_model = LocalModelReadiness(
+        scheduler, changed=lambda: settings.practiceStateChanged.emit()
+    )
     app.aboutToQuit.connect(local_practice_model.close)
     practice = PracticeController(
         runtime.practice_workflow,
@@ -643,7 +656,6 @@ def main(argv: list[str] | None = None) -> int:
         text_action_runner=lambda action_id: bridge.runTextAction(action_id),
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
-        application_target=lambda: quick_paste.target,
         processing_allowed=settings_processing_allowed,
         account_can_change=lambda: (
             workflow_service.state.phase.value
@@ -651,6 +663,9 @@ def main(argv: list[str] | None = None) -> int:
             and not voice_translation.active
             and not audio_batch.running
             and not practice.blocks_processing
+        ),
+        hotkey_can_change=lambda: _can_capture_settings_shortcut(
+            workflow_service, voice_translation, audio_batch, practice
         ),
     )
     settings.bindPractice(practice)

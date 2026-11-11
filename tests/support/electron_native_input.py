@@ -5,7 +5,11 @@ from ctypes import wintypes
 import sys
 
 
+_foreground_target = None
+
+
 def native_pill_input(request):
+    global _foreground_target
     if sys.platform != "win32":
         raise RuntimeError("Native desktop input requires Windows")
     user = ctypes.WinDLL("user32", use_last_error=True)
@@ -31,7 +35,66 @@ def native_pill_input(request):
     previous = user.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
     try:
         action = request["action"]
-        if action == "move":
+        if action == "focusTarget":
+            user.CreateWindowExW.argtypes = [
+                wintypes.DWORD,
+                wintypes.LPCWSTR,
+                wintypes.LPCWSTR,
+                wintypes.DWORD,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                wintypes.HWND,
+                wintypes.HMENU,
+                wintypes.HINSTANCE,
+                wintypes.LPVOID,
+            ]
+            user.CreateWindowExW.restype = wintypes.HWND
+            user.SetForegroundWindow.argtypes = [wintypes.HWND]
+            if not _foreground_target:
+                _foreground_target = user.CreateWindowExW(
+                    0x8,
+                    "EDIT",
+                    "Clarify isolated foreground target",
+                    0x10CF0000,
+                    20,
+                    420,
+                    300,
+                    120,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            if not _foreground_target:
+                raise RuntimeError("Cannot create isolated foreground target")
+            user.SetForegroundWindow(_foreground_target)
+            if user.GetForegroundWindow() != _foreground_target:
+                # Click only this fixture's own target if Windows denies focus.
+                rect = wintypes.RECT()
+                user.GetWindowRect(_foreground_target, ctypes.byref(rect))
+                cursor = wintypes.POINT(
+                    (rect.left + rect.right) // 2,
+                    (rect.top + rect.bottom) // 2,
+                )
+                user.SetCursorPos(cursor.x, cursor.y)
+                if user.WindowFromPoint(cursor) != _foreground_target:
+                    raise RuntimeError("Isolated focus target is occluded")
+                user.mouse_event(2, 0, 0, 0, 0)
+                user.mouse_event(4, 0, 0, 0, 0)
+            if user.GetForegroundWindow() != _foreground_target:
+                raise RuntimeError("Isolated target did not receive foreground")
+        elif action == "releaseTarget":
+            if _foreground_target:
+                owner = wintypes.DWORD()
+                user.GetWindowThreadProcessId(_foreground_target, ctypes.byref(owner))
+                if owner.value != ctypes.windll.kernel32.GetCurrentProcessId():
+                    raise RuntimeError("Refuse to close a foreign target")
+                user.DestroyWindow.argtypes = [wintypes.HWND]
+                user.DestroyWindow(_foreground_target)
+                _foreground_target = None
+        elif action == "move":
             user.SetCursorPos(int(request["x"]), int(request["y"]))
         elif action in ("down", "up"):
             user.mouse_event(2 if action == "down" else 4, 0, 0, 0, 0)
@@ -87,6 +150,11 @@ def native_pill_input(request):
                             capture=bool(info.capture),
                             foreground=user.GetAncestor(user.GetForegroundWindow(), 2)
                             == hwnd,
+                            foregroundHwnd=int(user.GetForegroundWindow() or 0),
+                            outside=not (
+                                rect.left <= cursor.x < rect.right
+                                and rect.top <= cursor.y < rect.bottom
+                            ),
                             hit=hit,
                             receives=user.GetAncestor(user.WindowFromPoint(cursor), 2)
                             == hwnd,

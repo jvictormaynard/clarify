@@ -70,10 +70,8 @@ PROPERTIES = (
     "microphoneTestStatus",
     "recordingControls",
     "dictationCleanupLevel",
-    "applicationWritingStyles",
-    "applicationStyleTarget",
     "dictationWritingStyle",
-    "applicationStyleRefinementAllowed",
+    "writingStyleRefinementAllowed",
     "dictationCleanupRefinementAllowed",
     "selectedScope",
     "routeProviderId",
@@ -125,6 +123,7 @@ METHODS = frozenset(
         "setDictationPostProcessing",
         "previewTextAction",
         "cancelTextActionPreview",
+        "copyTextActionPreview",
         "refreshTextActions",
         "beginTextActionHotkeyCapture",
         "endTextActionHotkeyCapture",
@@ -157,6 +156,7 @@ METHODS = frozenset(
         "setRecordingVadEnabled",
         "savePreference",
         "saveLibraryPreference",
+        "refreshLibrary",
         "selectWorkflow",
         "setRouteProviderId",
         "setRouteModelId",
@@ -305,6 +305,7 @@ class SettingsProtocol:
                     "cancelTextActionHotkeyCapture": (),
                     "refreshTextActions": (),
                     "cancelTextActionPreview": (),
+                    "copyTextActionPreview": (str, int),
                     "runTextAction": (str,),
                 }
                 signature = action_signatures.get(method)
@@ -350,16 +351,23 @@ class SettingsProtocol:
                     raise ValueError()
                 if method == "saveLibraryPreference" and len(args) != 5:
                     raise ValueError()
+                if method == "refreshLibrary" and (
+                    len(args) != 1 or type(args[0]) is not str
+                ):
+                    raise ValueError()
                 if method == "save" and self.settings.providerDirty:
                     return {
                         **reply,
                         "error": "Valide ou descarte a chave antes de salvar.",
                     }
                 ok = getattr(self.settings, method)(*args)
-                if ok is False and method not in {
-                    "loadRouteModels",
-                    "refreshRouteModels",
-                }:
+                # Automatic refresh defers during practice or edits without an error.
+                automatic_deferred = method == "accountCommand" and args[:1] == ["auto"]
+                if (
+                    ok is False
+                    and method not in {"loadRouteModels", "refreshRouteModels"}
+                    and not automatic_deferred
+                ):
                     return {
                         **reply,
                         "error": self.settings.lastError

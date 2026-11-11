@@ -1,16 +1,11 @@
-"""Application style selection uses only a captured executable identity."""
+"""Windows executable identity remains lexical and rejects unsafe targets."""
 
 from __future__ import annotations
 
 import unittest
 from unittest.mock import patch
 
-from writing_styles import (
-    ApplicationWritingStyles,
-    WritingStyle,
-    WritingStyleConfigurationError,
-    windows_executable_key,
-)
+from writing_styles import windows_executable_key
 
 
 EDITOR = r"C:\Program Files\Editor\Editor.exe"
@@ -70,18 +65,15 @@ class WindowsExecutableIdentityTests(unittest.TestCase):
             patch("builtins.open", side_effect=AssertionError("open")),
             patch("subprocess.Popen", side_effect=AssertionError("execute")),
         ):
-            rules = ApplicationWritingStyles().with_rule(EDITOR, WritingStyle.NATURAL)
-            self.assertIs(rules.resolve(EDITOR).requested_style, WritingStyle.NATURAL)
+            self.assertEqual(
+                windows_executable_key(EDITOR), r"c:\program files\editor\editor.exe"
+            )
 
     def test_reserved_dos_names_are_rejected_in_files_and_directories(self):
-        rules = ApplicationWritingStyles().with_rule(EDITOR, WritingStyle.NATURAL)
         for name in ("NUL", "con", "PRN", "AUX", "COM1", "LPT9", "COM¹", "LPT²"):
             for executable in (rf"C:\Apps\{name}.exe", rf"C:\{name}.data\Editor.exe"):
                 with self.subTest(executable=executable):
                     self.assertIsNone(windows_executable_key(executable))
-                    self.assertIsNone(rules.resolve(executable).requested_style)
-                    with self.assertRaises(WritingStyleConfigurationError):
-                        rules.with_rule(executable, WritingStyle.INFORMAL)
 
 
 if __name__ == "__main__":

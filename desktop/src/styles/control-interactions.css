@@ -1,0 +1,29 @@
+[data-slot="button"] {
+  transition-property: background-color;
+  transition-duration: var(--interaction-control-duration, 400ms);
+  transition-timing-function: var(--interaction-spring-ease, linear(0, 0.005, 0.019 1.8%, 0.079 3.9%, 0.476 13.5%, 0.663 19.1%, 0.738 22%, 0.8 25.1%, 0.852 28.4%, 0.894 32%, 0.928 36%, 0.953 40.5%, 0.972 45.6%, 0.985 51.6%, 0.997 67.3%, 1));
+}
+
+[data-slot="switch"] {
+  transition: background-color 100ms ease;
+}
+
+[data-slot="switch-thumb"] {
+  transition: translate 150ms var(--interaction-spring-ease, linear(0, 0.005, 0.019 1.8%, 0.079 3.9%, 0.476 13.5%, 0.663 19.1%, 0.738 22%, 0.8 25.1%, 0.852 28.4%, 0.894 32%, 0.928 36%, 0.953 40.5%, 0.972 45.6%, 0.985 51.6%, 0.997 67.3%, 1));
+}
+
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="button"],
+    [data-slot="inline-button"],
+    [data-slot="switch"],
+    [data-slot="switch-thumb"],
+    [data-slot="input-control"],
+    [data-slot="input"],
+    [data-slot="textarea-control"],
+    [data-slot="textarea"] {
+      transition: none;
+      transition-duration: 0s !important;
+    }
+  }
+}

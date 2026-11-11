@@ -52,7 +52,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
           onContinueWithoutAccount={() => {
             if (accountBusy || dirty) return;
             if (account.managed) command("logout");
-            void controller.navigate("general");
+            void controller.navigate("dictation");
           }} />
         <SettingsDisclosure className="account-server" title={t("Servidor próprio")}>
           <div className="account-server-fields">

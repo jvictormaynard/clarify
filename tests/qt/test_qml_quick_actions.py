@@ -146,7 +146,10 @@ class QuickActionsTests(unittest.TestCase):
         voice = SimpleNamespace(
             state=SimpleNamespace(
                 phase=VoiceTranslationPhase.COMPLETED,
-                workflow_state=SimpleNamespace(published_text="Translated text"),
+                operation_id=1,
+                workflow_state=SimpleNamespace(
+                    published_text="Translated text", operation_id=1
+                ),
             ),
             active=False,
             stateChanged=Mock(),
@@ -154,6 +157,28 @@ class QuickActionsTests(unittest.TestCase):
         bridge = QmlWorkflowBridge(service, voice_translation_controller=voice)
         self.assertEqual(bridge.surface, "idle")
         self.assertFalse(bridge.feedbackVisible)
+        bridge._on_voice_translation_state(
+            SimpleNamespace(phase=VoiceTranslationPhase.TRANSCRIBING)
+        )
+        bridge._on_voice_translation_state(voice.state)
+        self.assertEqual(bridge.completionId, "voice:1")
+        bridge._on_workflow_state(
+            WorkflowState(phase=WorkflowPhase.REWRITING, operation_id=1)
+        )
+        self.assertEqual(bridge.completionId, "")
+        bridge._on_voice_translation_state(voice.state)
+        self.assertEqual(bridge.completionId, "")
+        bridge._on_voice_translation_state(
+            SimpleNamespace(phase=VoiceTranslationPhase.TRANSCRIBING, operation_id=2)
+        )
+        bridge._on_voice_translation_state(
+            SimpleNamespace(
+                phase=VoiceTranslationPhase.COMPLETED,
+                operation_id=2,
+                workflow_state=SimpleNamespace(operation_id=1),
+            )
+        )
+        self.assertEqual(bridge.completionId, "voice:2")
 
     def test_all_successful_workflows_remain_on_compact_home(self):
         from clarify.desktop.qml_app import _WorkflowWindowVisibility
@@ -180,12 +205,27 @@ class QuickActionsTests(unittest.TestCase):
             bridge._on_workflow_state(
                 WorkflowState(
                     phase=WorkflowPhase.COMPLETED,
+                    operation_id=7,
                     kind=kind,
+                    writing_style_requested="formal",
                     result_text="Already published",
                 )
             )
             self.assertEqual(restored_surfaces, ["idle"])
             self.assertFalse(bridge.feedbackVisible)
+            self.assertEqual(bridge.completionId, "workflow:7")
+            bridge._on_workflow_state(WorkflowState())
+            self.assertEqual(bridge.completionId, "workflow:7")
+            for phase, status in (
+                (WorkflowPhase.CANCELLED, None),
+                (WorkflowPhase.FAILED, None),
+                (WorkflowPhase.COMPLETED, "refinement_failed"),
+                (WorkflowPhase.COMPLETED, "output_language_not_applied"),
+            ):
+                bridge._on_workflow_state(
+                    WorkflowState(phase=phase, status_key=status, operation_id=8)
+                )
+                self.assertEqual(bridge.completionId, "")
             self.assertIsNotNone(coordinator)
 
     def test_clipboard_failure_does_not_retry_or_expose_text(self):

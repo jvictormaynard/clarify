@@ -536,6 +536,10 @@ def main():
         )
         settings.bindComputer(computer)
         computer.initialize()
+        if "--history" in sys.argv or "--text-actions" in sys.argv:
+            # Clipboard effects stay inside the isolated fixture.
+            settings._history_test_clipboard = []
+            settings._write_history_clipboard = settings._history_test_clipboard.append
         if "--history" in sys.argv:
             from history_store import HistoryRecord, HistoryStore
             from datetime import datetime, timezone
@@ -543,9 +547,6 @@ def main():
             store = HistoryStore(
                 settings._history.local.path, enabled=True, retention_days=None
             )
-            # Clipboard reads and writes stay inside this temporary fixture.
-            settings._history_test_clipboard = []
-            settings._write_history_clipboard = settings._history_test_clipboard.append
             store.append(
                 HistoryRecord(
                     raw_text="Isolated desktop history.",

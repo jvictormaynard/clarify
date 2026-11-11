@@ -496,6 +496,7 @@ class QmlSettingsController(QObject):
     """
 
     configChanged = Signal()
+    practiceStateChanged = Signal()
     updatesChanged = Signal()
     computerStateChanged = Signal()
     routeChanged = Signal()
@@ -530,7 +531,7 @@ class QmlSettingsController(QObject):
         dictionary_service: DictionarySnippetService | None = None,
         account_service=None,
         account_can_change=None,
-        application_target=None,
+        hotkey_can_change: Callable[[], bool] | None = None,
         processing_allowed: Callable[[], bool] = lambda: True,
         chatgpt_session=None,
         text_action_service=None,
@@ -544,6 +545,7 @@ class QmlSettingsController(QObject):
         self._background_timer.timeout.connect(self._drain_background_publications)
         self._updates = None
         self._practice = None
+        self._practice_unsubscribe = None
         self._computer = None
         self.repositories = repositories
         self._account = account_service or AccountService(
@@ -551,7 +553,7 @@ class QmlSettingsController(QObject):
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
         )
         self._account_can_change = account_can_change or (lambda: True)
-        self._application_target = application_target
+        self._hotkey_can_change = hotkey_can_change or self._account_can_change
         self._processing_allowed = processing_allowed
         self._history = getattr(self._account, "history", None)
         if self._history is None and isinstance(self._account, AccountService):
@@ -770,6 +772,19 @@ class QmlSettingsController(QObject):
         # Forward signals without retaining a Python bound emit callback.
         self.routeChanged.connect(self.modelCatalogChanged)
         self.providerStateChanged.connect(self.modelCatalogChanged)
+        for signal in (
+            self.configChanged,
+            self.microphoneChanged,
+            self.microphoneTestChanged,
+            self.hotkeyChanged,
+            self.accountStateChanged,
+            self.chatgptStateChanged,
+            self.modelCatalogChanged,
+            self.providerStateChanged,
+            self.dirtyChanged,
+            self.routeChanged,
+        ):
+            signal.connect(self.practiceStateChanged)
         if local_product is None:
             from local_asr_catalog import MODELS
 
@@ -1428,6 +1443,29 @@ class QmlSettingsController(QObject):
             return True
         except Exception as error:
             self._set_error(error)
+            return False
+
+    @Slot(str, int, result=bool)
+    def copyTextActionPreview(self, context, generation):
+        try:
+            preview = self.textActionPreview
+            if (
+                self._account_shutdown
+                or not context
+                or context != self._text_action_preview_context
+                or context != self._text_actions.context()
+                or type(generation) is not int
+                or generation != self._text_action_preview_generation
+                or preview.get("generation") != generation
+                or preview.get("busy")
+                or preview.get("error")
+                or not preview.get("text")
+            ):
+                raise ValueError("A ação mudou. Salve e tente novamente.")
+            self._write_history_clipboard(preview["text"])
+            return True
+        except Exception:
+            self._set_error("Não foi possível copiar. Tente novamente.")
             return False
 
     @Slot(result=bool)
@@ -2142,17 +2180,13 @@ class QmlSettingsController(QObject):
         level = self._config.dictation_cleanup_level
         return level.value if level is not None else ""
 
-    @Property("QVariantList", notify=configChanged)
-    def applicationWritingStyles(self):
-        return self._config.application_writing_styles.to_mapping()["rules"]
-
     @Property(str, notify=configChanged)
     def dictationWritingStyle(self):
-        style = self._config.application_writing_styles.default_style
+        style = self._config.dictation_writing_style
         return style.value if style is not None else ""
 
     @Property(bool, notify=configChanged)
-    def applicationStyleRefinementAllowed(self):
+    def writingStyleRefinementAllowed(self):
         from shared.dictation_policy import DictationCleanupPolicy
 
         permitted = self.dictationCleanupRefinementAllowed
@@ -2172,13 +2206,6 @@ class QmlSettingsController(QObject):
         return DictationCleanupPolicy(
             self._config.dictation_cleanup_level
         ).allows_refinement(permitted)
-
-    @Property(str, notify=configChanged)
-    def applicationStyleTarget(self):
-        from writing_styles import windows_executable_key
-
-        target = self._application_target() if self._application_target else None
-        return windows_executable_key(getattr(target, "executable", None)) or ""
 
     @Property(bool, notify=configChanged)
     def dictationCleanupRefinementAllowed(self) -> bool:
@@ -2290,6 +2317,25 @@ class QmlSettingsController(QObject):
             or (self._account_busy and self._library_sync_context is None)
         ):
             raise ValueError("A conta mudou. Descarte as alterações e tente novamente.")
+
+    @Slot(str, result=bool)
+    def refreshLibrary(self, context):
+        """Reload durable rows and reuse draft-preserving account synchronization."""
+        try:
+            with self._dictionary_service.transaction(expected_context=context):
+                self._require_library_context(context)
+                self._reconcile_library_draft(self._dictionary_service.reload())
+                identity = (
+                    self._history_correction_identity() if self._account.scope else None
+                )
+        except Exception as error:
+            self._set_error(error)
+            return False
+        self._set_error(None)
+        self.dirtyChanged.emit()
+        if identity is not None:
+            self._sync_library_preferences(expected_identity=identity)
+        return True
 
     def _reconcile_library_draft(self, persisted=None):
         """Rebase actual pending edits on storage without writing either copy."""
@@ -2670,7 +2716,7 @@ class QmlSettingsController(QObject):
         if (
             self._text_action_capture_context
             or self._text_action_mutation["busy"]
-            or not self._account_can_change()
+            or not self._hotkey_can_change()
         ):
             self._set_error(ValueError("Finalize a operação antes de continuar."))
             return False
@@ -3709,6 +3755,9 @@ class QmlSettingsController(QObject):
         self.endTextActionHotkeyCapture()
         if self._practice is not None:
             self._practice.command("close")
+        if self._practice_unsubscribe is not None:
+            self._practice_unsubscribe()
+            self._practice_unsubscribe = None
         self.cancelChatGPT()
         self._release_chatgpt_change()
         self._chatgpt_generation += 1
@@ -4043,9 +4092,15 @@ class QmlSettingsController(QObject):
         return not self._config.onboarding_completed
 
     def bindPractice(self, controller):
+        if self._practice_unsubscribe is not None:
+            self._practice_unsubscribe()
         self._practice = controller
+        self._practice_unsubscribe = controller.subscribe(
+            self.practiceStateChanged.emit
+        )
+        self.practiceStateChanged.emit()
 
-    @Property("QVariantMap", notify=configChanged)
+    @Property("QVariantMap", notify=practiceStateChanged)
     def practiceState(self):
         return (
             self._practice.snapshot() if self._practice is not None else {"open": False}
@@ -4449,8 +4504,6 @@ class QmlSettingsController(QObject):
                 and type(args[0]) is str
                 and isinstance(args[1], (str, dict))
             )
-        elif method == "setApplicationWritingStyle":
-            valid = len(args) == 2 and all(type(value) is str for value in args)
         else:
             valid = method in {"resetAllHotkeys", "useLocalAsr"} and not args
         if not valid:
@@ -4483,19 +4536,7 @@ class QmlSettingsController(QObject):
             style = writing_style(args[0] or None)
             return lambda config: replace(
                 config,
-                application_writing_styles=replace(
-                    config.application_writing_styles, default_style=style
-                ),
-            )
-        if method == "setApplicationWritingStyle":
-            from shared.writing_style_policy import writing_style
-
-            style = writing_style(args[1] or None)
-            return lambda config: replace(
-                config,
-                application_writing_styles=config.application_writing_styles.with_rule(
-                    args[0], style
-                ),
+                dictation_writing_style=style,
             )
         if method in bool_fields:
             if method == "setLocalAsrCloudRefinement":

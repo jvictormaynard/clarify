@@ -8,7 +8,7 @@ import unittest
 
 from repositories import AppConfig, LocalConfigRepository, migrate_config_payload
 from secret_store import MemorySecretStore
-from writing_styles import ApplicationWritingStyles, WritingStyle
+from shared.writing_style_policy import WritingStyle
 import tests.support.workflow_provider as provider_fixture
 import tests.support.workflows as workflow_fixture
 import tests.support.account as account_fixture
@@ -19,71 +19,74 @@ from clarify_account import AccountError
 EDITOR = r"C:\Apps\Editor.exe"
 
 
-class ApplicationStyleConfigTests(unittest.TestCase):
-    def test_older_readers_cannot_erase_rules_or_general_style(self):
+class WritingToneConfigTests(unittest.TestCase):
+    def test_legacy_app_rules_are_removed_and_only_general_tone_is_migrated(self):
+        for tone in (None, "natural", "formal", "informal"):
+            with self.subTest(tone=tone):
+                original = {
+                    "schema_version": 6,
+                    "application_writing_styles": {
+                        "default_style": tone,
+                        "rules": [{"executable": EDITOR, "style": "casual"}],
+                    },
+                    "workflows": {
+                        "refinement": {
+                            "provider_id": "gemini",
+                            "model_id": "gemini-flash-latest",
+                            "prompt": "Keep my personal wording.",
+                        }
+                    },
+                }
+                migrated = migrate_config_payload(original)
+                self.assertNotIn("application_writing_styles", migrated)
+                self.assertEqual(migrated["dictation_writing_style"], tone)
+                self.assertEqual(migrate_config_payload(migrated), migrated)
+                self.assertEqual(
+                    original["application_writing_styles"]["rules"][0]["style"],
+                    "casual",
+                )
+                config = AppConfig.from_mapping(original)
+                self.assertEqual(config.dictation_writing_style, tone)
+                self.assertEqual(
+                    config.workflow("refinement").prompt, "Keep my personal wording."
+                )
+                self.assertNotIn("application_writing_styles", config.to_mapping())
+        self.assertIsNone(
+            AppConfig.from_mapping(
+                {
+                    "schema_version": 6,
+                    "dictation_writing_style": None,
+                    "application_writing_styles": {
+                        "default_style": "formal",
+                        "rules": [],
+                    },
+                }
+            ).dictation_writing_style
+        )
+
+    def test_general_tone_survives_partial_save_and_older_readers_cannot_erase_it(self):
         from unittest.mock import patch
         from repositories import UnsupportedSchemaVersionError
 
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"
             repository = LocalConfigRepository(path, secret_store=MemorySecretStore())
-            repository.apply(
-                replace(
-                    repository.load(),
-                    application_writing_styles=ApplicationWritingStyles(
-                        default_style=WritingStyle.FORMAL
-                    ).with_rule(EDITOR, WritingStyle.NATURAL),
-                )
-            )
-            original = path.read_bytes()
-            for version in (3, 5):
-                with (
-                    self.subTest(version=version),
-                    patch("repositories.CONFIG_SCHEMA_VERSION", version),
-                ):
-                    repository.load()
-                    with self.assertRaises(UnsupportedSchemaVersionError):
-                        repository.apply({"history_enabled": True})
-            self.assertEqual(path.read_bytes(), original)
-
-    def test_v3_migration_preserves_personal_prompts_and_has_no_style_override(self):
-        original = {
-            "schema_version": 3,
-            "dictation_cleanup_level": "clarity",
-            "workflows": {"refinement": {"prompt": "Keep my personal wording."}},
-        }
-        migrated = migrate_config_payload(original)
-        self.assertEqual(migrated["schema_version"], 6)
-        self.assertEqual(migrate_config_payload(migrated), migrated)
-        config = AppConfig.from_mapping(migrated)
-        self.assertEqual(
-            config.workflow("refinement").prompt, "Keep my personal wording."
-        )
-        self.assertIsNone(
-            config.application_writing_styles.resolve(EDITOR).requested_style
-        )
-
-    def test_rules_round_trip_and_partial_saves_keep_prompts_and_other_preferences(
-        self,
-    ):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "config.json"
-            repository = LocalConfigRepository(path, secret_store=MemorySecretStore())
             config = replace(
-                repository.load(),
-                application_writing_styles=ApplicationWritingStyles().with_rule(
-                    EDITOR, WritingStyle.INFORMAL
-                ),
+                repository.load(), dictation_writing_style=WritingStyle.FORMAL
             )
             repository.apply(config)
             repository.apply({"history_enabled": True})
-            loaded = repository.load()
             self.assertIs(
-                loaded.application_writing_styles.resolve(EDITOR).requested_style,
-                WritingStyle.INFORMAL,
+                repository.load().dictation_writing_style, WritingStyle.FORMAL
             )
-            self.assertTrue(loaded.history_enabled)
-            self.assertEqual(json.loads(path.read_text())["schema_version"], 6)
+            self.assertTrue(repository.load().history_enabled)
+            self.assertNotIn("application_writing_styles", json.loads(path.read_text()))
+            original = path.read_bytes()
+            with patch("repositories.CONFIG_SCHEMA_VERSION", 6):
+                repository.load()
+                with self.assertRaises(UnsupportedSchemaVersionError):
+                    repository.apply({"history_enabled": False})
+            self.assertEqual(path.read_bytes(), original)
 
 
 class ApplicationStyleProviderTests(unittest.TestCase):
@@ -303,10 +306,8 @@ class ApplicationStyleWorkflowTests(unittest.TestCase):
     make_service = workflow_fixture.WorkflowFixture.make_service
 
     def configure_style(self):
-        self.rules = ApplicationWritingStyles().with_rule(EDITOR, WritingStyle.INFORMAL)
-        self.config.dictation_writing_style = lambda executable: self.rules.resolve(
-            executable
-        )
+        self.style = WritingStyle.INFORMAL
+        self.config.dictation_writing_style = lambda: self.style
         self.styles = []
         original = self.provider.transcribe
 
@@ -327,7 +328,7 @@ class ApplicationStyleWorkflowTests(unittest.TestCase):
             StartDictation(SelectionTarget(77, EDITOR), "prompt", "pt")
         )
         self.assertEqual(self.service.state.writing_style_requested, "informal")
-        self.rules = self.rules.with_rule(EDITOR, WritingStyle.ORGANIZED)
+        self.style = WritingStyle.ORGANIZED
         self.clipboard.window = 88
         self.service.dispatch(StopDictation())
         self.assertEqual(self.styles, ["informal"])

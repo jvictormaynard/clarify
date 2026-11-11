@@ -43,6 +43,7 @@ WORKFLOW_PROPERTIES = (
     "canUndoCancellation",
     "feedbackVisible",
     "feedbackOperationId",
+    "completionId",
     "feedbackTitle",
     "transitionPending",
     "writingStyleCaption",
@@ -83,11 +84,12 @@ LIBRARY_PROPERTIES = frozenset(
 )
 PILL_SETTINGS = (
     "dictationWritingStyle",
-    "applicationStyleRefinementAllowed",
+    "writingStyleRefinementAllowed",
     "uiLanguage",
     "microphoneDevices",
     "microphoneInventoryBusy",
     "quickMicrophoneId",
+    "hotkeyActions",
     "textActions",
     "updateAvailable",
     "updateBusy",
@@ -117,7 +119,6 @@ class ElectronDesktopProcess(WebSettingsProcess):
         super().__init__(settings, bridge, fallback, parent)
         self.application = application
         self.status = status
-        self._pill_visible = True
         self._settings_dirty: set[str] = set()
         self._workflow_dirty = True
         self._last_workflow = None
@@ -187,7 +188,6 @@ class ElectronDesktopProcess(WebSettingsProcess):
         path = desktop_executable()
         if path is None or self.failed:
             return False
-        self._pill_visible = visible
         if self.process.state() == QProcess.ProcessState.NotRunning:
             self.buffer.clear()
             self._ready = False
@@ -196,7 +196,7 @@ class ElectronDesktopProcess(WebSettingsProcess):
         return True
 
     def show(self):
-        if not self.start(visible=self._pill_visible):
+        if not self.start():
             return False
         self._visible = True
         self._accepted_close = False
@@ -231,11 +231,11 @@ class ElectronDesktopProcess(WebSettingsProcess):
         )
 
     def set_pill_visible(self, visible):
-        self._pill_visible = bool(visible)
+        # Compatibility entry point: the Electron dock stays visible.
         self._window_command("pill-show" if visible else "pill-hide")
 
     def toggle_pill(self):
-        self.set_pill_visible(not self._pill_visible)
+        self._window_command("pill-toggle")
 
     def blocks_update(self):
         # A hidden, clean retained renderer is not an update operation.
@@ -255,6 +255,15 @@ class ElectronDesktopProcess(WebSettingsProcess):
             self._pill_settings = {
                 key: getattr(self.settings, key) for key in PILL_SETTINGS
             }
+            hotkeys = self._pill_settings.pop("hotkeyActions")
+            self._pill_settings["recordingShortcut"] = next(
+                (
+                    item["display"]
+                    for item in hotkeys
+                    if item["id"] == "recording_hotkey"
+                ),
+                "",
+            )
             self._pill_settings["textActions"] = [
                 {key: action[key] for key in ("id", "name", "enabled")}
                 for action in self._pill_settings["textActions"]
@@ -406,7 +415,6 @@ class ElectronDesktopProcess(WebSettingsProcess):
         if event == "ready":
             self._ready = True
             self.startup_timer.stop()
-            self._window_command("pill-show" if self._pill_visible else "pill-hide")
             self._window_command("show" if self._visible else "hide")
             self._workflow_dirty = True
             self._flush()
@@ -516,7 +524,7 @@ class ElectronQtShell(QtShell):
             self.desktop.set_pill_visible(False)
 
     def toggle_window(self):
-        if self.desktop.failed or self.desktop.bridge.surface == "files":
+        if self.desktop.failed:
             super().toggle_window()
         else:
             self.desktop.toggle_pill()

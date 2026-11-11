@@ -24,7 +24,7 @@ vi.mock("../src/components/account-sign-in", () => ({
   AccountSignIn: ({ busy }: { busy: boolean }) => <div data-sign-in data-busy={String(busy)} />,
 }));
 vi.mock("../src/components/history-entry", () => ({
-  HistoryEntryActions: () => null, HistoryComparison: () => null,
+  HistoryEntryActions: ({ onDelete }: { onDelete: () => void }) => <button aria-label="Excluir transcrição" onClick={onDelete} />, HistoryComparison: () => null, HistoryDetailsPanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../src/components/history-correction-dialog", () => ({ HistoryCorrectionAction: () => null }));
 vi.mock("../src/settings/bridge", () => ({

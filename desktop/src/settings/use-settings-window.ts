@@ -8,6 +8,7 @@ export function useSettingsWindow(
   dirty: RefObject<boolean>,
   onError: (message: string) => void,
   awaitAcceptedOperations: (isCurrent: () => boolean) => Promise<boolean>,
+  blockClose?: () => boolean,
 ) {
   const [request, updateRequest] = useState<number | null>(null);
   const closeRequest = useRef<number | null>(null);
@@ -16,9 +17,10 @@ export function useSettingsWindow(
   const allowClose = useRef(false);
   const activeAttempt = useRef<{ request: number; promise: Promise<void> } | null>(null);
   const setClosing = useCallback((value: boolean) => {
+    if (value && blockClose?.()) return;
     closeRequest.current = value ? ++generation.current : null;
     updateRequest(closeRequest.current);
-  }, []);
+  }, [blockClose]);
 
   const closeWindow = useCallback(async (expected: number, canClose = () => !dirty.current) => {
     if (activeAttempt.current?.request === expected) return activeAttempt.current.promise;
@@ -30,6 +32,7 @@ export function useSettingsWindow(
           setClosing(false);
           return;
         }
+        if (blockClose?.()) { setClosing(false); return; }
         if (!canClose()) return;
         if (nativeWindow()) {
           allowClose.current = true;
@@ -45,7 +48,7 @@ export function useSettingsWindow(
     activeAttempt.current = { request: expected, promise: attempt };
     try { await attempt; }
     finally { if (activeAttempt.current?.promise === attempt) activeAttempt.current = null; }
-  }, [awaitAcceptedOperations, dirty, onError, setClosing]);
+  }, [awaitAcceptedOperations, blockClose, dirty, onError, setClosing]);
 
   useEffect(() => {
     if (electron()) return electron()!.onWindow(event => {

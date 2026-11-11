@@ -5,6 +5,27 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-11
+
+### Added
+
+- Keep a compact dictation dock above the taskbar, with controls on hover, output-language selection and quick microphone and text-action menus.
+- Show animated guides for dictionary terms, snippets and text actions, plus an iPhone keyboard demonstration in the mobile-app card and Devices settings.
+- Add an About page for the app name and version.
+
+### Changed
+
+- Simplify onboarding and practice, unify page titles and search controls, and place library actions beside their page titles.
+- Group history into separate daily cards with short localized dates, visible source devices and expandable original and result text.
+- Use one general writing style and remove application-specific style rules.
+
+### Fixed
+
+- Keep dock buttons responsive without taking focus from the application being used.
+- Show a completion check after processing, use a typing indicator while waiting, and keep the recording wave rounded, responsive and clear of the dock edges.
+- Align history actions, show copy confirmation with a checkmark, and prevent guide transitions from briefly showing a scrollbar.
+- Refresh dictionary, snippets and actions through the supported Settings bridge.
+
 ## [0.16.2] - 2026-11-09
 
 Changes since the last public release, 0.15.0.
@@ -529,7 +550,8 @@ Unpublished tag. Candidate validation failed before packaging; no executable or 
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.16.2...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/jvictormaynard/clarify/compare/v0.16.2...v0.17.0
 [0.16.2]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...v0.16.2
 [0.16.1]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...d8bf53e288ff34db2482b6c566ac0d8ccbf0bb89
 [0.16.0]: https://github.com/jvictormaynard/clarify/compare/v0.15.0...v0.16.0

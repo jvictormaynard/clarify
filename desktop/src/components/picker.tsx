@@ -61,7 +61,9 @@ export function Picker({
       >
         {selected ? literalLabels ? selected.label : t(selected.label) : t(value || "Selecionar…")}
       </ComboboxTrigger>
-      <ComboboxPopup>
+      <ComboboxPopup onKeyDown={event => {
+        if (event.key === "Escape") { event.stopPropagation(); setOpen(false); }
+      }}>
         <div className={`relative shrink-0 ${onRefresh ? "pe-9" : ""}`}>
           <ComboboxSearchInput
             onKeyDown={event => {

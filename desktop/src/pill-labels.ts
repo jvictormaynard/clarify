@@ -1,6 +1,7 @@
 import {t, uiLanguage} from './i18n';
 // Pill-only copy stays within the migration slice. Shared Settings copy is unchanged.
 const labels: Record<string, {en: string; es: string}> = {
+  'Sem microfones': {en: 'No microphones', es: 'Sin micrófonos'},
   'Ações de texto': {en: 'Text actions', es: 'Acciones de texto'},
   'Instalar atualização': {en: 'Install update', es: 'Instalar actualización'},
   'Iniciar gravação': {en: 'Start recording', es: 'Iniciar grabación'},
@@ -10,7 +11,9 @@ const labels: Record<string, {en: string; es: string}> = {
   'Traduzir para': {en: 'Translate to', es: 'Traducir a'},
   'Ver resultado': {en: 'Show result', es: 'Ver resultado'},
   'Mais opções': {en: 'More options', es: 'Más opciones'},
-  'Ocultar': {en: 'Hide', es: 'Ocultar'},
+  'Ditar': {en: 'Dictate', es: 'Dictar'},
+  'Concluído': {en: 'Done', es: 'Listo'},
+  'Idioma de saída': {en: 'Output language', es: 'Idioma de salida'},
   'Idioma': {en: 'Language', es: 'Idioma'},
   'Colar última transcrição': {en: 'Paste last transcription', es: 'Pegar última transcripción'},
   'Transcrever arquivos': {en: 'Transcribe files', es: 'Transcribir archivos'},
