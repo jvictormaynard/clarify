@@ -12,9 +12,9 @@ function requireCondition(value, message) {
 
 function releaseNotes(version, build) {
   return {
-    'pt-BR': `Teste interno do Clarify ${version} (${build}). Consulte o relat\u00f3rio de valida\u00e7\u00e3o desta vers\u00e3o.`,
-    'en-US': `Internal test of Clarify ${version} (${build}). See this build's validation report.`,
-    'es-ES': `Prueba interna de Clarify ${version} (${build}). Consulte el informe de validaci\u00f3n de esta versi\u00f3n.`,
+    "en-US": `Clarify ${version} (${build}): diagnoses the Apple rewrite rejection reported in build 85. This is a diagnostic build, not a confirmed rewriting fix. Enable Apple rewriting, select Improve clarity and Keep my tone, then dictate a short Portuguese meeting request from the Clarify keyboard in Notes. If rewriting fails, record the complete error message: it now includes the Apple error domain, code and an entitlement name if Apple supplies one. Full Apple error descriptions and user data are excluded. The transcript remains available for insertion. No Apple editor or translation window should appear. No request parameters or signing permissions have changed. Test suites skipped as requested. Internal testing only; no public App Store submission.`,
+    "pt-BR": `Clarify ${version} (${build}): diagnostica a falha de reescrita Apple da build 85. Esta build coleta detalhes do erro; ainda não confirma uma correção. Ative a reescrita Apple e selecione Revisar clareza. Dite uma frase curta em português pelo teclado Clarify no Notas. Se houver falha, registre a mensagem completa com o domínio, código e nome da permissão, se a Apple informar. Descrições completas do erro e dados do usuário são excluídos. A transcrição continua disponível para inserir. Nenhuma janela da Apple deve aparecer. Os parâmetros e as permissões de assinatura não mudaram. Testes omitidos conforme solicitado. Uso interno, sem envio para a App Store.`,
+    "es-ES": `Clarify ${version} (${build}): diagnostica el fallo de reescritura Apple de la build 85. Es una build de diagnóstico, sin una corrección confirmada. Activa la reescritura Apple y dicta una frase corta con el teclado Clarify en Notas. Si falla, registra el mensaje completo con el dominio, código y nombre del permiso, si Apple lo indica. Se excluyen las descripciones completas y los datos del usuario. La transcripción sigue disponible para insertar. No debe aparecer ninguna ventana de Apple. No cambian los parámetros ni los permisos de firma. Pruebas omitidas según lo solicitado. Solo pruebas internas; sin envío a App Store.`,
   };
 }
 
@@ -106,7 +106,17 @@ async function publish({ env = process.env, fetch = globalThis.fetch,
       if (!attached) {
         const membership = await list('betaGroups/' + group.id + '/builds?limit=100');
         if (!membership.data.some(item => item.id === build.id)) {
-          await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            try {
+              await request('betaGroups/' + group.id + '/relationships/builds', 'POST', { data: [{ type: 'builds', id: build.id }] });
+            } catch (error) {
+              // Auto-distribution can reject a redundant association before its
+              // group membership is visible. Never accept 422 as availability:
+              // retry the reads and require real membership and testing state.
+              if (!String(error.message).startsWith('Apple API 422 ')) throw error;
+              log('Apple group association is pending; verifying membership again.');
+              await sleep(30_000);
+              continue;
+            }
         }
         const localizations = await list('builds/' + build.id + '/betaBuildLocalizations');
         for (const [locale, whatsNew] of Object.entries(releaseNotes(selected.version, selected.build))) {
