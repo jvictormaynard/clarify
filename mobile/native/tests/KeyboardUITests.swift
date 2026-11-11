@@ -580,6 +580,41 @@ final class KeyboardUITests: XCTestCase {
       pickerHost.addSubview(grid); XCTAssertNotNil(grid.window)
       XCTAssertTrue(try activateAccent(try eAction()))
       XCTAssertEqual(text, beforeDetachment + "é", "Reattachment must restore the current accent action")
+      @MainActor func deleteKey() throws -> UIButton {
+        try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Apagar") })
+      }
+      var accessibleDeletes = 0
+      grid.onDelete = { accessibleDeletes += 1 }
+      let primaryKey = try deleteKey()
+      XCTAssertTrue(primaryKey.accessibilityActivate()); XCTAssertTrue(primaryKey.accessibilityActivate())
+      XCTAssertEqual(accessibleDeletes, 2, "A current primary key must remain repeatable")
+      for unavailable in ["hidden-grid", "disabled-grid", "transparent-grid", "disabled-key", "hidden-key", "noninteractive-key", "transparent-key"] {
+        switch unavailable {
+        case "hidden-grid": grid.isHidden = true
+        case "disabled-grid": grid.isUserInteractionEnabled = false
+        case "transparent-grid": grid.alpha = 0
+        case "disabled-key": primaryKey.isEnabled = false
+        case "hidden-key": primaryKey.isHidden = true
+        case "noninteractive-key": primaryKey.isUserInteractionEnabled = false
+        default: primaryKey.alpha = 0
+        }
+        XCTAssertFalse(primaryKey.accessibilityActivate(), "An unavailable primary key must reject activation: \(unavailable)")
+        XCTAssertEqual(accessibleDeletes, 2)
+        grid.isHidden = false; grid.isUserInteractionEnabled = true; grid.alpha = 1
+        primaryKey.isEnabled = true; primaryKey.isHidden = false; primaryKey.isUserInteractionEnabled = true; primaryKey.alpha = 1
+      }
+      grid.removeFromSuperview()
+      XCTAssertFalse(primaryKey.accessibilityActivate()); XCTAssertEqual(accessibleDeletes, 2)
+      pickerHost.addSubview(grid)
+      XCTAssertTrue(primaryKey.accessibilityActivate()); XCTAssertEqual(accessibleDeletes, 3)
+      grid.returnType = .send; grid.rebuild()
+      XCTAssertFalse(primaryKey.accessibilityActivate(), "A rebuilt primary key must reject its retained action")
+      XCTAssertEqual(accessibleDeletes, 3)
+      XCTAssertTrue(try deleteKey().accessibilityActivate()); XCTAssertEqual(accessibleDeletes, 4)
+      let primaryOverlap = try startAccent()
+      XCTAssertFalse(try deleteKey().accessibilityActivate(), "Primary activation must not interrupt a held accent picker")
+      XCTAssertEqual(accessibleDeletes, 4)
+      emit(primaryOverlap, .cancelled)
       for cancellation in ["all", "hide", "detach"] {
         XCTAssertNotNil(grid.window)
         let beforeCancellation = text, held = try startAccent()
@@ -619,6 +654,8 @@ final class KeyboardUITests: XCTestCase {
       let afterTap = text
       grid.beginPress("cursor", at: try spacePoint()); clock += 1; grid.updateSpaceHold()
       XCTAssertFalse(try activateAccent(try eAction()), "Cursor mode must reject an accent action without claiming success")
+      XCTAssertFalse(try deleteKey().accessibilityActivate(), "Cursor mode must reject primary key activation without claiming success")
+      XCTAssertEqual(accessibleDeletes, 4)
       XCTAssertEqual(text, afterTap)
       let heldSpace = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
       grid.model.shift = .once; grid.rebuild()

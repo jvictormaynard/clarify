@@ -24,7 +24,7 @@ private final class KeyButton: UIButton {
     acceptsPoint?(point) ?? super.point(inside: point, with: event)
   }
   override func accessibilityActivate() -> Bool {
-    guard isEnabled else { return false }
+    guard let grid, grid.canActivateKey(self) else { return false }
     if let action = accessibleAction { action(); return true }
     return super.accessibilityActivate()
   }
@@ -494,13 +494,16 @@ final class KeyGridView: UIView {
       else if title == "#" { button.titleVerticalOffset = -5.0 / 3.0 }
     }
   }
+  fileprivate func canActivateKey(_ button: UIButton) -> Bool {
+    window != nil && !isHidden && isUserInteractionEnabled && alpha > 0.01 &&
+      button.isEnabled && button.isUserInteractionEnabled && !button.isHidden && button.alpha > 0.01 &&
+      button.isDescendant(of: stack) && accentBar == nil && spacePress?.active != true
+  }
   private func configureAccentActions(_ button: KeyButton, title: String) {
     button.accessibilityCustomActions = KeyboardState.accents(for: title).dropFirst().map { value in
       UIAccessibilityCustomAction(name: value) { [weak self, weak button] _ in
-        guard let self, let button, self.window != nil, !self.isHidden, self.isUserInteractionEnabled, self.alpha > 0.01,
-              button.isEnabled, button.isUserInteractionEnabled, !button.isHidden, button.alpha > 0.01,
-              button.isDescendant(of: self.stack), button.title(for: .normal) == title,
-              self.accentBar == nil, self.spacePress?.active != true else { return false }
+        guard let self, let button, self.canActivateKey(button),
+              button.title(for: .normal) == title else { return false }
         self.insert(value); return true
       }
     }
