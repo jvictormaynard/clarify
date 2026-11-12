@@ -29,6 +29,8 @@ function fixture(file, modules = {}) {
     if (name === 'react-native') return { TextInput: 'TextInput', Text: 'Text', View: 'View' };
     if (name === '../i18n') return { t: text => text };
     if (name === './ui') return { Button: 'Button', TextButton: 'TextButton', StepContent: 'StepContent', Title: 'Title', ui: {}, usePalette: () => ({}) };
+    if (name === 'expo-symbols') return { SymbolView: 'SymbolView' };
+    if (name === './onboarding-ui') return { OnboardingTitle: 'Title', OnboardingHeader: 'Header', KeyboardSetupIllustration: 'Illustration', PrivacyNote: 'PrivacyNote', onboardingStyles: {} };
     if (name === './draft-text-input') return { DraftTextInput: 'DraftTextInput' };
     if (name === './account-endpoint-recovery') return { AccountEndpointRecovery: 'AccountEndpointRecovery' };
     throw new Error(`Unexpected fixture dependency: ${name}`);
@@ -145,7 +147,7 @@ test('failed guide completion retains the draft and back clears it deliberately'
   assert.equal(f.native.field.text, 'complete practice');
   assert.equal(f.native.field.clears, 0);
   assert.equal(find(f.tree(), 'onboarding.continue').props.disabled, false);
-  find(f.tree(), 'onboarding.back').props.onPress();
+  find(f.tree(), 'onboarding.back').props.onBack();
   assert.equal(f.native.field.clears, 1);
   find(f.tree(), 'onboarding.continue').props.onPress();
   assert.equal(find(f.tree(), 'onboarding.practiceInput').props.initialValue, '');

@@ -198,7 +198,11 @@ Authentication remains required and has a separate route. How to use is an
 explicit replay; it does not reset the general presentation marker. Keyboard and
 Full Access setup use manual confirmation, microphone readiness uses the real
 native session, and text insertion is not inferred from opening iPhone Settings.
-The practice step has a local text field in the guide. Continue is enabled only
+The welcome screen reuses the desktop keyboard animation and shows a still image
+with Reduce Motion. The keyboard setup page animates the four activation steps and stays still with
+Reduce Motion; the
+iPhone Settings page also includes setup and privacy help.
+The practice step has a local text field in the guide. Done is enabled only
 when that field contains non-whitespace text; it does not use a global transcript
 or require another app or manual confirmation. Practice text is not persisted.
 

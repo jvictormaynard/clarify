@@ -61,6 +61,7 @@
       "./plugins/with-clarify-keyboard.cjs",
       "./plugins/with-clarify-activity.cjs",
       "./plugins/with-clarify-sounds.cjs",
+      "./plugins/with-clarify-settings.cjs",
       "./plugins/with-computer-link-privacy.cjs",
       "./plugins/with-computer-relay.cjs",
       "expo-router",

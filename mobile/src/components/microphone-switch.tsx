@@ -4,7 +4,7 @@ import { ActivityIndicator, Switch, Text, View } from 'react-native';
 import Core from '../../modules/clarify-core';
 import { t } from '../i18n';
 import { isBusy, report, useClarify } from '../state/clarify';
-import { Card, usePalette } from './ui';
+import { Card, ui, usePalette } from './ui';
 
 export function MicrophoneSwitch() {
   const c = usePalette();
@@ -25,13 +25,15 @@ export function MicrophoneSwitch() {
   }
   const enabled = requested ?? state.sessionActive;
   return <Card style={{ paddingVertical: 12 }}>
-    <View style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-      <Text style={{ width: 44, textAlign: 'right', fontSize: 16, fontWeight: enabled ? '400' : '600', color: enabled ? c.muted : c.text }}>Off</Text>
+    <View style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={[ui.body, { fontWeight: '600', color: c.text }]}>{t('Ativar Clarify')}</Text>
+        <Text accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>{enabled ? t('Microfone ativo') : t('Microfone desativado')}</Text>
+      </View>
       <Switch accessibilityLabel={t("Ativar Clarify")} accessibilityState={{ busy: changing }} value={enabled}
         disabled={blocked} onValueChange={value => void change(value)}
         style={{ alignSelf: 'center', marginHorizontal: 8 }} />
-      <Text style={{ width: 44, fontSize: 16, fontWeight: enabled ? '600' : '400', color: enabled ? c.text : c.muted }}>On</Text>
-      {changing && <ActivityIndicator size="small" color={c.accent} style={{ position: 'absolute', right: 0 }} />}
+      {changing && <ActivityIndicator size="small" color={c.accent} style={{ marginLeft: 4 }} />}
     </View>
   </Card>;
 }
