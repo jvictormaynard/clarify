@@ -8413,5 +8413,135 @@
     "pt": "Expandir / recolher dock",
     "en": "Expand / collapse dock",
     "es": "Expandir / contraer dock"
+  },
+  "Diga o que precisa. O Clarify cuida do texto.": {
+    "pt": "Diga o que precisa. O Clarify cuida do texto.",
+    "en": "Say what you need. Clarify handles the text.",
+    "es": "Di lo que necesitas. Clarify se encarga del texto."
+  },
+  "Fale em qualquer aplicativo": {
+    "pt": "Fale em qualquer aplicativo",
+    "en": "Speak in any app",
+    "es": "Habla en cualquier aplicación"
+  },
+  "Dite pelo teclado Clarify.": {
+    "pt": "Dite pelo teclado Clarify.",
+    "en": "Talk from the Clarify keyboard.",
+    "es": "Dicta desde el teclado Clarify."
+  },
+  "Texto revisado enquanto você fala": {
+    "pt": "Texto revisado enquanto você fala",
+    "en": "Polished as you speak",
+    "es": "Texto pulido mientras hablas"
+  },
+  "Menos hesitações. Pontuação no lugar.": {
+    "pt": "Menos hesitações. Pontuação no lugar.",
+    "en": "Fewer hesitations. Punctuation in place.",
+    "es": "Menos vacilaciones. Puntuación en su lugar."
+  },
+  "Vários idiomas": {
+    "pt": "Vários idiomas",
+    "en": "Multiple languages",
+    "es": "Varios idiomas"
+  },
+  "Fale nos idiomas que você usa.": {
+    "pt": "Fale nos idiomas que você usa.",
+    "en": "Speak in the languages you use.",
+    "es": "Habla en los idiomas que usas."
+  },
+  "O áudio e o texto são processados no destino que você escolher. O histórico da conta é sincronizado entre seus dispositivos.": {
+    "pt": "O áudio e o texto são processados no destino que você escolher. O histórico da conta é sincronizado entre seus dispositivos.",
+    "en": "Audio and text are processed at your chosen destination. Account history syncs across your devices.",
+    "es": "El audio y el texto se procesan en el destino que elijas. El historial de la cuenta se sincroniza entre tus dispositivos."
+  },
+  "Leia o aviso de privacidade do Clarify.": {
+    "pt": "Leia o aviso de privacidade do Clarify.",
+    "en": "Read the Clarify privacy notice.",
+    "es": "Lee el aviso de privacidad de Clarify."
+  },
+  "Vamos começar": {
+    "pt": "Vamos começar",
+    "en": "Let’s get started",
+    "es": "Empecemos"
+  },
+  "Configurar o Clarify": {
+    "pt": "Configurar o Clarify",
+    "en": "Set up Clarify",
+    "es": "Configurar Clarify"
+  },
+  "Siga estes passos para ditar em qualquer aplicativo.": {
+    "pt": "Siga estes passos para ditar em qualquer aplicativo.",
+    "en": "Follow these steps to dictate in any app.",
+    "es": "Sigue estos pasos para dictar en cualquier aplicación."
+  },
+  "Teclados": {
+    "pt": "Teclados",
+    "en": "Keyboards",
+    "es": "Teclados"
+  },
+  "Permitir Acesso Total": {
+    "pt": "Permitir Acesso Total",
+    "en": "Allow Full Access",
+    "es": "Permitir acceso total"
+  },
+  "Permitir Acesso Total para o teclado Clarify?": {
+    "pt": "Permitir Acesso Total para o teclado Clarify?",
+    "en": "Allow Full Access for the Clarify keyboard?",
+    "es": "¿Permitir acceso total al teclado Clarify?"
+  },
+  "Não permitir": {
+    "pt": "Não permitir",
+    "en": "Don’t Allow",
+    "es": "No permitir"
+  },
+  "Permitir": {
+    "pt": "Permitir",
+    "en": "Allow",
+    "es": "Permitir"
+  },
+  "O Acesso Total permite que o teclado envie seu ditado ao aplicativo Clarify. Áudio e texto são processados na sua conta ou no computador conectado, conforme sua escolha.": {
+    "pt": "O Acesso Total permite que o teclado envie seu ditado ao aplicativo Clarify. Áudio e texto são processados na sua conta ou no computador conectado, conforme sua escolha.",
+    "en": "Full Access lets the keyboard hand your dictation to the Clarify app. Audio and text are processed through your account or connected computer, as you choose.",
+    "es": "El acceso total permite que el teclado entregue tu dictado a la aplicación Clarify. El audio y el texto se procesan con tu cuenta o tu computadora conectada, según lo que elijas."
+  },
+  "Abrir Ajustes": {
+    "pt": "Abrir Ajustes",
+    "en": "Open Settings",
+    "es": "Abrir Ajustes"
+  },
+  "Permita o acesso ao microfone para ditar. Você pode desativá-lo depois no Clarify.": {
+    "pt": "Permita o acesso ao microfone para ditar. Você pode desativá-lo depois no Clarify.",
+    "en": "Allow microphone access to dictate. You can deactivate it later in Clarify.",
+    "es": "Permite el acceso al micrófono para dictar. Puedes desactivarlo después en Clarify."
+  },
+  "Tudo pronto!": {
+    "pt": "Tudo pronto!",
+    "en": "You’re all set!",
+    "es": "¡Todo listo!"
+  },
+  "Experimente: sexta às 14h funciona para você?": {
+    "pt": "Experimente: sexta às 14h funciona para você?",
+    "en": "Try: Does Friday at 2 pm work for you?",
+    "es": "Prueba: ¿Te va bien el viernes a las 14:00?"
+  },
+  "Aguarde…": {
+    "pt": "Aguarde…",
+    "en": "Please wait…",
+    "es": "Espera…"
+  },
+  "Sua privacidade": {
+    "pt": "Sua privacidade",
+    "en": "Your privacy",
+    "es": "Tu privacidad"
+  },
+  "1. Toque em Teclados.\n2. Ative Clarify.\n3. Ative Permitir Acesso Total e confirme Permitir.\n4. Volte ao Clarify para ativar o microfone e experimentar um ditado.": {
+    "pt": "1. Toque em Teclados.\n2. Ative Clarify.\n3. Ative Permitir Acesso Total e confirme Permitir.\n4. Volte ao Clarify para ativar o microfone e experimentar um ditado.",
+    "en": "1. Tap Keyboards.\n2. Turn on Clarify.\n3. Enable Allow Full Access and confirm Allow.\n4. Return to Clarify to activate the microphone and try a dictation.",
+    "es": "1. Toca Teclados.\n2. Activa Clarify.\n3. Activa Permitir acceso total y confirma Permitir.\n4. Vuelve a Clarify para activar el micrófono y probar un dictado."
+  },
+  "Toque no microfone para falar. Toque em enviar para concluir.": {
+    "pt": "Toque no microfone para falar. Toque em enviar para concluir.",
+    "en": "Tap the microphone to talk. Tap send to finish.",
+    "es": "Toca el micrófono para hablar. Toca enviar para terminar."
   }
 }

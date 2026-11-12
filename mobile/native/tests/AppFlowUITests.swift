@@ -363,7 +363,7 @@ final class AppFlowUITests: XCTestCase {
     press("settings.privacy"); capture("privacy"); back()
     press("settings.guide")
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.keyboard"].firstMatch.waitForExistence(timeout: 15))
-    capture("guide-keyboard"); back()
+    capture("guide-keyboard"); press("onboarding.back")
     XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
     verifyActions()
     tab("Ajustes"); press("settings.output"); press("output.more")

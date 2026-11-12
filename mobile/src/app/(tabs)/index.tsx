@@ -89,15 +89,14 @@ export default function Home() {
       sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => `${entry.localOnly ? 'local' : 'account'}:${entry.id}`}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
       ListHeaderComponent={<View testID="app.home" collapsable={false} style={{ gap: 16 }}>
-        <ClarifyLogo size={28} />
-        <ScreenHeader title={t('Ditado')} />
-        <NavigationRow testID="home.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} />
+        <ScreenHeader title={t('Ditado')} action={<ClarifyLogo size={28} />} />
+        <Card><NavigationRow testID="home.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} /></Card>
         <MicrophoneSwitch />
         {account?.mode === 'computer' && <RecordButton />}
-        <Text style={[ui.small, { color: c.muted, marginTop: -8 }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
+        <Text style={[ui.small, { color: c.muted }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
         {state.phase === 'error' && !state.textOperation && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
-      renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 16, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
+      renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 28, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
         accessibilityLabel={`${timestamp(item.createdAt)}. ${item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
