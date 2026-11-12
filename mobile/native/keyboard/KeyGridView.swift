@@ -395,7 +395,7 @@ final class KeyGridView: UIView {
       space.isSpace = true
       if usesModernKeyAppearance { space.setTitle("", for: .normal) }
       bottom.addArrangedSubview(space)
-      let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
+      let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota"), .continue: L("Continuar").lowercased()]
       let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in
         guard let self, self.returnEnabled else { return }; self.insert("\n")
       }

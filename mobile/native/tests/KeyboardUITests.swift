@@ -223,7 +223,9 @@ final class KeyboardUITests: XCTestCase {
     host.addChild(keyboard); host.view.addSubview(keyboard.view); keyboard.didMove(toParent: host)
     let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
     keyboard.field.before = "Q"
+    keyboard.view.frame = CGRect(x: 0, y: 0, width: 402, height: KeyboardInputView.contentHeight)
     let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
+      (.light, .continue, .dark),
       (.light, .search, .dark), (.dark, .done, .light), (.default, .default, .dark)
     ]
     for (appearance, returnType, expectedStyle) in cases {
@@ -238,6 +240,14 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(grid.traitCollection.userInterfaceStyle, expectedStyle)
       XCTAssertEqual(grid.returnType, returnType)
       XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
+      if returnType == .continue {
+        let title = L("Continuar").lowercased()
+        let enter = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == title })
+        XCTAssertEqual(enter.accessibilityLabel, title); XCTAssertTrue(enter.isEnabled)
+        XCTAssertTrue(keyboard.view.bounds.contains(enter.convert(enter.bounds, to: keyboard.view)))
+        let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+        capture.name = "keyboard-continue-return"; capture.lifetime = .keepAlways; add(capture)
+      }
       keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
     }
     keyboard.view.frame = CGRect(x: 0, y: 0, width: 402, height: KeyboardInputView.contentHeight)
