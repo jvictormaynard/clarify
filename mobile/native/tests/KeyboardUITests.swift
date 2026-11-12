@@ -50,6 +50,7 @@ private final class Field: NSObject, UITextDocumentProxy {
   var keyboardType: UIKeyboardType = .default
   var keyboardAppearance: UIKeyboardAppearance = .default
   var returnKeyType: UIReturnKeyType = .default
+  var enablesReturnKeyAutomatically = false
   var isSecureTextEntry = false
   var autocapitalizationType: UITextAutocapitalizationType = .sentences
   var didInsert: ((String) -> Void)?
@@ -239,6 +240,43 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(keyboard.field.before, "Q", "Applying input traits must not modify the draft")
       keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
     }
+    keyboard.view.frame = CGRect(x: 0, y: 0, width: 402, height: KeyboardInputView.contentHeight)
+    keyboard.field.autocapitalizationType = .none; keyboard.field.autocorrectionType = .no
+    keyboard.field.returnKeyType = .search; keyboard.field.enablesReturnKeyAutomatically = true
+    keyboard.field.before = ""; keyboard.textDidChange(nil); keyboard.view.layoutIfNeeded()
+    @MainActor func returnButton() throws -> UIButton {
+      try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("buscar") })
+    }
+    @MainActor func center(_ button: UIButton) -> CGPoint { button.convert(CGPoint(x: button.bounds.midX, y: button.bounds.midY), to: grid) }
+    let disabledReturn = try returnButton(), returnPoint = center(disabledReturn)
+    XCTAssertFalse(disabledReturn.isEnabled); XCTAssertFalse(disabledReturn.accessibilityActivate())
+    disabledReturn.sendActions(for: .touchUpInside)
+    var presses = 0; grid.onKeyPress = { presses += 1 }
+    grid.beginPress("disabled-return", at: returnPoint); grid.endPress("disabled-return", at: returnPoint)
+    XCTAssertEqual(keyboard.field.before, ""); XCTAssertEqual(presses, 0)
+    let space = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("espaço") })
+    grid.beginPress("space-to-disabled-return", at: center(space))
+    grid.endPress("space-to-disabled-return", at: returnPoint)
+    XCTAssertEqual(keyboard.field.before, "", "A disabled Return must not redirect the release to Space")
+    let disabledCapture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+    disabledCapture.name = "keyboard-auto-return-disabled"; disabledCapture.lifetime = .keepAlways; add(disabledCapture)
+    let letter = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "q" })
+    letter.sendActions(for: .touchUpInside)
+    XCTAssertEqual(keyboard.field.before, "q"); XCTAssertTrue(try returnButton().isEnabled)
+    let enabledCapture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { keyboard.view.layer.render(in: $0.cgContext) })
+    enabledCapture.name = "keyboard-auto-return-enabled"; enabledCapture.lifetime = .keepAlways; add(enabledCapture)
+    try returnButton().sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "q\n")
+    let delete = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Apagar") })
+    for _ in 0..<2 { delete.sendActions(for: .touchDown); delete.sendActions(for: .touchUpInside) }
+    XCTAssertEqual(keyboard.field.before, ""); XCTAssertFalse(try returnButton().isEnabled)
+    keyboard.field.contextAvailable = false; keyboard.field.after = "tail"; keyboard.textDidChange(nil)
+    XCTAssertTrue(try returnButton().isEnabled, "Public hasText must include text after the caret when context is unavailable")
+    keyboard.field.after = ""; keyboard.selectionDidChange(nil); XCTAssertFalse(try returnButton().isEnabled)
+    keyboard.field.enablesReturnKeyAutomatically = false
+    keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+    XCTAssertTrue(try returnButton().isEnabled)
+    try returnButton().sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "\n")
+    keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
   }
   func testOwnTypingCapitalizesTheNextSentenceWithoutAHostNotification() async throws {
     try await MainActor.run {

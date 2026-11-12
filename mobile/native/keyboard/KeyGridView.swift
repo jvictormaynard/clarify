@@ -9,6 +9,7 @@ private final class KeyButton: UIButton {
   var isGlobe = false
   var isShift = false
   var isSpace = false
+  var isReturn = false
   var startsNumberSlide = false
   var titleVerticalOffset: CGFloat = 0
   override func titleRect(forContentRect contentRect: CGRect) -> CGRect {
@@ -50,6 +51,8 @@ final class KeyGridView: UIView {
   var model = KeyboardState()
   var needsGlobe = false
   var returnType: UIReturnKeyType = .default
+  var returnEnabled = true { didSet { updateReturnAvailability() } }
+  private weak var returnKey: KeyButton?
   private let stack = UIStackView()
   private var repeatTimer: Timer?
   private var lastShift = Date.distantPast
@@ -222,7 +225,8 @@ final class KeyGridView: UIView {
     var rowKeys: [KeyButton] = []
     var rowDistance = CGFloat.greatestFiniteMagnitude
     for row in touchRows {
-      let available = row.keys.filter { $0.isEnabled && $0.isUserInteractionEnabled && !$0.isHidden && $0.alpha > 0.01 }
+      // A disabled Return keeps its hit region instead of redirecting to Space.
+      let available = row.keys.filter { ($0.isEnabled || $0.isReturn) && $0.isUserInteractionEnabled && !$0.isHidden && $0.alpha > 0.01 }
       guard !available.isEmpty else { continue }
       let rect = row.view.convert(row.view.bounds, to: self)
       let distance = max(rect.minY - point.y, 0, point.y - rect.maxY)
@@ -235,7 +239,7 @@ final class KeyGridView: UIView {
       let distance = max(rect.minX - point.x, 0, point.x - rect.maxX)
       if distance < shortest { shortest = distance; result = key }
     }
-    return result
+    return result?.isEnabled == true ? result : nil
   }
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
     if !isHidden, isUserInteractionEnabled, alpha > 0.01, let bar = accentBar,
@@ -392,7 +396,10 @@ final class KeyGridView: UIView {
       if usesModernKeyAppearance { space.setTitle("", for: .normal) }
       bottom.addArrangedSubview(space)
       let returns: [UIReturnKeyType: String] = [.go: L("ir"), .search: L("buscar"), .send: L("enviar"), .next: L("próximo"), .done: "OK", .join: L("entrar"), .route: L("rota")]
-      let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in self?.insert("\n") }
+      let enter = key(returns[returnType] ?? L("retorno"), special: true) { [weak self] in
+        guard let self, self.returnEnabled else { return }; self.insert("\n")
+      }
+      enter.isReturn = true
       if usesModernKeyAppearance && returnType == .default {
         enter.setTitle("", for: .normal)
         enter.setImage(UIImage(systemName: "return"), for: .normal)
@@ -401,6 +408,7 @@ final class KeyGridView: UIView {
       if returnType != .default {
         enter.restingColor = .systemBlue; enter.backgroundColor = .systemBlue; enter.setTitleColor(.white, for: .normal)
       }
+      returnKey = enter; updateReturnAvailability()
       bottom.addArrangedSubview(enter)
       enter.widthAnchor.constraint(equalTo: stack.widthAnchor, multiplier: wideBottomControls ? 0.25 : 0.23,
         constant: wideBottomControls ? -4.5 : 0).isActive = true
@@ -417,6 +425,11 @@ final class KeyGridView: UIView {
     if bounds.width > 0, bounds.height > 0 {
       setNeedsLayout(); layoutIfNeeded(); stack.setNeedsLayout(); stack.layoutIfNeeded()
     }
+  }
+  private func updateReturnAvailability() {
+    returnKey?.isEnabled = returnEnabled
+    returnKey?.alpha = returnEnabled ? 1 : 0.4
+    if !returnEnabled { returnKey?.isHighlighted = false }
   }
   private func key(_ title: String, special: Bool = false, action: @escaping () -> Void) -> KeyButton {
     let button = KeyButton(type: .custom)

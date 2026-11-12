@@ -403,6 +403,10 @@ class KeyboardViewController: UIInputViewController {
     // Let the view inherit those traits instead of pinning it to stale data.
     let returnType = textDocumentProxy.returnKeyType ?? .default
     if keys.returnType != returnType { keys.returnType = returnType; keys.rebuild() }
+    updateReturnAvailability()
+  }
+  private func updateReturnAvailability() {
+    keys.returnEnabled = textDocumentProxy.enablesReturnKeyAutomatically != true || textDocumentProxy.hasText
   }
   private func updateCapitalization() {
     let proxy = textDocumentProxy
@@ -653,6 +657,7 @@ class KeyboardViewController: UIInputViewController {
     return !state.textOperation || (textOperationID == id && textSelection == currentTextSelection())
   }
   private func updateSuggestions() {
+    updateReturnAvailability()
     if typingVocabularyRevision != state.libraryRevision || Date().timeIntervalSince(typingVocabularyCheckedAt) >= 1 {
       let vocabulary = store?.keyboardDictionary()
       let pending = vocabulary.map { store?.keyboardAdditions(scope: $0.scope).map { $0.1.term } ?? [] } ?? []
