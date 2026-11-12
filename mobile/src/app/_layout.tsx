@@ -32,7 +32,7 @@ function Navigation() {
       <Stack.Screen name="microphone" options={{ headerShown: true, title: t('Microfone e teclado'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="privacy" options={{ headerShown: true, title: t('Histórico e privacidade'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="settings" options={{ headerShown: true, title: t("Ajustes"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
-      <Stack.Screen name="guide" options={{ headerShown: true, title: t("Como usar"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
+      <Stack.Screen name="guide" options={{ headerShown: false, title: t("Como usar"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
     </Stack.Protected>
   </Stack>;
 }

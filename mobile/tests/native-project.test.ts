@@ -10,6 +10,35 @@ const { getConfig } = require('expo/config');
 const withClarifyKeyboard = require('../plugins/with-clarify-keyboard.cjs');
 const withClarifySounds = require('../plugins/with-clarify-sounds.cjs');
 
+test('iPhone Settings includes localized setup help once in the app resources', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-settings-'));
+  try {
+    const template = path.join(path.dirname(require.resolve('expo/package.json')), 'template.tgz');
+    const projectFile = path.join(root, 'project.pbxproj');
+    fs.writeFileSync(projectFile, execFileSync('tar', ['-xOzf', template, 'package/ios/HelloWorld.xcodeproj/project.pbxproj']));
+    const project = require('xcode').project(projectFile);
+    project.parseSync();
+    const config = require('../plugins/with-clarify-settings.cjs')(structuredClone(require('../app.json').expo));
+    const modRequest = { projectRoot: process.cwd(), platformProjectRoot: root };
+    for (let i = 0; i < 2; i++) {
+      await config.mods.ios.dangerous({ ...config, modRequest });
+      await config.mods.ios.xcodeproj({ ...config, modRequest, modResults: project });
+    }
+    const resources = project.pbxResourcesBuildPhaseObj(project.getFirstTarget().uuid).files;
+    assert.equal(resources.filter((file: { comment: string }) => file.comment === 'Settings.bundle in Resources').length, 1);
+    const plist = require('@expo/plist').default;
+    const bundle = path.join(root, 'Settings.bundle');
+    const schema = plist.parse(fs.readFileSync(path.join(bundle, 'Root.plist'), 'utf8'));
+    assert.equal(schema.StringsTable, 'Root');
+    assert.equal(schema.PreferenceSpecifiers.length, 2);
+    for (const locale of ['pt', 'en', 'es']) {
+      const content = fs.readFileSync(path.join(bundle, `${locale}.lproj`, 'Root.strings'), 'utf8');
+      assert.ok(content.includes('Clarify'));
+      assert.ok(content.includes('\\n'), 'multiline instructions must remain valid strings');
+    }
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('the containing app bundles the shared dictation sounds once', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-sounds-'));
   try {

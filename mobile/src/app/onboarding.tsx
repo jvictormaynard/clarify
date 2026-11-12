@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccountSignIn } from '../components/account-sign-in';
-import { ClarifyLogo } from '../components/clarify-logo';
+import { OnboardingDemo, OnboardingHeader, WelcomeBenefits, PrivacyNote, PrivacyLink, onboardingStyles, OnboardingTitle as Title } from '../components/onboarding-ui';
 import { QuickStartGuide } from '../components/quick-start-guide';
-import { Button, KeyboardPage, StepContent, TextButton, Title, ui, usePalette } from '../components/ui';
+import { Button, KeyboardPage, StepContent, TextButton, ui, usePalette } from '../components/ui';
 import { t } from '../i18n';
 import { isBusy, report, useClarify } from '../state/clarify';
 
@@ -26,19 +26,25 @@ export default function Onboarding() {
     finally { setSaving(false); }
   }
   return <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>
-    <KeyboardPage contentContainerStyle={{ justifyContent: 'center', paddingVertical: 32 }}>
-      <View onLayout={() => void markOnboardingPresented().catch(report)} style={{ width: '100%' }}>
-        <StepContent step={step}>
-          {step === 'welcome' ? <View testID="onboarding.welcome" collapsable={false} style={{ gap: 28 }}>
-            <ClarifyLogo size={48} />
-            <Title subtitle={t('Use sua voz para escrever em outros aplicativos.')}>{t('Fale. O Clarify escreve.')}</Title>
-            <Button primary testID="onboarding.continue" disabled={busy} onPress={() => setStarted(true)}>{t('Começar')}</Button>
-            <TextButton testID="onboarding.skip" disabled={busy} onPress={() => void finish()}>{t('Agora não')}</TextButton>
+    <KeyboardPage contentContainerStyle={{ paddingTop: 8, gap: 0 }}>
+      <View onLayout={() => void markOnboardingPresented().catch(report)} style={{ width: '100%', flexGrow: 1 }}>
+        <StepContent step={step} style={{ flexGrow: 1 }}>
+          {step === 'welcome' ? <View testID="onboarding.welcome" collapsable={false} style={{ flexGrow: 1, gap: 16 }}>
+            <OnboardingHeader testID="onboarding.skip" title="Clarify" onBack={() => void finish()} disabled={busy} />
+            <View style={{ marginHorizontal: -20 }}><OnboardingDemo /></View>
+            <Title subtitle={t('Diga o que precisa. O Clarify cuida do texto.')}>{t('Boas-vindas ao Clarify')}</Title>
+            <WelcomeBenefits />
+            <PrivacyNote>{t('O áudio e o texto são processados no destino que você escolher. O histórico da conta é sincronizado entre seus dispositivos.')}</PrivacyNote>
+            <View style={onboardingStyles.footer}>
+              <PrivacyLink />
+              <Button primary testID="onboarding.continue" disabled={busy} onPress={() => setStarted(true)}>{`${t('Vamos começar')} →`}</Button>
+            </View>
           </View> : !account ? <>
             <ActivityIndicator color={c.text} />
             <Button onPress={() => void refreshAccount().catch(report)}>{t('Tentar carregar novamente')}</Button>
             <TextButton testID="onboarding.skip" onPress={() => void finish()}>{t('Fechar')}</TextButton>
-          </> : step === 'guide' ? <QuickStartGuide key={`${account.endpoint}/${account.email}`} onFinish={finish} busy={busy} /> : <>
+          </> : step === 'guide' ? <QuickStartGuide onBack={() => setStarted(false)} key={`${account.endpoint}/${account.email}`} onFinish={finish} busy={busy} /> : <>
+            <OnboardingHeader title={t('Configurar o Clarify')} onBack={() => setStarted(false)} disabled={busy} />
             <Title>{t('Escolha como usar o Clarify')}</Title>
             <ProcessingChoice />
             {account.mode === 'computer' ? <ComputerConnectionCard /> : <>
