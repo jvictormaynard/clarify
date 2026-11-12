@@ -267,7 +267,13 @@ final class KeyboardUITests: XCTestCase {
     enabledCapture.name = "keyboard-auto-return-enabled"; enabledCapture.lifetime = .keepAlways; add(enabledCapture)
     try returnButton().sendActions(for: .touchUpInside); XCTAssertEqual(keyboard.field.before, "q\n")
     let delete = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == L("Apagar") })
-    for _ in 0..<2 { delete.sendActions(for: .touchDown); delete.sendActions(for: .touchUpInside) }
+    let beginDelete = try XCTUnwrap(delete.actions(forTarget: grid, forControlEvent: .touchDown)?.first)
+    let endDelete = try XCTUnwrap(delete.actions(forTarget: grid, forControlEvent: .touchUpInside)?.first)
+    // Unhosted UIKit tests have no UIApplication to dispatch target actions.
+    for expected in ["q", ""] {
+      _ = grid.perform(NSSelectorFromString(beginDelete)); _ = grid.perform(NSSelectorFromString(endDelete))
+      XCTAssertEqual(keyboard.field.before, expected)
+    }
     XCTAssertEqual(keyboard.field.before, ""); XCTAssertFalse(try returnButton().isEnabled)
     keyboard.field.contextAvailable = false; keyboard.field.after = "tail"; keyboard.textDidChange(nil)
     XCTAssertTrue(try returnButton().isEnabled, "Public hasText must include text after the caret when context is unavailable")
