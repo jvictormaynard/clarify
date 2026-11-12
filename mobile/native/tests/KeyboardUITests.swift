@@ -2208,6 +2208,32 @@ final class KeyboardUITests: XCTestCase {
         let capture = XCTAttachment(image: image)
         capture.name = appearance == .dark ? "keyboard-dark-press" : "keyboard-light-press"
         capture.lifetime = .keepAlways; self.add(capture)
+        if let preview = preview,
+           let shape = preview.layer.sublayers?.compactMap({ $0 as? CAShapeLayer }).first {
+          let heldFrame = preview.frame
+          for next in [appearance == .light ? UIUserInterfaceStyle.dark : .light, appearance] {
+            keyboard.view.overrideUserInterfaceStyle = next; host.view.layoutIfNeeded()
+            XCTAssertTrue(preview.superview === keyboard.view)
+            XCTAssertEqual(preview.traitCollection.userInterfaceStyle, next)
+            XCTAssertEqual(preview.frame, heldFrame)
+            XCTAssertTrue(button.isHighlighted)
+            XCTAssertEqual(descendants(preview).compactMap { $0 as? UILabel }.first?.text, button.title(for: .normal))
+            if let fill = shape.fillColor {
+              var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+              XCTAssertTrue(UIColor(cgColor: fill).getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+              let expected: CGFloat = next == .dark ? 0.33 : 1
+              XCTAssertEqual(red, expected, accuracy: 0.001)
+              XCTAssertEqual(green, expected, accuracy: 0.001)
+              XCTAssertEqual(blue, expected, accuracy: 0.001)
+              XCTAssertEqual(alpha, 1, accuracy: 0.001)
+            } else { XCTFail("Missing held preview fill") }
+            if next != appearance {
+              let changed = XCTAttachment(image: renderer.image { keyboard.view.layer.render(in: $0.cgContext) })
+              changed.name = appearance == .light ? "keyboard-held-preview-light-to-dark" : "keyboard-held-preview-dark-to-light"
+              changed.lifetime = .keepAlways; self.add(changed)
+            }
+          }
+        } else { XCTFail("Missing held preview shape") }
         button.isHighlighted = false
         XCTAssertFalse(descendants(keyboard.view).contains { $0 is KeyPreview })
         // Capture keys against lighter host materials as well as the transparent
