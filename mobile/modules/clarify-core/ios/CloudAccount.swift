@@ -322,8 +322,31 @@ final class CloudAccount {
       request.setValue(contentType, forHTTPHeaderField: "Content-Type")
     }
     let data: Data, response: URLResponse
+    #if CLARIFY_APP_FLOW_TESTING
+    let observationID = UUID().uuidString, observationStart = ProcessInfo.processInfo.systemUptime
+    func observe(_ phase: String, _ error: Error? = nil) {
+      guard method == "GET", path == "/v1/text-actions", url.host == "127.0.0.1",
+            let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+      let file = caches.appendingPathComponent("clarify-catalog-observation.jsonl")
+      var previous = (try? Data(contentsOf: file)) ?? Data()
+      guard previous.count < 32 * 1024 else { return }
+      var event: [String: Any] = ["id": observationID, "phase": phase,
+        "utc": Date().timeIntervalSince1970, "uptime": ProcessInfo.processInfo.systemUptime,
+        "elapsed": ProcessInfo.processInfo.systemUptime - observationStart]
+      if let error { let failure = error as NSError; event["domain"] = failure.domain; event["code"] = failure.code }
+      guard let encoded = try? JSONSerialization.data(withJSONObject: event) else { return }
+      previous.append(encoded); previous.append(0x0A); try? previous.write(to: file, options: .atomic)
+    }
+    observe("started")
+    do {
+      if let transport { (data, response) = try await transport(request) }
+      else { (data, response) = try await session.data(for: request) }
+      observe("completed")
+    } catch { observe("error", error); throw error }
+    #else
     if let transport { (data, response) = try await transport(request) }
     else { (data, response) = try await session.data(for: request) }
+    #endif
     guard let response = response as? HTTPURLResponse, data.count <= 512 * 1024 else { throw ClarifyError(L("Resposta inválida do Clarify.")) }
     if path.hasPrefix("/v1/text-actions") || path == "/v1/text" || path == "/v1/dictations" {
       guard response.url == url, !(300...399).contains(response.statusCode) else { throw ComputerFailure.invalidResponse }

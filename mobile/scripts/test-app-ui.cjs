@@ -134,7 +134,18 @@ async function main() {
       }
       if (fingerprint(testRun.path) !== testRun.sha256) throw new Error('App UI test manifest changed between profiles.');
       const started = Date.now();
-      await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
+      let observationCaptured = false;
+      try {
+        await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
+      } finally {
+        const container = spawnSync('xcrun', ['simctl', 'get_app_container', simulator, 'com.jvictormaynard.clarify', 'data'], { encoding: 'utf8' });
+        const source = container.status === 0 ? path.join(container.stdout.trim(), 'Library/Caches/clarify-catalog-observation.jsonl') : null;
+        if (source && fs.existsSync(source)) {
+          fs.copyFileSync(source, path.join(output, `catalog-observation-${scenario.profile}.jsonl`));
+          observationCaptured = true;
+        } else console.error('Missing catalog observation.');
+      }
+      if (!observationCaptured) throw new Error('Missing catalog observation; this lab cannot claim capture completion.');
       scenarios.at(-1).testSeconds = (Date.now() - started) / 1000;
       run('xcrun', ['simctl', 'shutdown', simulator]);
       run('xcrun', ['simctl', 'delete', simulator]);
@@ -147,7 +158,7 @@ async function main() {
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
     for (const [name, hash] of preserved) if (fingerprint(path.join(original, name)) !== hash) { console.error('Production generated project changed during app UI testing.'); exitCode = 1; }
-    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, profiles, nativeTextInputAcceptance, completeAppAcceptance: exitCode === 0 && profiles.length === 2 && nativeTextInputAcceptance, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
+    fs.writeFileSync(path.join(output, 'summary.json'), JSON.stringify({ exitCode, profiles, nativeTextInputAcceptance, completeAppAcceptance: false, catalogObservationOnly: true, sourceProjectUnchanged: preserved.every(([name, hash]) => fingerprint(path.join(original, name)) === hash), buildSeconds, testRun, requests, unexpected, scenarios }, null, 2));
     service.release();
     await new Promise(resolve => server.close(resolve));
     if (simulator) { spawnSync('xcrun', ['simctl', 'shutdown', simulator]); spawnSync('xcrun', ['simctl', 'delete', simulator]); }
