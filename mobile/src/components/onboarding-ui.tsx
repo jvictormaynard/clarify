@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useIsFocused } from 'expo-router';
 import { Animated, AppState, Easing, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
@@ -72,7 +72,7 @@ export function KeyboardSetupIllustration() {
   const c = usePalette();
   const reduced = useReducedMotion();
   const focused = useIsFocused();
-  const timeline = useRef(new Animated.Value(0)).current;
+  const [timeline] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (reduced || !focused) { timeline.setValue(reduced ? 1 : 0); return; }
     let animation: Animated.CompositeAnimation | undefined;
