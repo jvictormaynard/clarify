@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, ScrollView, Text } from 'react-native';
 import Core, { type OutputPreferences } from '../../modules/clarify-core';
@@ -10,7 +10,7 @@ import { targetLanguages } from '../text-actions';
 import { t } from '../i18n';
 import { DictationPolicyControls } from '../components/dictation-policy';
 
-export default function Output() {
+export default function Output({ close = true, introduction }: { close?: boolean; introduction?: ReactNode } = {}) {
   const c = usePalette();
   const { account, state, accountBusy, accountCommand, computerCommand } = useClarify();
   const [preferences, setPreferences] = useState<OutputPreferences>();
@@ -65,7 +65,7 @@ export default function Output() {
   }
   const legacy = preferences && !outputStyles.some(item => item.value === preferences.style);
   return <ScrollView testID="app.output" style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic">
-    <Text style={[ui.small, { color: c.muted }]}>{t('As alterações valem para a próxima operação.')}</Text>
+    {introduction}
     {!supported && supportChecked && !error && <Text accessibilityRole="alert" style={[ui.body, { color: c.muted }]}>{t('Atualize o Clarify neste destino para mudar a saída do ditado.')}</Text>}
     {!!error && <Text testID="output.error" accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(error)}</Text>}
     {(!supported || !!error) && <Button testID="output.refresh" loading={refreshing}
@@ -85,6 +85,6 @@ export default function Output() {
         {legacy && <ChoiceRow title={t(outputStyleLabel(preferences.style))} selected disabled onPress={() => {}} />}
       </Section>} />
     {pending && <ActivityIndicator accessibilityLabel={t('Salvando…')} />}
-    <Button testID="output.close" onPress={() => router.back()}>{t('Fechar')}</Button>
+    {close && <Button testID="output.close" onPress={() => router.back()}>{t('Fechar')}</Button>}
   </ScrollView>;
 }

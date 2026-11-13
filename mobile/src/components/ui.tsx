@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { t } from '../i18n';
@@ -55,14 +55,17 @@ export function Title({ children, subtitle }: { children: ReactNode; subtitle?: 
   const c = usePalette();
   return <View style={ui.heading}><Text accessibilityRole="header" style={[ui.title, { color: c.text }]}>{children}</Text>{subtitle && <Text style={[ui.body, { color: c.muted }]}>{subtitle}</Text>}</View>;
 }
+export const ButtonSurface = createContext<'default' | 'image'>('default');
+
 export function Button({ children, onPress, disabled = false, destructive = false, loading = false, primary = false, testID }: {
   children: string; onPress: () => void; disabled?: boolean; destructive?: boolean; loading?: boolean; primary?: boolean; testID?: string;
 }) {
   const c = usePalette();
-  const color = primary ? c.background : destructive ? c.danger : c.text;
+  const onImage = useContext(ButtonSurface) === 'image';
+  const color = onImage ? '#000000' : primary ? c.background : destructive ? c.danger : c.text;
   return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress}
-    style={({ pressed }) => [ui.button, { borderWidth: StyleSheet.hairlineWidth, borderColor: primary ? c.text : c.controlBorder,
-      backgroundColor: primary ? c.text : c.card, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 }]}>
+    style={({ pressed }) => [ui.button, { borderWidth: StyleSheet.hairlineWidth, borderColor: onImage ? '#ffffff' : primary ? c.text : c.line,
+      backgroundColor: onImage ? '#ffffff' : primary ? c.text : c.card, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 }]}>
     <Text style={[ui.buttonText, { color }]}>{children}</Text>
     {loading && <ActivityIndicator size="small" color={color} style={{ position: 'absolute', right: 16 }} />}
   </Pressable>;
@@ -76,7 +79,7 @@ export function TextButton({ children, onPress, disabled = false, testID, expand
 }
 export const ui = StyleSheet.create({
   content: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40, gap: 24 },
-  heading: { gap: 8 }, title: { fontSize: 28, fontWeight: '600', letterSpacing: -0.7 },
+  heading: { gap: 8 }, title: { fontSize: 28, fontWeight: '400', letterSpacing: -1.1 },
   section: { fontSize: 16, fontWeight: '600', letterSpacing: -0.2, marginTop: 8 },
   body: { fontSize: 16, lineHeight: 23 }, small: { fontSize: 13, lineHeight: 19 },
   card: { borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 12 }, row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
@@ -85,8 +88,7 @@ export const ui = StyleSheet.create({
 });
 
 export function ScreenHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
-  const c = usePalette();
-  return <View style={{ gap: 8, paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.line }}>
+  return <View style={{ gap: 8, paddingBottom: 8 }}>
     <View style={[ui.row, { alignItems: 'flex-start' }]}><View style={{ flex: 1 }}><Title subtitle={subtitle}>{title}</Title></View>{action}</View>
   </View>;
 }
@@ -100,23 +102,23 @@ export function Section({ title, detail, children }: { title: string; detail?: s
   </View>;
 }
 
-export function NavigationRow({ title, detail, icon, onPress, testID }: { title: string; detail?: string; icon: SymbolViewProps['name']; onPress: () => void; testID?: string }) {
+export function NavigationRow({ title, detail, icon, onPress, testID, disabled = false }: { title: string; detail?: string; icon: SymbolViewProps['name']; onPress: () => void; testID?: string; disabled?: boolean }) {
   const c = usePalette();
-  return <Pressable testID={testID} accessibilityRole="button" onPress={onPress}
-    style={({ pressed }) => ({ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: pressed ? 0.65 : 1 })}>
-    <View style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: c.accentSoft, alignItems: 'center', justifyContent: 'center' }}>
+  return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 })}>
+    <View style={{ width: 28, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }}>
       <SymbolView name={icon} size={19} tintColor={c.accent} accessible={false} />
     </View>
-    <View style={{ flex: 1, gap: 3 }}><Text style={[ui.body, { color: c.text, fontWeight: '600' }]}>{title}</Text>{detail && <Text style={[ui.small, { color: c.muted }]}>{detail}</Text>}</View>
+    <View style={{ flex: 1, gap: 3 }}><Text style={[ui.body, { color: c.text, fontWeight: '500' }]}>{title}</Text>{detail && <Text style={[ui.small, { color: c.muted }]}>{detail}</Text>}</View>
     <SymbolView name="chevron.right" size={13} tintColor={c.muted} accessible={false} />
   </Pressable>;
 }
 
 export function EmptyState({ title, detail, children }: { title: string; detail: string; children?: ReactNode }) {
   const c = usePalette();
-  return <View style={{ alignItems: 'flex-start', gap: 12, paddingVertical: 16 }}>
+  return <View style={{ alignItems: 'center', gap: 12, paddingVertical: 32, paddingHorizontal: 16 }}>
     <Text accessibilityRole="header" style={[ui.section, { color: c.text, marginTop: 0 }]}>{title}</Text>
-    <Text style={[ui.body, { color: c.muted }]}>{detail}</Text>
+    <Text style={[ui.body, { color: c.muted, textAlign: 'center' }]}>{detail}</Text>
     {children}
   </View>;
 }
@@ -177,4 +179,9 @@ export function ModalHeader({ title, cancelLabel, saveLabel, onCancel, onSave, d
       style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: c.text }}>{title}</Text>
     {action(saveLabel, onSave, disabled || loading, loading)}
   </View>;
+}
+
+export function Divider() {
+  const c = usePalette();
+  return <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: c.line }} />;
 }

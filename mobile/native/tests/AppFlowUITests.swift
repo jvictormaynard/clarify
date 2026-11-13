@@ -57,6 +57,11 @@ final class AppFlowUITests: XCTestCase {
     button.tap()
   }
   func tab(_ label: String) {
+    if label == "Ajustes" {
+      if app.descendants(matching: .any)["app.preferences"].firstMatch.exists { return }
+      press("workspace.menu"); press("menu.settings"); return
+    }
+    if app.descendants(matching: .any)["app.preferences"].firstMatch.exists { press("Fechar") }
     let button = app.tabBars.buttons[label].firstMatch
     XCTAssertTrue(button.waitForExistence(timeout: 20), "Missing tab: \(label)")
     let introduction = app.otherElements["UIContinuousPathIntroductionView"].firstMatch
@@ -158,6 +163,11 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 15), .completed)
   }
   func back() { app.navigationBars.buttons.firstMatch.tap() }
+  func refreshActions() {
+    press("actions.choose")
+    press("actions.refresh")
+    press("Fechar")
+  }
   func chooseRewrite() {
     press("actions.choose")
     press("actions.option.saved:rewrite:1")
@@ -176,9 +186,9 @@ final class AppFlowUITests: XCTestCase {
     enter("cancel", in: text, name: "composer")
     capture("actions-draft-keyboard")
     chooseRewrite()
-    tab("Biblioteca"); tab("Ações")
+    tab("Dicionário"); tab("Ações")
     XCTAssertEqual(text.value as? String, "cancel", "Tab navigation keeps the mounted draft")
-    press("actions.refresh")
+    refreshActions()
     XCTAssertEqual(text.value as? String, "cancel")
     press("actions.choose"); press("Fechar")
     XCTAssertEqual(text.value as? String, "cancel", "Sheet dismissal keeps the draft")
@@ -195,7 +205,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual(text.value as? String, "cancel")
     XCTAssertFalse(app.buttons["actions.copy"].exists)
     // Reload the interrupted catalog before starting the next independent case.
-    press("actions.refresh"); chooseRewrite()
+    refreshActions(); chooseRewrite()
     XCTAssertEqual(text.value as? String, "cancel")
     enter("off", in: text, name: "deactivated-composer", replacing: true)
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
@@ -211,7 +221,7 @@ final class AppFlowUITests: XCTestCase {
     enter("cancel", in: text, name: "cancelled-composer", replacing: true)
     for mode in ["empty", "failed"] {
       _ = fixture("/__fixture/control", values: ["catalog": mode])
-      press("actions.refresh")
+      refreshActions()
       let status = app.staticTexts["actions.catalog-status"]
       XCTAssertTrue(status.waitForExistence(timeout: 10))
       let expected = mode == "empty" ? "Nenhuma ação salva neste destino." : "Não foi possível carregar as ações. Atualize para tentar novamente."
@@ -222,7 +232,7 @@ final class AppFlowUITests: XCTestCase {
       capture("actions-catalog-\(mode)")
     }
     _ = fixture("/__fixture/control", values: ["catalog": "ready"])
-    press("actions.refresh"); chooseRewrite()
+    refreshActions(); chooseRewrite()
     enter("done", in: text, name: "successful-composer", replacing: true)
     press("actions.run")
     XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
@@ -244,7 +254,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual(translation?["language"] as? String, "ru")
     capture("actions-translation-russian")
     _ = fixture("/__fixture/control", values: ["revision": 2])
-    press("actions.refresh")
+    refreshActions()
     XCTAssertTrue(app.staticTexts["actions.catalog-status"].waitForExistence(timeout: 10))
     let stale = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: app.buttons["actions.run"])
     XCTAssertEqual(XCTWaiter.wait(for: [stale], timeout: 15), .completed)
@@ -299,12 +309,12 @@ final class AppFlowUITests: XCTestCase {
     enter("123456", in: app.textFields["account.code"], name: "code")
     capture("login-code-keyboard-visible")
     pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
-    tab("Ditado")
-    XCTAssertEqual(app.tabBars.buttons.count, 4)
+    tab("Início")
+    XCTAssertEqual(app.tabBars.buttons.count, 5)
   }
   func verifyLibraryDrafts(compact: Bool = false) {
-    tab("Biblioteca")
-    press("library.dictionary"); capture("dictionary")
+    tab("Dicionário")
+    capture("dictionary")
     press("Adicionar palavra")
     let word = app.textFields["Palavra"]
     enter(compact ? "ui" : "Fixture draft", in: word, name: "dictionary-draft")
@@ -325,14 +335,12 @@ final class AppFlowUITests: XCTestCase {
       XCTAssertEqual(app.textFields["Variações"].value as? String, "fixture alias")
       capture("dictionary-saved-readback"); press("Cancelar")
     }
-    back()
-    XCTAssertTrue(app.tabBars.buttons["Biblioteca"].isSelected)
-    press("library.snippets"); capture("snippets")
+    tab("Snippets"); capture("snippets")
     press("Adicionar snippet")
     let trigger = app.textFields["Frase de ativação"]
     enter(compact ? "ui" : "fixture phrase", in: trigger, name: "snippet-draft")
     capture("snippets-editor-keyboard-dirty")
-    press("Cancelar"); back()
+    press("Cancelar")
   }
   func testFirstPresentationAccountNavigationAndExplicitReplay() {
     signIn(checkPersistence: true)
@@ -348,7 +356,7 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["account.usageReset"].label.hasPrefix("Próxima renovação: "))
     XCTAssertFalse(app.buttons["processing.computer"].exists, "Identity and usage do not become PC controls")
     capture("account"); back()
-    XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
+    XCTAssertTrue(app.descendants(matching: .any)["app.preferences"].firstMatch.exists)
     press("settings.processing"); capture("processing"); back()
     press("settings.output")
     press("output.policy.clarity"); press("output.style.casual"); press("output.more"); press("output.language.de")
@@ -364,7 +372,7 @@ final class AppFlowUITests: XCTestCase {
     press("settings.guide")
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.keyboard"].firstMatch.waitForExistence(timeout: 15))
     capture("guide-keyboard"); press("onboarding.back")
-    XCTAssertTrue(app.tabBars.buttons["Ajustes"].isSelected)
+    XCTAssertTrue(app.descendants(matching: .any)["app.preferences"].firstMatch.exists)
     verifyActions()
     tab("Ajustes"); press("settings.output"); press("output.more")
     let sharedLanguage = app.descendants(matching: .any)["output.language.ru"].firstMatch
@@ -393,7 +401,7 @@ final class AppFlowUITests: XCTestCase {
     let text = app.textViews["actions.text"], draft = "a\nb\nc"
     enter(draft, in: text, name: "compact-composer")
     chooseRewrite()
-    tab("Biblioteca"); tab("Ações")
+    tab("Dicionário"); tab("Ações")
     XCTAssertEqual(text.value as? String, draft)
     let previousPosts = (fixture("/__fixture/state")["processing"] as? [Any])?.count
     _ = fixture("/__fixture/control", values: ["catalog": "slow"])
@@ -404,7 +412,7 @@ final class AppFlowUITests: XCTestCase {
     _ = fixture("/__fixture/control", values: ["release": true])
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, draft)
-    press("actions.refresh")
+    refreshActions()
     absent(app.staticTexts["actions.catalog-status"])
     enter("ok", in: text, name: "compact-result", replacing: true)
     press("actions.choose"); capture("compact-action-sheet")

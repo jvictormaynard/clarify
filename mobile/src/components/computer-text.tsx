@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, Text, View } from 'react-native';
+import { NatureCard } from './nature-card';
 import { DraftTextInput } from './draft-text-input';
 import { router, useFocusEffect } from 'expo-router';
 import Core from '../../modules/clarify-core';
@@ -8,7 +9,7 @@ import { isBusy, report, useClarify } from '../state/clarify';
 import { actionChoices, composerResult, ownsTextOperation, targetLanguages, TextComposerSession } from '../text-actions';
 import { errorMessage } from '../errors';
 import { destinationLabel } from '../processing';
-import { Button, Card, ChoiceRow, NativeSheet, NavigationRow, ui, usePalette } from './ui';
+import { Button, Card, ChoiceRow, NativeSheet, NavigationRow, TextButton, Divider, ui, usePalette } from './ui';
 
 export function ComputerText() {
   const c = usePalette();
@@ -62,18 +63,24 @@ export function ComputerText() {
     } catch (error) { setNotice(errorMessage(error)); }
   }
   return <View style={{ gap: 20 }}>
-    <NavigationRow testID="actions.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} />
+    <NatureCard kind="actions" title={t('Reescreva ou traduza um texto.')} detail={t('Execute a ação. Revise o resultado e copie quando quiser.')}>
+      <Button onPress={() => router.push('/text-actions')}>{t('Gerenciar ações')}</Button>
+    </NatureCard>
+    <Card style={{ paddingVertical: 4 }}><NavigationRow testID="actions.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} /></Card>
+    <View style={{ gap: 8 }}>
+    <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t('Texto para processar')}</Text>
     <DraftTextInput testID="actions.text" accessibilityLabel={t('Texto para processar')} multiline initialValue={model.draft}
       onChangeText={value => session.setDraft(value)} maxLength={8000} selectionColor={c.text}
       placeholder={t('Cole ou escreva o texto')} placeholderTextColor={c.muted}
-      style={[ui.input, { color: c.text, borderColor: c.controlBorder, backgroundColor: c.card, minHeight: 156, textAlignVertical: 'top' }]} />
-    <Card>
+      style={[ui.input, { color: c.text, borderColor: c.controlBorder, backgroundColor: c.card, minHeight: 192, textAlignVertical: 'top' }]} />
+    </View>
+    <Card style={{ gap: 4 }}>
       <NavigationRow testID="actions.choose" title={choice ? choice.saved ? choice.name : t(choice.name) : t('Escolher ação')} icon="wand.and.stars" onPress={() => setSheet('actions')} />
+      <Divider />
       <NavigationRow testID="actions.language" title={t('Idioma de saída')}
         detail={model.language === 'auto' ? t('Idioma original') : targetLanguages.find(item => item.value === model.language)?.label} icon="globe" onPress={() => setSheet('language')} />
       {choice && (!choice.enabled || !choice.ready) && <Text style={[ui.small, { color: c.muted }]}>{t(!choice.enabled ? 'Esta ação está desativada.' : 'Esta ação não está pronta neste destino.')}</Text>}
       {!!catalogMessage && <Text testID="actions.catalog-status" accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>{t(catalogMessage)}</Text>}
-      <Button testID="actions.refresh" loading={refreshing} disabled={accountBusy || model.starting || isBusy(state)} onPress={() => void reload()}>{t('Atualizar ações')}</Button>
     </Card>
     <Button testID="actions.run" primary disabled={busy || refreshing || accountBusy || !choice?.enabled || !choice?.ready || !model.draft.trim() || !context}
       onPress={() => { setNotice(''); if (choice) void session.start(choice).then(refresh).catch(report); }}>{t('Executar ação')}</Button>
@@ -93,7 +100,8 @@ export function ComputerText() {
     <NativeSheet visible={sheet !== null} title={t(sheet === 'language' ? 'Idioma de saída' : 'Escolher ação')} onClose={() => setSheet(null)}>
       {sheet === 'language' ? [{ value: 'auto' as const, label: t('Idioma original') }, ...targetLanguages].map(item => <ChoiceRow key={item.value} testID={`actions.target.${item.value}`} title={item.label} selected={model.language === item.value}
         disabled={busy} onPress={() => { void session.saveLanguage(item.value).then(saved => { if (saved) setSheet(null); }); }} />)
-        : <>{!!catalogMessage && <Text style={[ui.body, { color: c.muted }]}>{t(catalogMessage)}</Text>}
+        : <><TextButton testID="actions.refresh" disabled={refreshing || accountBusy || model.starting || isBusy(state)} onPress={() => void reload()}>{t('Atualizar ações')}</TextButton>
+          {!!catalogMessage && <Text style={[ui.body, { color: c.muted }]}>{t(catalogMessage)}</Text>}
           {choices.map(item => <ChoiceRow key={item.key} testID={`actions.option.${item.key}`} title={item.saved ? item.name : t(item.name)} selected={model.selected === item.key}
             detail={!item.enabled ? t('Esta ação está desativada.') : !item.ready ? t('Esta ação não está pronta neste destino.') : undefined}
             disabled={!item.enabled || !item.ready} onPress={() => { session.select(item.key); setSheet(null); }} />)}</>}

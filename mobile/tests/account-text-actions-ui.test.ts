@@ -35,7 +35,7 @@ test('failed action save keeps draft and exact CAS; context change blocks save',
     if (name === '../i18n') return { t: value => value };
     if (name === '../state/clarify') return { useClarify: () => state, isBusy: () => false, report() {} };
     if (name === './draft-text-input') return { DraftTextInput: 'Input' };
-    if (name === './ui') return { Button: 'Button', Card: 'Card', ChoiceRow: 'ChoiceRow', NativeSheet: 'Sheet', ui: {}, usePalette: () => ({}) };
+    if (name === './ui') return { NavigationRow: 'NavigationRow', EmptyState: 'EmptyState', Button: 'Button', Card: 'Card', ChoiceRow: 'ChoiceRow', NativeSheet: 'Sheet', ui: {}, usePalette: () => ({}) };
     throw new Error(name);
   } });
   const render = () => { slot = 0; ref = 0; return exports.AccountTextActions(); };
@@ -53,7 +53,7 @@ test('failed action save keeps draft and exact CAS; context change blocks save',
   state.account.textActionsStatus = 'unavailable';
   button(render(), 'Atualizar lista').props.onPress(); await settle();
   assert.equal(actionChoices(state.account)[0]?.key, 'saved:one:1', 'Reload must also update the composer catalog');
-  button(render(), 'Original').props.onPress();
+  all(render(), 'NavigationRow').find(node => node.props.title === 'Original').props.onPress();
   const editor = render();
   all(editor, 'Input')[1].props.onChangeText('Retained instructions');
   all(editor, 'Switch')[0].props.onValueChange(false);

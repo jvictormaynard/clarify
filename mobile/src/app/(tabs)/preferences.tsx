@@ -2,9 +2,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
 import Core from '../../../modules/clarify-core';
-import { Card, NavigationRow, ScreenHeader, ui, usePalette } from '../../components/ui';
+import { Section, Divider, NavigationRow, ScreenHeader, ui, usePalette } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { destinationLabel } from '../../processing';
+import { TextButton } from '../../components/ui';
 import { t } from '../../i18n';
 
 export default function Preferences() {
@@ -28,23 +29,29 @@ export default function Preferences() {
     finally { setSaving(false); }
   }
   return <ScrollView testID="app.preferences" style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic">
-    <ScreenHeader title={t('Ajustes')} />
-    <Card>
-      <NavigationRow testID="settings.processing" title={t('Processamento')} detail={t(destinationLabel(account))} icon="cpu" onPress={() => router.push('/processing')} />
+    <ScreenHeader title={t('Ajustes')} action={<TextButton onPress={() => router.back()}>{t('Fechar')}</TextButton>} />
+    <Section title={t('Conta e processamento')}>
       <NavigationRow testID="settings.account" title={t('Conta')} detail={account?.signedIn ? account.email : t('Entrar ou criar conta')} icon="person.crop.circle" onPress={() => router.push('/account')} />
-      <NavigationRow testID="settings.output" title={t('Saída do ditado')} icon="textformat" onPress={() => router.push('/output')} />
-    </Card>
-    <Card>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16 }}>
+      <Divider />
+      <NavigationRow testID="settings.processing" title={t('Processamento')} detail={t(destinationLabel(account))} icon="cpu" onPress={() => router.push('/processing')} />
+    </Section>
+    <Section title={t('Ditado e teclado')}>
+      <NavigationRow testID="settings.output" title={t('Estilo do ditado')} detail={t('Edição, tom e idioma de saída')} icon="textformat" onPress={() => router.push('/output')} />
+      <Divider />
+      <NavigationRow testID="settings.microphone" title={t('Microfone e teclado')} icon="keyboard" onPress={() => router.push('/microphone')} />
+      <Divider />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}>
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={[ui.body, { color: c.text }]}>{t('Correção automática')}</Text>
           <Text style={[ui.small, { color: c.muted }]}>{t('Mostra sugestões e corrige palavras ao digitar no teclado Clarify.')}</Text>
         </View>
         <Switch testID="settings.autocorrect" accessibilityLabel={t('Correção automática')} value={autocorrect} disabled={!loaded || saving} onValueChange={value => void changeAutocorrect(value)} />
       </View>
-      <NavigationRow testID="settings.microphone" title={t('Microfone e teclado')} icon="keyboard" onPress={() => router.push('/microphone')} />
+    </Section>
+    <Section title={t('Privacidade e ajuda')}>
       <NavigationRow testID="settings.privacy" title={t('Histórico e privacidade')} icon="hand.raised" onPress={() => router.push('/privacy')} />
+      <Divider />
       <NavigationRow testID="settings.guide" title={t('Como usar')} icon="questionmark.circle" onPress={() => router.push('/guide')} />
-    </Card>
+    </Section>
   </ScrollView>;
 }
