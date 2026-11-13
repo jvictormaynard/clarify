@@ -2,7 +2,7 @@
   "schema": 2,
   "component": "desktop",
   "version": "0.18.0",
-  "base_sha": "7cc5e17e54fb1ad36e19dead2f0a98bdcfab1606",
+  "base_sha": "16abed2c78c3858f50c5aa237c2d1cb6b47cca05",
   "notes": "Prepare the desktop onboarding and dictation-sound changes after source PR #310. Include compact setup, localized read-aloud instructions and italic quoted passages, a persistent sample subject, top-left transcript presentation, right-aligned Skip and Continue with successful-transcript gating, and the shared Google border. Source requirements and engineering reviews found no actionable defects; local types, browser/bridge, practice/shortcut, build/boot and responsive captures passed. The source PR passed required CI and is merged. Require exact canonical main CI and full desktop coverage before immutable candidate creation. Windows acceptance must use that packaged candidate; no acceptance or public publication is claimed by preparation. Preserve mobile release identity.",
   "evidence": {
     "report_url": "https://github.com/jvictormaynard/clarify/pull/310"
