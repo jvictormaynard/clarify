@@ -322,6 +322,7 @@ test('TestFlight and App Store use separate explicit actions and one Apple build
 // Exercise the trust boundary and toolchain pair, not only a label's presence.
 test('optional Bitrise iOS routing isolates forks and selects the matching Xcode', () => {
   function value(expression, github, setting) {
+    if (typeof expression !== 'string') return expression;
     return runInNewContext(expression.slice(3, -2), { github, vars: { CLARIFY_IOS_RUNNER: setting } }, { timeout: 100 });
   }
   const canonical = 'jvictormaynard/clarify';
@@ -343,6 +344,7 @@ test('optional Bitrise iOS routing isolates forks and selects the matching Xcode
     ]) {
       assert.equal(value(job['runs-on'], github, setting), bitrise ? 'bitrise-runner-clarify-ios-validation' : 'macos-26');
       assert.equal(value(job.env.DEVELOPER_DIR, github, setting), bitrise ? '/Applications/Xcode-26.6.0.app/Contents/Developer' : '/Applications/Xcode_26.6.app/Contents/Developer');
+      if (job === validation.jobs.app) assert.equal(value(job['timeout-minutes'], github, setting), bitrise ? 60 : 90);
     }
   }
   const publish = workflows.get('ios-testflight.yml').jobs.publish;
