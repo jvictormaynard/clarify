@@ -297,6 +297,7 @@ final class KeyGridView: UIView {
           mode.isShift = true
           mode.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (model.shift == .once ? "shift.fill" : "shift")), for: .normal)
           mode.accessibilityLabel = model.shift == .caps ? L("Desativar maiúsculas") : L("Maiúsculas")
+          mode.accessibilityTraits = model.shift == .off ? .keyboardKey : [.keyboardKey, .selected]
         }
         row.addArrangedSubview(mode)
       }
@@ -527,6 +528,7 @@ final class KeyGridView: UIView {
     for button in touchRows.flatMap({ $0.keys }) {
       if button.isShift {
         button.setImage(UIImage(systemName: model.shift == .caps ? "capslock.fill" : (upper ? "shift.fill" : "shift")), for: .normal)
+        button.accessibilityTraits = upper ? [.keyboardKey, .selected] : .keyboardKey
       } else if let title = button.title(for: .normal), title.count == 1, title.allSatisfy(\.isLetter) {
         let next = upper ? title.uppercased() : title.lowercased()
         if next != title {
