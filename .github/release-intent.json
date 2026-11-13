@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "component": "desktop",
-  "version": "0.17.0",
-  "base_sha": "45d25c1677663a2ea1bba9179ad534ee543798fc",
-  "notes": "Prepare the desktop redesign and fixed dictation dock from PR #304 after its merge and exact green main CI. Include localized daily history, onboarding and animated library/mobile guides, shared page controls, general writing style with application rules removed, passive native input, hover quick menus and recording/completion feedback. Final source requirements and engineering reviews found no actionable defects at db4399b6c4ba6e804d48a03471f20173d8ed264e. Jota source-preview validation is recorded separately from acceptance of the final immutable stable candidate. Preserve mobile release identity. Candidate creation and public publication remain separate gated actions.",
+  "version": "0.18.0",
+  "base_sha": "16abed2c78c3858f50c5aa237c2d1cb6b47cca05",
+  "notes": "Prepare the desktop onboarding and dictation-sound changes after source PR #310. Include compact setup, localized read-aloud instructions and italic quoted passages, a persistent sample subject, top-left transcript presentation, right-aligned Skip and Continue with successful-transcript gating, and the shared Google border. Source requirements and engineering reviews found no actionable defects; local types, browser/bridge, practice/shortcut, build/boot and responsive captures passed. The source PR passed required CI and is merged. Require exact canonical main CI and full desktop coverage before immutable candidate creation. Windows acceptance must use that packaged candidate; no acceptance or public publication is claimed by preparation. Preserve mobile release identity.",
   "evidence": {
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/304"
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/310"
   }
 }
