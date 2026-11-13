@@ -100,8 +100,10 @@ installer change requires that task on its PR. Required native Windows and iOS
 coverage stays in CI when its contract is affected, in full validation, and in
 the corresponding release scope.
 Containing-app UI validation runs regular and compact iPhone profiles in separate
-required matrix jobs with distinct evidence artifacts. Each keeps its 60-minute
-budget and runs native text-input regressions; the iOS aggregate requires both
+required matrix jobs with distinct evidence artifacts. Each has a 60-minute
+budget on Bitrise and a 90-minute budget on GitHub-hosted macOS, where a cold
+Release build must leave time for the UI flow. Both run native text-input
+regressions; the iOS aggregate requires both
 profiles, keyboard/library tests and the unsigned app build. Full local app
 validation and default signed publication retain the two-profile run on one test build.
 
