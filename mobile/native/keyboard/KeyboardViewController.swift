@@ -191,6 +191,7 @@ class KeyboardViewController: UIInputViewController {
   private var recordingPanelVisible = false
   private var recordingError: String?
   private let keys = KeyGridView()
+  private var requestedNumbersAndPunctuation = false
   private let typing = TypingAssistant(autocorrectionEnabled: false)
   private var typingVocabularyRevision = -1
   private var typingVocabularyCheckedAt = Date.distantPast
@@ -398,6 +399,12 @@ class KeyboardViewController: UIInputViewController {
     updateSuggestions()
   }
   private func updateInputTraits() {
+    let numeric = textDocumentProxy.keyboardType == .numbersAndPunctuation
+    if requestedNumbersAndPunctuation != numeric {
+      requestedNumbersAndPunctuation = numeric
+      keys.model.page = numeric ? .numbers : .letters
+      keys.rebuild()
+    }
     // UIKit updates the controller's appearance traits even when the proxy's
     // keyboardAppearance still describes the previous host appearance.
     // Let the view inherit those traits instead of pinning it to stale data.

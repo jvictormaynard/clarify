@@ -224,6 +224,26 @@ final class KeyboardUITests: XCTestCase {
     let grid = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first)
     keyboard.field.before = "Q"
     keyboard.view.frame = CGRect(x: 0, y: 0, width: 402, height: KeyboardInputView.contentHeight)
+    keyboard.field.keyboardType = .numbersAndPunctuation
+    keyboard.beginAppearanceTransition(true, animated: false); keyboard.endAppearanceTransition()
+    keyboard.view.layoutIfNeeded()
+    XCTAssertEqual(grid.model.page, .numbers)
+    XCTAssertEqual(keyboard.field.before, "Q", "Selecting the host's input page must not modify the draft")
+    let digit = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "1" })
+    XCTAssertTrue(digit.isEnabled)
+    XCTAssertTrue(keyboard.view.bounds.contains(digit.convert(digit.bounds, to: keyboard.view)))
+    digit.sendActions(for: .touchUpInside)
+    XCTAssertEqual(keyboard.field.before, "Q1")
+    XCTAssertEqual(grid.model.page, .numbers, "Typing must retain the requested page")
+    let symbols = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == "#+=" })
+    symbols.sendActions(for: .touchUpInside)
+    keyboard.textDidChange(nil); keyboard.selectionDidChange(nil)
+    XCTAssertEqual(grid.model.page, .symbols, "An unchanged input trait must preserve a manual page choice")
+    keyboard.field.keyboardType = .default; keyboard.textDidChange(nil)
+    XCTAssertEqual(grid.model.page, .letters)
+    XCTAssertEqual(keyboard.field.before, "Q1", "Returning to text input must preserve the draft")
+    keyboard.beginAppearanceTransition(false, animated: false); keyboard.endAppearanceTransition()
+    keyboard.field.before = "Q"
     let cases: [(UIKeyboardAppearance, UIReturnKeyType, UIUserInterfaceStyle)] = [
       (.light, .google, .dark), (.dark, .yahoo, .light),
       (.light, .continue, .dark),
