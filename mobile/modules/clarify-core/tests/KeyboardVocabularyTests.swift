@@ -7,12 +7,15 @@ final class KeyboardVocabularyTests: XCTestCase {
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return (root, SharedState(root: root), try LocalLibrary(root: root.appendingPathComponent("app-only")))
   }
-  func testOnlyOneOrTwoWordsAreOfferedAndUnicodeIsPreserved() {
-    let invalid: [String?] = [nil, "", " \n ", "+ …", "one two three", String(repeating: "a", count: 257)]
+  func testUpToFiveWordsWithinCharacterLimitAreOfferedAndUnicodeIsPreserved() {
+    let invalid: [String?] = [nil, "", " \n ", "+ …", "one two three four five six", String(repeating: "a", count: 257)]
     for selection in invalid {
       XCTAssertNil(KeyboardSelection.term(selection))
     }
     XCTAssertEqual(KeyboardSelection.term("  Clarify  "), "Clarify")
+    XCTAssertEqual(KeyboardSelection.term("New York City"), "New York City")
+    XCTAssertEqual(KeyboardSelection.term("World Health Organization Regional Office"), "World Health Organization Regional Office")
+    XCTAssertEqual(KeyboardSelection.term(String(repeating: "a", count: 256)), String(repeating: "a", count: 256))
     XCTAssertEqual(KeyboardSelection.term("João\nVictor"), "João Victor")
     XCTAssertEqual(KeyboardSelection.term("Cafe\u{301}"), "Café")
     XCTAssertEqual(KeyboardSelection.term("São\u{00a0}Paulo"), "São Paulo")

@@ -43,6 +43,9 @@ and use an operation-only preference snapshot. They do not change dictation
 preferences. Quick translation and tone editing require the advertised default
 action; deleting a default does not select another saved prompt. Older services
 keep their explicit legacy actions.
+Add to dictionary is a direct selected-text menu item for one to five words,
+within 256 characters. It saves the selected term without changing the text.
+Selections above those limits do not offer the command.
 The language picker in Actions and the keyboard translation menu update the same
 output preference as dictation. The globe preserves the source languages; a flag
 sets the output language. Each operation keeps its accepted preference snapshot.

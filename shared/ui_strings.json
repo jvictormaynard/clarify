@@ -8653,5 +8653,10 @@
     "pt": "Alterar tom",
     "en": "Change tone",
     "es": "Cambiar tono"
+  },
+  "Selecione de uma a cinco palavras, com até 256 caracteres.": {
+    "pt": "Selecione de uma a cinco palavras, com até 256 caracteres.",
+    "en": "Select one to five words, up to 256 characters.",
+    "es": "Selecciona entre una y cinco palabras, hasta 256 caracteres."
   }
 }

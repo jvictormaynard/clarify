@@ -853,14 +853,14 @@ class KeyboardViewController: UIInputViewController {
     } else if legacy {
       actions.append(choice(L("Reescrever"), action: "rewrite", language: captured.preferences.language.rawValue, enabled: captured.rewriteReady))
     } else { actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in }) }
+    var output: [UIMenuElement] = [UIMenu(title: L("Traduzir"), children: languageChoices),
+      UIMenu(title: L("Alterar tom"), children: toneChoices), UIMenu(title: L("Executar ação"), children: actions)]
     if let title = captured.dictionaryTitle {
-      actions.append(UIAction(title: title, image: UIImage(systemName: selectedTermSaved ? "checkmark" : "plus"),
+      output.append(UIAction(title: title, image: UIImage(systemName: selectedTermSaved ? "checkmark" : "plus"),
         attributes: captured.dictionaryEnabled ? [] : .disabled) { [weak self] _ in
         guard let self, self.menuIsCurrent(captured) else { return }; self.saveSelectedTerm()
       })
     }
-    let output: [UIMenuElement] = [UIMenu(title: L("Traduzir"), children: languageChoices),
-      UIMenu(title: L("Alterar tom"), children: toneChoices), UIMenu(title: L("Executar ação"), children: actions)]
     return UIMenu(children: [UIMenu(title: L("Texto selecionado"), options: .displayInline, children: output)])
   }
   private func toggleDictationEdit() {

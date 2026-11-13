@@ -4,7 +4,7 @@ enum KeyboardSelection {
   static func term(_ selection: String?) -> String? {
     guard let selection, selection.count <= 256 else { return nil }
     let words = selection.precomposedStringWithCanonicalMapping.split(whereSeparator: { $0.isWhitespace })
-    guard (1...2).contains(words.count) else { return nil }
+    guard (1...5).contains(words.count) else { return nil }
     let term = words.joined(separator: " ")
     guard term.rangeOfCharacter(from: .alphanumerics) != nil else { return nil }
     return term
@@ -64,7 +64,7 @@ extension SharedState {
     func failure(_ message: String) -> NSError {
       NSError(domain: "ClarifyDictionary", code: 1, userInfo: [NSLocalizedDescriptionKey: L(message)])
     }
-    guard let term = KeyboardSelection.term(selection) else { throw failure("Selecione uma ou duas palavras.") }
+    guard let term = KeyboardSelection.term(selection) else { throw failure("Selecione de uma a cinco palavras, com até 256 caracteres.") }
     guard let context = keyboardDictionary(), context.scope == scope else {
       throw failure("Abra o Clarify para configurar o teclado.")
     }
