@@ -345,6 +345,28 @@ final class KeyboardUITests: XCTestCase {
       keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .off)
       keyboard.field.before = ""; keyboard.field.autocapitalizationType = .none
       keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, .off)
+      keyboard.field.autocorrectionType = .no
+      let modes: [(UITextAutocapitalizationType, KeyboardState.Shift, KeyboardState.Shift, String)] = [
+        (.none, .once, .off, "q"), (.allCharacters, .off, .caps, "Q")
+      ]
+      for (type, initial, expected, letter) in modes {
+        keyboard.field.before = "word"; keyboard.field.autocapitalizationType = type; grid.model.shift = initial
+        keyboard.textDidChange(nil); XCTAssertEqual(grid.model.shift, expected)
+        let key = try XCTUnwrap(self.descendants(grid).compactMap { $0 as? UIButton }.first { $0.title(for: .normal) == letter })
+        key.sendActions(for: .touchUpInside)
+        XCTAssertEqual(keyboard.field.before, "word" + letter)
+        XCTAssertEqual(grid.model.shift, expected, "Local insertion must retain the host's context-independent capitalization")
+      }
+      for type in [UITextAutocapitalizationType.sentences, .words] {
+        keyboard.field.autocapitalizationType = type; grid.model.shift = .once
+        keyboard.selectionDidChange(nil)
+        XCTAssertEqual(grid.model.shift, .once, "Unavailable nonempty context must not guess a new sentence or word boundary")
+      }
+      for (type, expected) in [(UITextAutocapitalizationType.none, KeyboardState.Shift.caps), (.allCharacters, .off)] {
+        grid.model = KeyboardState(); grid.model.toggleShift(caps: type == .none)
+        keyboard.field.autocapitalizationType = type; keyboard.textDidChange(nil)
+        XCTAssertTrue(grid.model.shiftIsManual); XCTAssertEqual(grid.model.shift, expected)
+      }
     }
   }
   func testLocalAutocorrectionUsesPortugueseEnglishAndSpanishContext() async {

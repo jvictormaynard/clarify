@@ -411,13 +411,18 @@ class KeyboardViewController: UIInputViewController {
   private func updateCapitalization() {
     let proxy = textDocumentProxy
     guard !keys.model.shiftIsManual else { return }
-    // An empty host field may expose nil context. Do not mistake unavailable
-    // context in a nonempty field for the beginning of a sentence.
-    guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
     let type = proxy.autocapitalizationType ?? .sentences
-    let next: KeyboardState.Shift = type == .allCharacters ? .caps :
-      ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
+    let next: KeyboardState.Shift
+    switch type {
+    case .none: next = .off
+    case .allCharacters: next = .caps
+    default:
+      // An empty host field may expose nil context. Do not mistake unavailable
+      // context in a nonempty field for the beginning of a sentence.
+      guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
+      next = ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
        (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
+    }
     if keys.model.shift != next { keys.model.shift = next; keys.rebuild() }
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
