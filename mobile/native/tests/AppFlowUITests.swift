@@ -29,13 +29,19 @@ final class AppFlowUITests: XCTestCase {
       // A partly exposed control can be hittable while its center is under the tab bar.
       if located && element.isHittable && viewport.contains(center) { return true }
       if attempt == 12 { break }
-      if page.exists && page.frame.height > 0 && page.frame.intersects(app.frame) {
+      if page.exists && page.frame.height > 0 && !viewport.isEmpty {
         // Clipped React Native elements can have an infinite AX frame. Search
         // toward the top first, then the bottom until a usable frame appears.
-        let down = located ? frame.midY < page.frame.midY : attempt < 6
-        let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.2 : 0.8))
-        let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: down ? 0.8 : 0.2))
-        start.press(forDuration: 0.1, thenDragTo: finish)
+        let down = located ? frame.midY < viewport.midY : attempt < 6
+        // Fixed flicks can skip a tall row in both directions at accessibility
+        // sizes. Aim for the visible area's center and stop before releasing.
+        let limit = viewport.height * 0.6
+        let distance = located ? min(max(abs(frame.midY - viewport.midY), 16), limit) : limit
+        let startY = viewport.midY + (down ? -distance / 2 : distance / 2)
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: viewport.minX + viewport.width * 0.02, dy: startY))
+        let finish = start.withOffset(CGVector(dx: 0, dy: down ? distance : -distance))
+        start.press(forDuration: 0.1, thenDragTo: finish, withVelocity: .slow, thenHoldForDuration: 0.2)
       } else if (located ? frame.midY < app.frame.midY : attempt < 6) { app.swipeDown() } else { app.swipeUp() }
     }
     diagnose("unreachable-\(identifier)"); XCTFail("Cannot reveal element: \(identifier)"); return false
