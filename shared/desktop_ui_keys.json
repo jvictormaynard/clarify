@@ -1,4 +1,11 @@
 [
+  "practice_setup_hint",
+  "practice_shortcut_hold",
+  "practice_shortcut_toggle",
+  "practice_read_instruction",
+  "practice_subject_label",
+  "practice_subject_text",
+  "practice_read_text",
   "A operação de ações mudou. Atualize e tente novamente.",
   "Escolha um modelo do catálogo atual antes de salvar.",
   "Não foi possível carregar os modelos deste perfil.",

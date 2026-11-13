@@ -157,6 +157,7 @@ export interface Settings {
     id: string;
     label: string;
     display: string;
+    key?: string;
     definition: { display: string };
   }[];
   hotkeyActivationMode: string;

@@ -44,23 +44,24 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
         {step === "byok" ? <>
           <Field title={t("Chave de API do Groq")} value={key} type="password" autoComplete="off" placeholder="gsk_…" onChange={e => setKey(e.target.value)} />
           <div className="onboarding-note"><KeyRound size={16} aria-hidden="true" /><p className="hint">{t("A chave fica no armazenamento seguro deste computador. Áudio, texto e palavras ativas do dicionário são enviados ao serviço escolhido por você. Ao continuar, você autoriza esse processamento.")}</p></div>
-          <Button variant="primary" disabled={!key.trim()} onClick={() => void complete("byok")}>{t("Salvar chave e continuar")}</Button>
         </> : step === "local" ? <>
           <div className="onboarding-note"><HardDrive size={18} aria-hidden="true" /><p>{t("Transcreva neste computador, sem conta nem chave de API. Você precisa configurar um modelo antes de ditar.")}</p></div>
           <p className="hint">{t("O processamento local não envia áudio para serviços externos. A reescrita por nuvem permanece desativada.")}</p>
-          <Button variant="primary" onClick={() => void complete("local")}>{t("Continuar com modelo local")}</Button>
           <Button variant="text" onClick={() => setStep("byok")}>{t("Usar minha chave de API")}</Button>
         </> : account && (account.signedIn ? <>
           <p className="onboarding-identity"><UserRound size={16} aria-hidden="true" />{account.email}</p>
           <p className="hint">{t("Para transcrever e reescrever, o Clarify processa áudio, texto e palavras ativas do dicionário. O histórico da conta é sincronizado entre seus dispositivos. Patrocínios financiam uma cota semanal individual. Novas contas podem receber uma cota inicial proporcional ao tempo até a renovação. Sem saldo de patrocínio, a conta aguarda a próxima distribuição.")}</p>
-          <Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button>
+          <div className="onboarding-flow-actions"><Button variant="primary" onClick={() => void complete("account")}>{t("Começar")}</Button></div>
         </> : <>
           <AccountSignIn account={account} command={command} busy={busy || account.busy}
             onStepChange={setSignInStep}
             guestVariant="primary"
             onContinueWithoutAccount={() => void chooseLocal()} />
         </>)}
-        {step !== "account" && <Button variant="text" onClick={() => { setStep(step === "byok" ? "local" : "account"); setKey(""); }}><ArrowLeft size={15} />{t("Voltar")}</Button>}
+        {step !== "account" && <div className="onboarding-flow-actions">
+          <Button variant="text" onClick={() => { setStep(step === "byok" ? "local" : "account"); setKey(""); }}><ArrowLeft size={15} />{t("Voltar")}</Button>
+          <Button variant="primary" disabled={step === "byok" && !key.trim()} onClick={() => void complete(step)}>{t(step === "byok" ? "Salvar chave e continuar" : "Continuar com modelo local")}</Button>
+        </div>}
       </fieldset>
       {account?.socialPending && <Button variant="text" onClick={() => command("cancel-social")}>{t("Cancelar login")}</Button>}
     </div>
