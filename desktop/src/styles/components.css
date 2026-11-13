@@ -398,3 +398,6 @@
   .settings-section > h2 { padding-inline: 12px; }
   .section-fields { margin-inline: 12px; }
 }
+
+.auth-form-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.account-sign-in .auth-form-actions > .primary { width: auto; margin-inline-start: auto; }

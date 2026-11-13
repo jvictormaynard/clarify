@@ -42,13 +42,17 @@ export function AccountSignIn({ account, command, busy = false, onContinueWithou
   }}>{account.pending ? <>
     <p className="hint">{t("Digite o código enviado para {v0}. O código vale por 10 minutos.", { v0: account.email })}</p>
     <Field className="min-h-10.5" title={t("Código recebido por e-mail")} value={code} inputMode="numeric" autoComplete="one-time-code" maxLength={16} required onChange={e => setCode(e.target.value)} />
-    <Button variant="primary" type="submit" loading={busy} disabled={!code.trim()}>{t("Confirmar código")}</Button>
-    <Button variant="text" onClick={() => command("logout")}><ArrowLeft size={16} aria-hidden />{t("Voltar")}</Button>
+    <div className="auth-form-actions">
+      <Button variant="text" disabled={busy} onClick={() => command("logout")}><ArrowLeft size={16} aria-hidden />{t("Voltar")}</Button>
+      <Button variant="primary" type="submit" loading={busy} disabled={!code.trim()}>{t("Confirmar código")}</Button>
+    </div>
   </> : emailEntry ? <>
     <Field ref={emailInput} className="min-h-10.5" title={t("E-mail")} type="email" value={email} autoComplete="email" required maxLength={254} placeholder="email@example.com" onChange={e => setEmail(e.target.value)} />
     <p className="hint">{t("Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.")}</p>
-    <Button variant="primary" type="submit" loading={busy} disabled={!email.trim() || !account.endpoint}>{t("Continuar")}</Button>
-    <Button variant="text" disabled={busy} onClick={() => { returnToChoice.current = true; setEmailEntry(false); }}><ArrowLeft size={16} aria-hidden />{t("Voltar")}</Button>
+    <div className="auth-form-actions">
+      <Button variant="text" disabled={busy} onClick={() => { returnToChoice.current = true; setEmailEntry(false); }}><ArrowLeft size={16} aria-hidden />{t("Voltar")}</Button>
+      <Button variant="primary" type="submit" loading={busy} disabled={!email.trim() || !account.endpoint}>{t("Continuar")}</Button>
+    </div>
   </> : <div className="social-sign-in" aria-label={t("Entrar com outra conta")}>
     {(["Google", "Microsoft", "GitHub"] as const).map(provider => <Button key={provider}
       className={provider === "Google" ? "google-sign-in" : undefined}

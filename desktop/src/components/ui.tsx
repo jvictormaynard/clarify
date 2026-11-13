@@ -60,9 +60,10 @@ export function Input({
 export function TextArea({
   className,
   shellClassName,
+  unstyled = false,
   ...props
-}: ComponentProps<"textarea"> & { shellClassName?: string }) {
-  return <TextareaControl {...props} className={cn("control", shellClassName)} textareaClassName={className} />;
+}: ComponentProps<"textarea"> & { shellClassName?: string; unstyled?: boolean }) {
+  return <TextareaControl {...props} unstyled={unstyled} className={cn("control", shellClassName)} textareaClassName={className} />;
 }
 
 type RowProps = {

@@ -121,7 +121,8 @@ Pages use the feature-facing facade in `components/ui.tsx`:
 - `Section`: a quiet heading outside a grouped panel with internal dividers.
   Use `grouped={false}` for standalone multiline editors and their help or actions.
   These fields align with the heading without an outer card. Keep the textarea's
-  own input border and focus state.
+  own input border and focus state. `TextArea` also supports `unstyled` when a
+  surrounding composer owns the field border and focus state.
 - `SettingsDisclosure`: the shared collapsible pattern for advanced rows inside
   a section, library entry, help text or history comparison. Use its full-width
   trigger, Lucide chevron and shared Base UI
@@ -379,9 +380,26 @@ without an account button in the method chooser.
 Authentication uses a centered 400 px column. Only the welcome screen shows
 its logo and product description. The next screen groups microphone selection
 and its explicit local test, shortcut keycaps with Change shortcut, and output
-language in a 600 px column. Continue stops a microphone test before opening
-the safe practice email. A completed transcript shows a success state; Skip
-and failed attempts do not. Replay uses the same practice destination and
+language in a 560 px column. Use three two-column form rows with quiet separators
+and no surrounding card. Labels sit on the left, controls on the right; narrow
+windows stack them. The compact Test action sits beside microphone selection.
+Keep device warnings and test results visible. The test privacy note remains
+available through its description and tooltip. Continue stops a microphone test before opening
+the safe practice email. Before recording, the card shows the configured
+shortcut prompt. Recording replaces that prompt with a short read-aloud
+instruction and the italic, quoted passage below it.
+Processing replaces the passage with its status. The completed transcript
+fills the card body from the top left without an inner field border. The sample subject is visible
+before recording and stays visible throughout practice. Both fields are read-only. The shortcut retains
+the configured toggle or hold behavior. Practice has only Skip and Continue in
+its footer. Continue stays disabled until a completed, nonempty transcript has
+no error or blocked state. Skip also closes active recording safely. Error
+recovery uses a contextual settings link. Starting again uses the shortcut.
+Back appears on the left and the forward action on the right in onboarding
+navigation rows, including email and code confirmation. Setup and practice
+group Skip and Continue on the right, with Skip immediately before Continue. The sign-in
+method choices retain their order. A completed transcript shows a success state;
+Skip and failed attempts do not. Replay uses the same practice destination and
 preserves completed onboarding. Local model setup remains available when a
 model is missing.
 
