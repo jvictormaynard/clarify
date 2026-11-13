@@ -854,6 +854,41 @@
     "en": "Use the button below to start and stop.",
     "es": "Usa el botón de abajo para empezar y parar."
   },
+  "practice_subject_label": {
+    "pt": "Assunto",
+    "en": "Subject",
+    "es": "Asunto"
+  },
+  "practice_subject_text": {
+    "pt": "Uma conversa rápida",
+    "en": "A quick conversation",
+    "es": "Una conversación breve"
+  },
+  "practice_setup_hint": {
+    "pt": "Confira os ajustes e experimente sua voz.",
+    "en": "Check your settings, then try your voice.",
+    "es": "Revisa los ajustes y prueba tu voz."
+  },
+  "practice_shortcut_hold": {
+    "pt": "Segure {shortcut} para começar. Leia o texto que aparecer e solte para concluir.",
+    "en": "Hold {shortcut} to start. Read the text that appears, then release to finish.",
+    "es": "Mantén {shortcut} para empezar. Lee el texto que aparece y suelta para terminar."
+  },
+  "practice_shortcut_toggle": {
+    "pt": "Pressione {shortcut} para começar. Leia o texto e pressione novamente para concluir.",
+    "en": "Press {shortcut} to start. Read the text, then press it again to finish.",
+    "es": "Pulsa {shortcut} para empezar. Lee el texto y vuelve a pulsarlo para terminar."
+  },
+  "practice_read_instruction": {
+    "pt": "Leia o texto abaixo em voz alta.",
+    "en": "Read the text below aloud.",
+    "es": "Lee el texto de abajo en voz alta."
+  },
+  "practice_read_text": {
+    "pt": "Hoje vou escrever uma mensagem com o Clarify.",
+    "en": "Today I will write a message with Clarify.",
+    "es": "Hoy voy a escribir un mensaje con Clarify."
+  },
   "practice_phrase": {
     "pt": "Diga, por exemplo: Hoje vou escrever uma mensagem com o Clarify.",
     "en": "For example, say: Today I will write a message with Clarify.",
