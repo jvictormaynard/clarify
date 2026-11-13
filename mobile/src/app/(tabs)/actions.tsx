@@ -1,9 +1,13 @@
-import { KeyboardPage, ScreenHeader } from '../../components/ui';
-import { AccountTextActions } from '../../components/account-text-actions';
+import { FeatureInfo } from '../../components/feature-info';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardPage, usePalette } from '../../components/ui';
+import { WorkspaceHeader } from '../../components/workspace-header';
 import { ComputerText } from '../../components/computer-text';
 import { t } from '../../i18n';
 
 export default function Actions() {
-  // Keep the editor outside list headers and conditional catalog branches.
-  return <KeyboardPage><ScreenHeader title={t('Ações')} /><ComputerText /><AccountTextActions /></KeyboardPage>;
+  const c = usePalette();
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+    <WorkspaceHeader title={t('Ações')} accessory={<FeatureInfo kind="actions" />} /><KeyboardPage><ComputerText /></KeyboardPage>
+  </SafeAreaView>;
 }

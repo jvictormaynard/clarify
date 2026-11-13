@@ -14,22 +14,38 @@ not identify the current source version or current Apple availability. Check
 
 ## Computer connection candidate
 
-The current candidate has four tabs: **Ditado**, **Ações**, **Biblioteca**, and
-**Ajustes**. Dictation contains recording and history. Actions contains the text
-editor and the current destination's saved actions. Library contains the
-dictionary and snippets. Settings separates account, processing destination,
-dictation output, microphone and keyboard, and history and privacy.
+The mobile workspace has five direct tabs: **Início**, **Dicionário**,
+**Snippets**, **Estilo**, and **Ações**. Home contains keyboard activation and
+date-grouped history. Dictionary and Snippets open their lists and editors.
+Style contains dictation editing, tone and output language. Actions contains
+the text editor and action picker. The menu in each workspace header opens
+Settings, Account, processing, saved-action management and the setup guide.
+Computer-mode libraries stay on the paired computer. Nature guide cards reuse
+the desktop's bundled landscapes.
 
-The app and keyboard offer Improve clarity and Keep my words. Tone appears when
-editing is allowed, with Keep my tone, Formal and Casual. New installations start
+The app’s Style tab offers Improve clarity and Keep my words. Tone appears there
+when editing is allowed, with Keep my tone, Formal and Casual. New installations start
 with clarity editing and Keep my tone; existing saved choices remain unchanged.
-More options contains output language and optional automatic text actions.
+The Style tab’s More options contains output language and optional automatic
+text actions.
 Saved legacy choices remain visible until the user selects a current option.
 Keep my words ignores saved tone and translation choices for dictation without
 clearing them. Manual Rewrite and Translation remain separate actions.
 The keyboard shows the output-language flag and the applicable tone. Its menu
-changes dictation output when no text is selected. With selected text, the same
-control shows a wand and offers rewrite, translation and saved text actions.
+offers output language, tone and automatic text actions directly. Translation
+actions are omitted from automatic dictation choices; Output language handles
+dictation translation. An existing saved translation remains read-only until
+the user changes it. Text-editing
+mode is changed only in the app’s Style tab. With selected text, the same control
+shows a wand and opens a separate menu
+for translation, tone and saved text actions. Tone edits keep the source language
+and use an operation-only preference snapshot. They do not change dictation
+preferences. Quick translation and tone editing require the advertised default
+action; deleting a default does not select another saved prompt. Older services
+keep their explicit legacy actions.
+Add to dictionary is a direct selected-text menu item for one to five words,
+within 256 characters. It saves the selected term without changing the text.
+Selections above those limits do not offer the command.
 The language picker in Actions and the keyboard translation menu update the same
 output preference as dictation. The globe preserves the source languages; a flag
 sets the output language. Each operation keeps its accepted preference snapshot.

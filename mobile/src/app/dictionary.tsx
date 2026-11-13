@@ -9,6 +9,8 @@ import Core, { type VocabularyEntry } from '../../modules/clarify-core';
 import { Button, Card, EmptyState, ModalHeader, TableRow, ui, usePalette, useReducedMotion } from '../components/ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 
+import { NatureCard } from '../components/nature-card';
+
 const empty = (): VocabularyEntry => ({ term: '', pronunciation: '', aliases: [], enabled: true });
 export default function Dictionary() {
   const c = usePalette();
@@ -63,17 +65,18 @@ function Words() {
       data={visibleEntries}
       keyExtractor={({ index }) => String(index)}
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-        {account?.syncEnabled && <Text style={[ui.small, { color: c.muted }]}>{t("Dicionário da conta {v0}. As alterações são sincronizadas ao salvar.", { v0: account.email })}</Text>}
+        <NatureCard kind="dictionary" title={t('Nomes e palavras que você usa.')} detail={t('Adicione nomes e termos que o Clarify deve reconhecer.')}>
+          <Button primary disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t("Adicionar palavra")}</Button>
+        </NatureCard>
         {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>}
         <DraftTextInput selectionColor={c.text} accessibilityLabel={t("Buscar no dicionário")} initialValue={search} onChangeText={setSearch} placeholder={t("Buscar palavra")} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.controlBorder }]} />
-        <Button primary disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t("Adicionar palavra")}</Button>
+
       </View>}
       renderItem={({ item: { entry, index }, index: rowIndex }) => <TableRow first={rowIndex === 0} last={rowIndex === visibleEntries.length - 1} disabled={busy} onPress={() => edit(index)}>
         <View style={ui.row}><Text style={[ui.body, { color: c.text, fontWeight: '600', flex: 1 }]}>{entry.term}</Text><Text style={[ui.small, { color: c.muted }]}>{entry.enabled ? t("Ativa") : t("Desativada")}</Text></View>
         {(entry.pronunciation || entry.aliases.length > 0) && <Text style={[ui.small, { color: c.muted }]}>{[entry.pronunciation, entry.aliases.join(', ')].filter(Boolean).join(' · ')}</Text>}
       </TableRow>}
       ListEmptyComponent={loading ? <ActivityIndicator /> : loaded ? search ? <Text style={[ui.body, { color: c.muted }]}>{t("Nenhuma palavra encontrada.")}</Text> : <EmptyState title={t('Seu dicionário está vazio')} detail={t('Adicione nomes e termos que o Clarify deve reconhecer.')} /> : <Button onPress={() => { setLoading(true); void Core.getDictionary().then((values) => { setEntries(values); setLoaded(true); }).catch(report).finally(() => setLoading(false)); }}>{t("Carregar dicionário")}</Button>}
-      ListFooterComponent={<Text style={[ui.small, { color: c.muted, marginTop: 12 }]}>{t("As palavras ativas ajudam na transcrição e na reescrita. Elas não são inseridas quando você não as diz. Até 512 palavras.")}</Text>}
     />
     <Modal visible={editing !== null} animationType={reducedMotion ? 'none' : 'slide'} presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>

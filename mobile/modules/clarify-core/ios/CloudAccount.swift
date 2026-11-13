@@ -583,7 +583,10 @@ final class CloudAccount {
           try locked { try checkIdentity(); try saveCredential(acceptedToken); try acceptAccount(account) }
         }
         delivered = true
-        if code == 200 && !connectionOnly { await syncQuietly(library) }
+        if code == 200 && !connectionOnly {
+          _ = try? await loadTextActions()
+          await syncQuietly(library)
+        }
         return
       }
     } catch {
@@ -683,6 +686,7 @@ final class CloudAccount {
       }
       try await refresh()
       if !connectionOnly {
+        _ = try? await loadTextActions()
         try prepareLibrary(library)
         await syncQuietly(library)
       }

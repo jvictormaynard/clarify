@@ -58,13 +58,14 @@ export function DictationPolicyControls({ outputLanguage, tone, more }: { output
       <ChoiceRow testID="output.policy.action.off" title={t('Não aplicar ação automaticamente')}
         selected={policy?.mode !== 'action'} disabled={!policy || pending || !options.modes.find(mode => mode.value === 'clarity')?.supported}
         onPress={() => { if (policy?.mode === 'action') void save('clarity'); else setChoosing(false); }} />
+      {policy?.mode === 'action' && options.selected?.kind === 'translation' && <ChoiceRow
+        testID="output.policy.action.retired-translation" title={options.selected.name} selected disabled onPress={() => {}} />}
       {options.actions.map(action => <ChoiceRow key={action.id} testID={`output.policy.action.${action.id}`}
         title={action.name} selected={policy?.actionID === action.id}
         disabled={pending || !action.selectable}
         onPress={() => void save('action', action.id, action.revision, outputLanguage ?? 'auto')} />)}
       {policy?.mode === 'action' && !options.selected && <Text accessibilityRole="alert" style={[ui.small, { color: c.danger }]}>{t('A ação mudou. Atualize as ações.')}</Text>}
       <Text style={[ui.small, { color: c.muted }]}>{t('Escolha uma ação para salvar. Até lá, a configuração anterior continua ativa.')}</Text>
-      <Text style={[ui.small, { color: c.muted }]}>{t('A tradução usa o idioma de saída acima. Selecione um idioma antes de escolher a ação.')}</Text>
     </>}
     <Text style={[ui.small, { color: c.muted }]}>{t('Snippets isolados inserem o texto salvo exatamente. Outros snippets são expandidos uma vez antes da revisão.')}</Text>
   </Section>}

@@ -32,6 +32,8 @@ final class CloudAccountTests: XCTestCase {
         case "/_allauth/app/v1/auth/code/confirm":
           XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "prod-pending")
           value = ["meta": ["session_token": "prod-token", "is_authenticated": true]]
+        case "/v1/text-actions":
+          value = ["revision": 1, "actions": [["id": "rewrite", "revision": 1, "name": "Rewrite", "kind": "rewrite", "enabled": true, "prompt": "Rewrite clearly."]]]
         case "/v1/dictionary", "/v1/snippets":
           XCTAssertEqual(request.httpMethod, "GET", "DEV words must never be uploaded to production")
           value = ["revision": 0, "entries": []]
@@ -71,6 +73,8 @@ final class CloudAccountTests: XCTestCase {
     XCTAssertEqual(reopened.snapshot()["endpoint"] as? String, prod); XCTAssertNil(reopened.historyScope)
     _ = try await account.command("login", value: "fixture@example.test", library: library)
     _ = try await account.command("confirm", value: "123456", library: library)
+    XCTAssertEqual(account.textActions.status, .ready)
+    XCTAssertEqual(account.textActions.actions.map(\.id), ["rewrite"], "Sign-in must load choices without opening action management")
     let productionOwner = try XCTUnwrap(account.scope)
     XCTAssertNotEqual(productionOwner, user); XCTAssertNotEqual(productionOwner, productionUser)
     XCTAssertTrue(requests.contains { $0.url?.path == "/v1/dictionary" })

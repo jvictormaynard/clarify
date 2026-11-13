@@ -205,20 +205,28 @@ test('paired tone uses advertised editing readiness instead of recognition readi
   }
 });
 
-test('automatic saved action stays active until an explicit choice; turning it off selects clarity', async () => {
+test('automatic actions omit translation without replacing an existing selection', async () => {
   const action = { id: 'saved', revision: '2', name: 'Saved', kind: 'custom', enabled: true, ready: true };
-  const f = fixture({ language: 'es', style: 'organized' }, { policyOnly: true, policyMode: 'action',
-    actionID: action.id, actionRevision: action.revision, textActions: [action],
-    processingContract: { explicit_dictation_policy: true, cleanup_levels: ['clarity', 'preserve'], dictation_actions: true } });
-  await f.flush();
-  assert.deepEqual(f.calls, []);
-  assert.equal(f.find('output.policy.compatibility').props.disabled, true);
-  f.find('output.more').props.onPress();
-  assert.equal(f.find('output.policy.action.saved').props.selected, true);
-  f.find('output.policy.action.off').props.onPress(); await f.flush();
-  assert.deepEqual(f.calls, [['clarity', '', '', 'auto', 'fixture']]);
-  assert.equal(f.find('output.policy.clarity').props.selected, true);
-  assert.equal(f.find('output.policy.compatibility'), undefined);
+  const translation = { id: 'translation', revision: '3', name: 'Translate', kind: 'translation', enabled: true, ready: true };
+  for (const selected of [action, translation]) {
+    const f = fixture({ language: 'es', style: 'organized' }, { policyOnly: true, policyMode: 'action',
+      actionID: selected.id, actionRevision: selected.revision, textActions: [action, translation],
+      processingContract: { explicit_dictation_policy: true, cleanup_levels: ['clarity', 'preserve'], dictation_actions: true } });
+    await f.flush();
+    assert.deepEqual(f.calls, []);
+    assert.equal(f.find('output.policy.compatibility').props.disabled, true);
+    f.find('output.more').props.onPress();
+    assert.equal(f.find('output.policy.action.translation'), undefined);
+    assert.equal(f.find('output.policy.action.saved').props.selected, selected === action);
+    if (selected === translation) {
+      assert.equal(f.find('output.policy.action.retired-translation').props.disabled, true);
+      assert.equal(f.find('output.policy.action.retired-translation').props.selected, true);
+    }
+    f.find('output.policy.action.off').props.onPress(); await f.flush();
+    assert.deepEqual(f.calls, [['clarity', '', '', 'auto', 'fixture']]);
+    assert.equal(f.find('output.policy.clarity').props.selected, true);
+    assert.equal(f.find('output.policy.compatibility'), undefined);
+  }
 });
 
 test('old modes remain read-only until an explicit modern choice', async () => {

@@ -5,14 +5,15 @@ import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import Core, { type HistoryEntry } from '../../../modules/clarify-core';
-import { Button, Card, EmptyState, ScreenHeader, NavigationRow, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
+import { Button, Card, EmptyState, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { MicrophoneSwitch } from '../../components/microphone-switch';
-import { ClarifyLogo } from '../../components/clarify-logo';
+import { WorkspaceHeader } from '../../components/workspace-header';
+import { NatureCard } from '../../components/nature-card';
 
 import { groupHistory, historyDayTitle, historyTime } from '../../history';
 
-import { destinationLabel } from '../../processing';
+
 import { RecordButton } from '../../components/record-button';
 
 const timestamp = (value: number) => new Date(value * 1000).toLocaleString(uiLanguage, { dateStyle: 'medium', timeStyle: 'short' });
@@ -89,25 +90,29 @@ export default function Home() {
       sections={sections} stickySectionHeadersEnabled={false} keyExtractor={(entry) => `${entry.localOnly ? 'local' : 'account'}:${entry.id}`}
       onEndReached={() => { if (cursor) void load(cursor, true); }} onEndReachedThreshold={0.4}
       ListHeaderComponent={<View testID="app.home" collapsable={false} style={{ gap: 16 }}>
-        <ScreenHeader title={t('Ditado')} action={<ClarifyLogo size={28} />} />
-        <Card><NavigationRow testID="home.destination" title={t(destinationLabel(account))} icon={account?.mode === 'computer' ? 'desktopcomputer' : 'cloud'} onPress={() => router.push('/processing')} /></Card>
-        <MicrophoneSwitch />
-        {account?.mode === 'computer' && <RecordButton />}
-        <Text style={[ui.small, { color: c.muted }]}>{state.sessionActive ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
+        <WorkspaceHeader title="Clarify" accessory={<MicrophoneSwitch compact />} />
+        {account?.mode === 'computer' && <Card>
+          <RecordButton />
+          <Text style={[ui.small, { color: c.muted, textAlign: 'center' }]}>{t('Segure para falar. Deslize para cima para travar.')}</Text>
+        </Card>}
+        <NatureCard kind="actions" title={t('Seu texto, do seu jeito.')} detail={t('Escolha a edição, o tom e o idioma dos seus ditados.')}>
+          <Button primary onPress={() => router.navigate('/(tabs)/style')}>{t('Estilo do ditado')}</Button>
+        </NatureCard>
+        {!state.sessionActive && <Text style={[ui.small, { color: c.muted }]}>{t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>}
         {state.phase === 'error' && !state.textOperation && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 28, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
       renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
         accessibilityLabel={`${timestamp(item.createdAt)}. ${item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
-          <Text numberOfLines={4} style={[ui.body, { color: c.text, flex: 1 }]}>{item.text}</Text>
-          <View style={{ alignItems: 'flex-end', gap: 2 }}>
-            <Text style={[ui.small, { color: c.muted, fontVariant: ['tabular-nums'], textAlign: 'right' }]}>{historyTime(item.createdAt, uiLanguage)}</Text>
+          <View style={{ alignItems: 'flex-start', gap: 4, maxWidth: 78 }}>
+            <Text style={[ui.small, { color: c.muted, fontVariant: ['tabular-nums'], textAlign: 'left' }]}>{historyTime(item.createdAt, uiLanguage)}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <SymbolView name={item.sourceDevice === 'desktop' ? 'desktopcomputer' : 'iphone'} size={13} tintColor={c.muted} accessible={false} />
               <Text style={[ui.small, { color: c.muted }]}>{item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}</Text>
             </View>
           </View>
+          <Text numberOfLines={4} style={[ui.body, { color: c.text, flex: 1 }]}>{item.text}</Text>
         </View>
       </TableRow>}
       ListEmptyComponent={!loading && !error ? <View style={{ paddingTop: 20 }}><EmptyState title={t('Seu histórico está vazio')}
