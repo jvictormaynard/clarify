@@ -5,6 +5,21 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-13
+
+### Added
+
+- Play short confirmation tones when dictation starts, stops, or is cancelled.
+
+### Changed
+
+- Simplify first-run setup and guide dictation practice through shortcut prompts, localized reading passages, and an email-style result.
+- Keep the sample subject visible, group Skip and Continue on the right, and enable Continue after a successful practice transcript.
+
+### Fixed
+
+- Use the shared border for the Google sign-in option.
+
 ## [0.17.0] - 2026-11-11
 
 ### Added
@@ -550,7 +565,8 @@ Unpublished tag. Candidate validation failed before packaging; no executable or 
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/jvictormaynard/clarify/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jvictormaynard/clarify/compare/v0.16.2...v0.17.0
 [0.16.2]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...v0.16.2
 [0.16.1]: https://github.com/jvictormaynard/clarify/compare/v0.16.0...d8bf53e288ff34db2482b6c566ac0d8ccbf0bb89
