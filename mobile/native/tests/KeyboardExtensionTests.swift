@@ -73,6 +73,7 @@ final class KeyboardExtensionTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(values["displayFrames"]?.last ?? 0, 278, "The keyboard must remain fully visible")
   }
   private func expectText(_ text: String, in app: XCUIApplication) {
+    if app.textFields["composer"].value as? String == text { return }
     let inserted = expectation(for: NSPredicate { _, _ in
       app.textFields["composer"].value as? String == text
     }, evaluatedWith: nil)
