@@ -1,7 +1,14 @@
+import type { Page } from "@playwright/test";
 import { test, expect, settingsScenario } from "./settings-fixture";
 import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure } from "./settings-navigation";
 
 
+// The native runtime delivers these commands; OS hotkeys have contract coverage.
+async function practiceCommand(page: Page, action: "start" | "stop" | "cancel") {
+  await page.evaluate(async action => {
+    await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "practiceCommand", args: [action] });
+  }, action);
+}
 
 settingsScenario({ quota: true, initialPage: "style" }, () => {
   test("quota: cleanup choices remain available for managed accounts", async ({ page }) => {
@@ -230,16 +237,38 @@ settingsScenario({ onboarding: true }, () => {
     const composer = page.getByRole("group", { name: "E-mail de prática", exact: true });
     await composer.focus();
     await expect(composer).toBeFocused();
+    await expect(composer.locator(".onboarding-keys")).toBeVisible();
+    await expect(page.locator(".onboarding-flow-actions").getByRole("button")).toHaveText(["Pular prática", "Continuar"]);
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+    await expect(composer.getByRole("textbox", { name: "Assunto", exact: true })).toHaveValue("Uma conversa rápida");
+    await expect(composer.getByText("Diga, por exemplo: Hoje vou escrever uma mensagem com o Clarify.", { exact: true })).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("onboarding-practice.png") });
-    await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
-    await expect(page.getByText("Gravando. Diga uma frase e pare a gravação.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+    await practiceCommand(page, "start");
+    await expect(composer.locator(".onboarding-keys")).toHaveCount(0);
+    await expect(composer.getByRole("textbox", { name: "Assunto", exact: true })).toHaveValue("Uma conversa rápida");
+    await expect(composer.getByText("Hoje vou escrever uma mensagem com o Clarify.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+    await expect(composer.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+    await practiceCommand(page, "cancel");
+    await expect(composer.locator(".onboarding-keys")).toBeVisible();
+    await expect(composer.getByText("Hoje vou escrever uma mensagem com o Clarify.", { exact: true })).toHaveCount(0);
+    await practiceCommand(page, "start");
+    await practiceCommand(page, "stop");
     await expect(page.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveValue("Hoje vou escrever com o Clarify.");
+    await expect(composer.getByRole("textbox", { name: "Assunto", exact: true })).toHaveValue("Uma conversa rápida");
     await expect(page.getByRole("heading", { name: "Seu ditado está pronto", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
     await page.screenshot({ path: testInfo.outputPath("onboarding-success.png") });
+    await practiceCommand(page, "start");
+    await expect(composer.getByRole("textbox", { name: "Texto do seu ditado" })).toHaveCount(0);
+    await expect(composer.locator(".onboarding-keys")).toHaveCount(0);
+    await expect(composer.getByText("Hoje vou escrever uma mensagem com o Clarify.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+    await practiceCommand(page, "stop");
+    await expect(page.getByRole("heading", { name: "Seu ditado está pronto", exact: true })).toBeVisible();
     await page.setViewportSize({ width: 640, height: 520 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
-    await page.getByRole("button", { name: "Concluir prática", exact: true }).click();
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
     await navigate(page, "Geral");
     await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
     await expect(settingsDialog(page)).toBeHidden();
@@ -259,7 +288,7 @@ settingsScenario({ quota: true, usage: "exhausted" }, () => {
     await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
     await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+    await page.getByRole("link", { name: "Conferir configuração", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Conta", exact: true })).toBeVisible();
   });
 });
@@ -271,10 +300,11 @@ settingsScenario({ onboarding: true, practice: "auth-error" }, () => {
     await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
     await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
-    await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
-    await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+    await practiceCommand(page, "start");
+    await practiceCommand(page, "stop");
     await expect(page.getByText("Conclua e salve a configuração de transcrição antes de ditar.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+    await page.getByRole("link", { name: "Conferir configuração", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   });
 });
@@ -286,10 +316,11 @@ settingsScenario({ onboarding: true, practice: "provider-quota" }, () => {
     await page.getByRole("textbox", { name: "Chave de API do Groq" }).fill("gsk_test_only");
     await page.getByRole("button", { name: "Salvar chave e continuar" }).click();
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
-    await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
-    await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+    await practiceCommand(page, "start");
+    await practiceCommand(page, "stop");
     await expect(page.getByText("Limite do provedor atingido. Verifique seu saldo ou plano.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+    await page.getByRole("link", { name: "Conferir configuração", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
   });
 });
@@ -300,10 +331,11 @@ settingsScenario({ quota: true, practice: "account-error" }, () => {
     await navigate(page, "Geral");
     await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
-    await page.getByRole("button", { name: "Começar ditado", exact: true }).click();
-    await page.getByRole("button", { name: "Parar e conferir texto", exact: true }).click();
+    await practiceCommand(page, "start");
+    await practiceCommand(page, "stop");
     await expect(page.getByText("Não há cota disponível. Confira o saldo e a próxima renovação na sua conta.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Conferir configuração", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
+    await page.getByRole("link", { name: "Conferir configuração", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Conta", exact: true })).toBeVisible();
   });
 });
@@ -474,7 +506,7 @@ settingsScenario({ onboarding: true, practice: "missing-model" }, () => {
     await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
     await page.getByRole("button", { name: "Continuar com modelo local" }).click();
     await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado" })).toBeVisible();
-    await page.getByRole("button", { name: "Configurar modelo", exact: true }).click();
+    await page.getByRole("link", { name: "Configurar modelo", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Modelos e serviços", exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Modelo local", exact: true })).toBeVisible();
   });
@@ -511,8 +543,9 @@ for (const labels of [
       await expect(email).toBeEnabled();
       const first = await email.locator("xpath=..").boundingBox(), submit = await next.boundingBox();
       expect(first).not.toBeNull(); expect(submit).not.toBeNull();
-      expect(Math.abs(first!.x - submit!.x)).toBeLessThan(1);
-      expect(Math.abs(first!.width - submit!.width)).toBeLessThan(1);
+      expect(Math.abs(first!.x + first!.width - submit!.x - submit!.width)).toBeLessThan(1);
+      const back = await page.getByRole("button", { name: labels.back, exact: true }).boundingBox();
+      expect(back!.x + back!.width).toBeLessThan(submit!.x);
       await email.locator("xpath=..").click({ position: { x: first!.width / 2, y: first!.height - 3 } });
       await expect(email).toBeFocused();
       await email.fill("test@example.test"); await next.click();
@@ -522,8 +555,9 @@ for (const labels of [
       await expect(code).toBeEnabled();
       const verify = await code.locator("xpath=..").boundingBox();
       const confirm = await page.getByRole("button", { name: labels.confirm, exact: true }).boundingBox();
-      expect(Math.abs(verify!.x - confirm!.x)).toBeLessThan(1);
-      expect(Math.abs(verify!.width - confirm!.width)).toBeLessThan(1);
+      expect(Math.abs(verify!.x + verify!.width - confirm!.x - confirm!.width)).toBeLessThan(1);
+      const codeBack = await page.getByRole("button", { name: labels.back, exact: true }).boundingBox();
+      expect(codeBack!.x + codeBack!.width).toBeLessThan(confirm!.x);
       await code.locator("xpath=..").click({ position: { x: verify!.width / 2, y: verify!.height - 3 } });
       await expect(code).toBeFocused();
       await page.getByRole("button", { name: labels.back, exact: true }).click();
