@@ -1,10 +1,14 @@
 {
   "schema": 2,
-  "component": "desktop",
-  "version": "0.18.0",
-  "base_sha": "16abed2c78c3858f50c5aa237c2d1cb6b47cca05",
-  "notes": "Prepare the desktop onboarding and dictation-sound changes after source PR #310. Include compact setup, localized read-aloud instructions and italic quoted passages, a persistent sample subject, top-left transcript presentation, right-aligned Skip and Continue with successful-transcript gating, and the shared Google border. Source requirements and engineering reviews found no actionable defects; local types, browser/bridge, practice/shortcut, build/boot and responsive captures passed. The source PR passed required CI and is merged. Require exact canonical main CI and full desktop coverage before immutable candidate creation. Windows acceptance must use that packaged candidate; no acceptance or public publication is claimed by preparation. Preserve mobile release identity.",
+  "component": "mobile",
+  "version": "0.16.0",
+  "base_sha": "5fd4242bdc62d72eeaca8ff5a96f288e189cbf86",
+  "notes": "Prepare internal TestFlight 0.16.0 (89) from main after PR313. Include the five-tab workspace, workspace account/settings menu, separate dictation and selected-text keyboard menus, short-phrase dictionary entry, output-language handling and compatibility for existing automatic translation choices. Include PR313 sign-in catalog and editor-layout repairs. Preserve the onboarding and sounds already delivered in build88. Verify the source contains merge5fd4242 before signing. Current main UI failures require diagnosis and successful candidate validation; no assertion or release gate is waived. Require exact-source canonical main CI and installed-keyboard proof, immutable signed candidate evidence, confirmed upload and Apple internal-group availability. Internal testing is authorized; no App Store submission.",
   "evidence": {
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/310"
+    "build": "89",
+    "highest_build": "88",
+    "pending_builds_checked": true,
+    "checked_at": "2026-11-14T20:23:17Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/issues/316"
   }
 }
