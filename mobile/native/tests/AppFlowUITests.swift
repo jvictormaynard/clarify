@@ -17,7 +17,7 @@ final class AppFlowUITests: XCTestCase {
   }
   @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
     for attempt in 0...12 {
-      let containingPage = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+      let containingPage = app.scrollViews.containing(.any, identifier: identifier).firstMatch
       // An offscreen React Native row can be absent from the current AX snapshot.
       // Search the visible foreground scroll view until the target is exposed.
       let page = containingPage.exists ? containingPage : app.scrollViews.allElementsBoundByIndex.reversed().first {
