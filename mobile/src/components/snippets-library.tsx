@@ -9,6 +9,8 @@ import Core, { type Snippet } from '../../modules/clarify-core';
 import { Button, Card, EmptyState, ModalHeader, TableRow, ui, usePalette, useReducedMotion } from './ui';
 import { isBusy, report, useClarify } from '../state/clarify';
 
+import { NatureCard } from './nature-card';
+
 const empty = (): Snippet => ({ trigger: '', replacement: '', enabled: true, case_sensitive: false });
 export function SnippetsLibrary() {
   const c = usePalette();
@@ -51,12 +53,10 @@ export function SnippetsLibrary() {
     <FlatList style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[ui.content, { gap: 0 }]} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled"
       data={visible} keyExtractor={({ index }) => String(index)}
       ListHeaderComponent={<View style={{ gap: 16, marginBottom: 16 }}>
-        <Text style={[ui.small, { color: c.muted }]}>{account?.signedIn
-          ? t('Seus snippets são sincronizados entre seus dispositivos.')
-          : t('Os snippets deste dispositivo são aplicados localmente.')}</Text>
+        <NatureCard kind="snippets" title={t('Salve uma frase')} detail={t('Diga uma frase para inserir um texto salvo. Use para assinaturas, endereços e respostas frequentes.')}><Button primary disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t('Adicionar snippet')}</Button></NatureCard>
         {account?.error && <Text accessibilityRole="alert" style={[ui.small, { color: c.text }]}>{t(account.error)}</Text>}
         <DraftTextInput selectionColor={c.text} accessibilityLabel={t('Buscar snippets')} initialValue={search} onChangeText={setSearch} placeholder={t('Buscar snippets')} placeholderTextColor={c.muted} style={[ui.input, { color: c.text, backgroundColor: c.card, borderColor: c.controlBorder }]} />
-        <Button primary disabled={busy || !loaded || entries.length >= 512} onPress={() => edit()}>{t('Adicionar snippet')}</Button>
+
       </View>}
       renderItem={({ item: { entry, index }, index: row }) => <TableRow first={row === 0} last={row === visible.length - 1} disabled={busy} onPress={() => edit(index)}>
         <View style={ui.row}><Text style={[ui.body, { color: c.text, fontWeight: '600', flex: 1 }]}>{entry.trigger}</Text><Text style={[ui.small, { color: c.muted }]}>{entry.enabled ? t('Ativa') : t('Desativada')}</Text></View>
@@ -69,7 +69,6 @@ export function SnippetsLibrary() {
         </View>
       </EmptyState>
         : <Button onPress={() => { setLoading(true); void Core.getSnippets().then(values => { setEntries(values); setLoaded(true); }).catch(report).finally(() => setLoading(false)); }}>{t('Carregar snippets')}</Button>}
-      ListFooterComponent={<Text style={[ui.small, { color: c.muted, marginTop: 12 }]}>{t('Com a reescrita ativa, o texto do snippet é enviado à IA como parte da mensagem. Quando você diz apenas a frase de ativação, o texto salvo é inserido sem reescrita.')}</Text>}
     />
     <Modal visible={editing !== null} animationType={reducedMotion ? 'none' : 'slide'} presentationStyle="pageSheet" onRequestClose={() => { if (!saving) setEditing(null); }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: c.background }}>

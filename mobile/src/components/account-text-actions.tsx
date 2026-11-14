@@ -6,7 +6,7 @@ import { actionReplacement, ownsActionLibrary } from '../account-text-actions';
 import { t } from '../i18n';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { DraftTextInput } from './draft-text-input';
-import { Button, Card, ChoiceRow, NativeSheet, ui, usePalette } from './ui';
+import { Button, Card, ChoiceRow, NativeSheet, NavigationRow, EmptyState, ui, usePalette } from './ui';
 
 type Editor = { value: AccountTextActionDefinition; originalID: string | null; base: AccountTextActionLibrary; rebased?: boolean };
 export function AccountTextActions() {
@@ -75,17 +75,15 @@ export function AccountTextActions() {
   const canSave = editing && (!editing.originalID || latest) && editorOwned && !!editing.value.name.trim() && !!editing.value.prompt.trim();
   return <>
     <Card>
-      <Text accessibilityRole="header" style={[ui.section, { color: c.text }]}>{t('Gerenciar ações')}</Text>
+      <Text style={[ui.body, { color: c.muted }]}>{t('Crie e edite suas instruções de texto.')}</Text>
       {computer ? <Text style={[ui.body, { color: c.muted }]}>{t('Gerencie estas ações no computador pareado.')}</Text>
         : !signedIn ? <Text style={[ui.body, { color: c.muted }]}>{t('Entre na sua conta primeiro.')}</Text> : <>
           {failed && <Text accessibilityRole="alert" style={[ui.body, { color: c.text }]}>{t('Não foi possível salvar ou carregar as ações. Seu rascunho foi mantido.')}</Text>}
           <Button disabled={busy} onPress={() => void reload()}>{t('Atualizar lista')}</Button>
-          <Button disabled={busy || !ready || library.actions.length >= 64} onPress={() => edit()}>{t('Adicionar ação')}</Button>
-          {ready && library.actions.map(row => <View key={row.id} style={{ gap: 8 }}>
-            <Button disabled={busy} onPress={() => edit(row)}>{row.name}</Button>
-            <Text style={[ui.small, { color: c.muted }]}>{row.enabled ? t('Ativa') : t('Desativada')}</Text>
-            <Button disabled={busy || library.actions.length >= 64} onPress={() => edit(row, true)}>{t('Duplicar ação')}</Button>
-          </View>)}
+          <Button primary disabled={busy || !ready || library.actions.length >= 64} onPress={() => edit()}>{t('Adicionar ação')}</Button>
+          {ready && library.actions.length === 0 && <EmptyState title={t('Nenhuma ação salva neste destino.')} detail={t('Crie e edite suas instruções de texto.')} />}
+          {ready && library.actions.map(row => <NavigationRow key={row.id} title={row.name}
+            detail={row.enabled ? t('Ativa') : t('Desativada')} icon="wand.and.stars" disabled={busy} onPress={() => edit(row)} />)}
         </>}
     </Card>
     <NativeSheet visible={editing !== null} title={t('Editar ação')} onClose={() => { if (!working) setEditing(null); }}>
@@ -110,6 +108,7 @@ export function AccountTextActions() {
         {failed && <Button disabled={busy || !editorOwned} onPress={() => Alert.alert(t('Recarregar a lista?'), t('O rascunho será mantido. Revise as ações atuais antes de salvar.'),
           [{ text: t('Cancelar'), style: 'cancel' }, { text: t('Continuar'), onPress: () => void reload(true) }])}>{t('Recarregar e manter rascunho')}</Button>}
         <Button disabled={busy || !canSave} loading={working} onPress={() => void save()}>{t('Salvar')}</Button>
+        {editing.originalID && <Button disabled={busy || !editorOwned || !ready || library.actions.length >= 64} onPress={() => edit(editing.value, true)}>{t('Duplicar ação')}</Button>}
         {editing.originalID && <Button disabled={busy || !editorOwned} destructive onPress={() => Alert.alert(t('Excluir ação?'), editing.value.name,
           [{ text: t('Cancelar'), style: 'cancel' }, { text: t('Excluir'), style: 'destructive', onPress: () => void save(true) }])}>{t('Excluir')}</Button>}
       </>}

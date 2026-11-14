@@ -1,14 +1,10 @@
 {
   "schema": 2,
-  "component": "mobile",
-  "version": "0.15.0",
-  "base_sha": "f147bf0ec19a861584f08d95cd2b35791a665117",
-  "notes": "Prepare internal TestFlight 0.15.0 (88) for Clarify Interno. Include the mobile visual and onboarding refresh from PR309, shared dictation sounds from PR306, and shared editing-policy changes from PR307. Preserve the public App Store release and existing routing/data. Build88 was reserved in issue311 after verified complete paginated Apple inventory and Git reservation checks; recheck before metadata merge/upload. Require exact canonical source CI, installed-keyboard evidence, immutable signed candidate verification, confirmed upload, VALID processing and internal group availability. The user selected internal TestFlight first; documented exact-source internal CI reuse is allowed, but no historical skipped-suite exception or public-store acceptance is inherited. Known automatic-return/opening-height limitations remain documented.",
+  "component": "desktop",
+  "version": "0.18.0",
+  "base_sha": "16abed2c78c3858f50c5aa237c2d1cb6b47cca05",
+  "notes": "Prepare the desktop onboarding and dictation-sound changes after source PR #310. Include compact setup, localized read-aloud instructions and italic quoted passages, a persistent sample subject, top-left transcript presentation, right-aligned Skip and Continue with successful-transcript gating, and the shared Google border. Source requirements and engineering reviews found no actionable defects; local types, browser/bridge, practice/shortcut, build/boot and responsive captures passed. The source PR passed required CI and is merged. Require exact canonical main CI and full desktop coverage before immutable candidate creation. Windows acceptance must use that packaged candidate; no acceptance or public publication is claimed by preparation. Preserve mobile release identity.",
   "evidence": {
-    "build": "88",
-    "highest_build": "87",
-    "pending_builds_checked": true,
-    "checked_at": "2026-11-13T07:18:53Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/issues/311"
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/310"
   }
 }

@@ -8578,5 +8578,85 @@
     "pt": "Toque no microfone para falar. Toque em enviar para concluir.",
     "en": "Tap the microphone to talk. Tap send to finish.",
     "es": "Toca el micrófono para hablar. Toca enviar para terminar."
+  },
+  "Estilo do ditado": {
+    "pt": "Estilo do ditado",
+    "en": "Dictation style",
+    "es": "Estilo de dictado"
+  },
+  "Edição, tom e idioma de saída": {
+    "pt": "Edição, tom e idioma de saída",
+    "en": "Editing, tone and output language",
+    "es": "Edición, tono e idioma de salida"
+  },
+  "Reescreva ou traduza um texto.": {
+    "pt": "Reescreva ou traduza um texto.",
+    "en": "Rewrite or translate text.",
+    "es": "Reescribe o traduce un texto."
+  },
+  "Suas palavras, textos e ações.": {
+    "pt": "Suas palavras, textos e ações.",
+    "en": "Your words, saved text and actions.",
+    "es": "Tus palabras, textos guardados y acciones."
+  },
+  "Personalizar o Clarify": {
+    "pt": "Personalizar o Clarify",
+    "en": "Make Clarify yours",
+    "es": "Personaliza Clarify"
+  },
+  "Nomes e palavras que você usa.": {
+    "pt": "Nomes e palavras que você usa.",
+    "en": "Names and words you use.",
+    "es": "Nombres y palabras que usas."
+  },
+  "Insira textos salvos com uma frase.": {
+    "pt": "Insira textos salvos com uma frase.",
+    "en": "Insert saved text with a phrase.",
+    "es": "Inserta texto guardado con una frase."
+  },
+  "Crie e edite suas instruções de texto.": {
+    "pt": "Crie e edite suas instruções de texto.",
+    "en": "Create and edit your text instructions.",
+    "es": "Crea y edita tus instrucciones de texto."
+  },
+  "Conta e processamento": {
+    "pt": "Conta e processamento",
+    "en": "Account and processing",
+    "es": "Cuenta y procesamiento"
+  },
+  "Ditado e teclado": {
+    "pt": "Ditado e teclado",
+    "en": "Dictation and keyboard",
+    "es": "Dictado y teclado"
+  },
+  "Privacidade e ajuda": {
+    "pt": "Privacidade e ajuda",
+    "en": "Privacy and help",
+    "es": "Privacidad y ayuda"
+  },
+  "Abrir menu": {
+    "pt": "Abrir menu",
+    "en": "Open menu",
+    "es": "Abrir menú"
+  },
+  "Seu texto, do seu jeito.": {
+    "pt": "Seu texto, do seu jeito.",
+    "en": "Your text, your way.",
+    "es": "Tu texto, a tu manera."
+  },
+  "Escolha a edição, o tom e o idioma dos seus ditados.": {
+    "pt": "Escolha a edição, o tom e o idioma dos seus ditados.",
+    "en": "Choose the editing, tone and language for your dictation.",
+    "es": "Elige la edición, el tono y el idioma de tus dictados."
+  },
+  "Alterar tom": {
+    "pt": "Alterar tom",
+    "en": "Change tone",
+    "es": "Cambiar tono"
+  },
+  "Selecione de uma a cinco palavras, com até 256 caracteres.": {
+    "pt": "Selecione de uma a cinco palavras, com até 256 caracteres.",
+    "en": "Select one to five words, up to 256 characters.",
+    "es": "Selecciona entre una y cinco palabras, hasta 256 caracteres."
   }
 }

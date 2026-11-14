@@ -46,6 +46,10 @@ final class SocialAccountTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "pending-session")
         return try self.response(request, ["meta": ["is_authenticated": true, "session_token": "confirmed-session"]])
       }
+      if path == "/v1/text-actions" {
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), self.token)
+        return try self.response(request, ["revision": 1, "actions": [["id": "rewrite", "revision": 1, "name": "Rewrite", "kind": "rewrite", "enabled": true, "prompt": "Rewrite clearly."]]])
+      }
       if path == "/v1/dictionary" || path == "/v1/snippets" { return try self.response(request, ["revision": 0, "entries": []]) }
       XCTFail("Unexpected request: \(path)"); return try self.response(request, [:], 500)
     }, readCredential: { self.token }, saveCredential: {
@@ -98,6 +102,8 @@ final class SocialAccountTests: XCTestCase {
       f.pendingPolls = 2
       let result = try await f.run(provider); XCTAssertTrue(result)
       XCTAssertTrue(f.account.configured); XCTAssertEqual(f.token, "native-session")
+      XCTAssertEqual(f.account.textActions.status, .ready)
+      XCTAssertEqual(f.account.textActions.actions.map(\.id), ["rewrite"])
       let start = try f.body(f.requests[0]), poll = try f.body(XCTUnwrap(f.requests.first { $0.url!.path.hasSuffix("/social/poll") }))
       XCTAssertEqual(start["provider"], provider); XCTAssertEqual(start["client"], "ios")
       XCTAssertNil(start["code_verifier"]); XCTAssertEqual(start["code_challenge"], SocialPKCE.challenge(try XCTUnwrap(poll["code_verifier"])))
@@ -122,6 +128,8 @@ final class SocialAccountTests: XCTestCase {
     XCTAssertEqual(f.account.snapshot()["pending"] as? String, "signup")
     _ = try await f.account.command("confirm", value: "123456", library: LocalLibrary(root: f.root))
     XCTAssertTrue(f.account.configured); XCTAssertEqual(f.token, "confirmed-session")
+    XCTAssertEqual(f.account.textActions.status, .ready)
+    XCTAssertEqual(f.account.textActions.actions.map(\.id), ["rewrite"])
     XCTAssertEqual(f.account.snapshot()["pending"] as? String, "")
   }
 

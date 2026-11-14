@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { isBusy, report, useClarify } from '../state/clarify';
 import { Card, ui, usePalette } from './ui';
 
-export function MicrophoneSwitch() {
+export function MicrophoneSwitch({ compact = false }: { compact?: boolean } = {}) {
   const c = usePalette();
   const { state, account, accountBusy, activate, activating, refresh } = useClarify();
   const pending = useRef(false);
@@ -24,15 +24,17 @@ export function MicrophoneSwitch() {
     finally { pending.current = false; setRequested(null); }
   }
   const enabled = requested ?? state.sessionActive;
+  const toggle = <Switch accessibilityLabel={t("Ativar Clarify")} accessibilityState={{ busy: changing }} value={enabled}
+        disabled={blocked} onValueChange={value => void change(value)}
+        style={{ alignSelf: 'center', marginHorizontal: 8 }} />;
+  if (compact) return toggle;
   return <Card style={{ paddingVertical: 12 }}>
     <View style={{ minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 16 }}>
       <View style={{ flex: 1, gap: 4 }}>
-        <Text style={[ui.body, { fontWeight: '600', color: c.text }]}>{t('Ativar Clarify')}</Text>
-        <Text accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>{enabled ? t('Microfone ativo') : t('Microfone desativado')}</Text>
+        <Text style={[ui.body, { fontWeight: '600', color: c.text }]}>{(enabled ? t('Microfone ativo') : t('Ativar Clarify'))}</Text>
+        <Text accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>{enabled ? t('O Clarify está ativo para receber ditados do teclado.') : t('Ative o Clarify antes de usar o microfone do teclado.')}</Text>
       </View>
-      <Switch accessibilityLabel={t("Ativar Clarify")} accessibilityState={{ busy: changing }} value={enabled}
-        disabled={blocked} onValueChange={value => void change(value)}
-        style={{ alignSelf: 'center', marginHorizontal: 8 }} />
+      {toggle}
       {changing && <ActivityIndicator size="small" color={c.accent} style={{ marginLeft: 4 }} />}
     </View>
   </Card>;

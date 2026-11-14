@@ -1,3 +1,4 @@
+import { FeatureInfo } from '../components/feature-info';
 import { t } from "../i18n";
 import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
@@ -25,13 +26,14 @@ function Navigation() {
     <Stack.Protected guard={!showOnboarding && processingAvailable(account)}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="account" options={{ headerShown: true, title: t('Conta'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
-      <Stack.Screen name="dictionary" options={{ headerShown: true, title: t('Dicionário'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
-      <Stack.Screen name="snippets" options={{ headerShown: true, title: t('Snippets'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
+      <Stack.Screen name="dictionary" options={{ headerRight: () => <FeatureInfo kind="dictionary" />, headerShown: true, title: t('Dicionário'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
+      <Stack.Screen name="text-actions" options={{ headerRight: () => <FeatureInfo kind="actions" />, headerShown: true, title: t('Gerenciar ações'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
+      <Stack.Screen name="snippets" options={{ headerRight: () => <FeatureInfo kind="snippets" />, headerShown: true, title: t('Snippets'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="processing" options={{ headerShown: true, title: t('Processamento'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
-      <Stack.Screen name="output" options={{ headerShown: true, title: t('Saída do ditado'), presentation: 'formSheet', animation: reducedMotion ? 'none' : 'slide_from_bottom' }} />
+      <Stack.Screen name="output" options={{ headerRight: () => <FeatureInfo kind="style" />, headerShown: true, title: t('Saída do ditado'), presentation: 'formSheet', animation: reducedMotion ? 'none' : 'slide_from_bottom' }} />
       <Stack.Screen name="microphone" options={{ headerShown: true, title: t('Microfone e teclado'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="privacy" options={{ headerShown: true, title: t('Histórico e privacidade'), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
-      <Stack.Screen name="settings" options={{ headerShown: true, title: t("Ajustes"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
+      <Stack.Screen name="settings" options={{ headerShown: false, title: t("Ajustes"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
       <Stack.Screen name="guide" options={{ headerShown: false, title: t("Como usar"), animation: reducedMotion ? 'none' : 'slide_from_right' }} />
     </Stack.Protected>
   </Stack>;

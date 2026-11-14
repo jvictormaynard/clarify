@@ -30,8 +30,8 @@ export function dictationPolicyOptions(policy: DictationPolicy | undefined, cata
       capabilities.cleanup_levels?.includes(mode.value) === true })),
     compatibilityLabel: mode && mode !== 'clarity' && mode !== 'preserve' ? dictationPolicyLabel(mode) : undefined,
     actionsSupported: capabilities?.dictation_actions === true,
-    actions: catalog?.textActions.filter(action => action.enabled).map(action => ({ ...action,
-      selectable: action.ready && (action.kind !== 'translation' || outputLanguage !== 'auto') })) ?? [],
+    actions: catalog?.textActions.filter(action => action.enabled && action.kind !== 'translation')
+      .map(action => ({ ...action, selectable: action.ready })) ?? [],
     selected, toneAllowed,
   };
 }

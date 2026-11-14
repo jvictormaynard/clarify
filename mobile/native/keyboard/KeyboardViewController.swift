@@ -487,13 +487,13 @@ class KeyboardViewController: UIInputViewController {
     return TextSelectionOwner(document: proxy.documentIdentifier, text: text,
       before: proxy.documentContextBeforeInput, after: proxy.documentContextAfterInput)
   }
-  func processSelection(_ action: String, language: String, savedAction: TextActionDescriptor? = nil) {
+  func processSelection(_ action: String, language: String, savedAction: TextActionDescriptor? = nil, outputPreferences: OutputPreferences? = nil) {
     guard attached, hasFullAccess, state.isLive, state.configured, !state.phase.busy,
       recordingRequest.action == nil, let store, let selection = currentTextSelection() else { return }
     let id = UUID().uuidString
     guard recordingRequest.submit("start", operationID: id, now: Date().timeIntervalSince1970) else { return }
     do {
-      let preferences = try store.setOutputPreference("language", value: language)
+      let preferences = try outputPreferences ?? store.setOutputPreference("language", value: language)
       try store.send(action, operationID: id, context: state.processingContext, text: selection.text, language: language,
         actionID: savedAction?.id, actionRevision: savedAction?.revision, preferences: preferences)
       operationID = id; documentID = selection.document
@@ -783,9 +783,10 @@ class KeyboardViewController: UIInputViewController {
     return true
   }
   private func outputMenu(_ captured: SelectedTextMenuState) -> UIMenu {
-    func preference(_ key: String, _ value: String, _ title: String, selected: Bool) -> UIAction {
-      UIAction(title: title, attributes: captured.preferencesSupported || value == "auto" || value == "default" ? [] : .disabled, state: selected ? .on : .off) { [weak self] _ in
-        guard let self, self.menuIsCurrent(captured), self.hasFullAccess, captured.preferencesSupported || value == "auto" || value == "default" else { return }
+    if captured.selection != nil { return selectionMenu(captured) }
+    func preference(_ key: String, _ value: String, _ title: String, selected: Bool, enabled: Bool = true) -> UIAction {
+      UIAction(title: title, attributes: enabled && (captured.preferencesSupported || value == "auto" || value == "default") ? [] : .disabled, state: selected ? .on : .off) { [weak self] _ in
+        guard let self, self.menuIsCurrent(captured), self.hasFullAccess, enabled, captured.preferencesSupported || value == "auto" || value == "default" else { return }
         do {
           _ = try self.store?.setOutputPreference(key, value: value)
           self.outputPreferenceError = nil
@@ -801,9 +802,9 @@ class KeyboardViewController: UIInputViewController {
     })
     let styles: [OutputStyle] = [.natural, .formal, .casual]
     var styleChoices: [UIMenuElement] = styles.map {
-      preference("style", $0.rawValue, $0.title, selected: $0 == captured.preferences.style)
+      preference("style", $0.rawValue, $0.title, selected: $0 == captured.preferences.style, enabled: captured.toneAllowed)
     }
-    if [.default, .very_casual, .informal, .organized].contains(captured.preferences.style) {
+    if [.default, .very_casual, .informal, .organized].contains(captured.preferences.style), captured.preferencesSupported || captured.preferences.style != .default {
       let old = captured.preferences.style
       styleChoices.append(UIAction(title: old.title, attributes: .disabled, state: .on) { _ in })
     }
@@ -819,62 +820,82 @@ class KeyboardViewController: UIInputViewController {
         } catch { self.outputPreferenceError = error.localizedDescription; self.updateToolbar() }
       }
     }
-    let legacyTitles = ["legacy": "Usar configuração do destino", "natural": "Usar instruções de ditado", "light": "Ajustar apenas espaços", "action": "Aplicar ação de texto"]
-    var editing: [UIMenuElement] = [policy("clarity", title: L("Revisar clareza")), policy("preserve", title: L("Manter minhas palavras"))]
-    if let title = legacyTitles[captured.dictationMode] {
-      editing.append(UIAction(title: L(title), attributes: .disabled, state: .on) { _ in })
-    }
-    var options: [UIMenuElement] = [language]
     if !captured.preferencesSupported {
-      options.append(preference("style", "default", L("Padrão"), selected: captured.preferences.style == .default))
+      styleChoices.append(preference("style", "default", L("Padrão"), selected: captured.preferences.style == .default))
     }
     let automaticActionOff = policy("clarity", title: L("Não aplicar ação automaticamente"))
     automaticActionOff.state = captured.dictationMode == "action" ? .off : .on
-    options.append(UIMenu(title: L("Aplicar ação de texto"), children: [automaticActionOff] + captured.catalog.actions.filter { $0.enabled }.map {
+    var automaticChoices: [UIMenuElement] = [automaticActionOff]
+    if captured.dictationMode == "action", let selected = captured.catalog.actions.first(where: {
+      $0.id == captured.dictationActionID && $0.kind == "translation"
+    }) {
+      automaticChoices.append(UIAction(title: selected.name, attributes: .disabled, state: .on) { _ in })
+    }
+    automaticChoices += captured.catalog.actions.filter { $0.enabled && $0.kind != "translation" }.map {
       policy("action", title: $0.name, saved: $0)
-    }))
-    var output: [UIMenuElement] = [UIMenu(title: L("Edição do texto"), options: .displayInline, children: editing)]
-    if captured.toneAllowed { output.append(UIMenu(title: L("Tom"), children: styleChoices)) }
-    output.append(UIMenu(title: L("Mais opções"), children: options))
+    }
+    let automaticAction = UIMenu(title: L("Aplicar ação de texto"), children: automaticChoices)
+    let output: [UIMenuElement] = [language, UIMenu(title: L("Tom"), children: styleChoices), automaticAction]
     var groups: [UIMenuElement] = [UIMenu(title: L("Saída do ditado"), options: .displayInline, children: output)]
     if !captured.preferencesSupported, captured.preferences.language != .auto || captured.preferences.style != .default {
       groups.append(UIAction(title: L("Atualize o serviço para usar estas preferências de saída."), attributes: .disabled) { _ in })
     }
-    if captured.selection != nil {
-      var actions: [UIMenuElement] = []
-      func action(_ title: String, kind: String, saved: TextActionDescriptor? = nil, enabled: Bool) -> UIMenuElement {
-        func choice(_ target: String, title: String) -> UIAction {
-          UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
-            guard let self, self.menuIsCurrent(captured), captured.enabled, self.hasFullAccess else { return }
-            self.processSelection(saved == nil ? kind : "text_action", language: target, savedAction: saved)
-          }
-        }
-        if kind == "translate" {
-          return UIMenu(title: title, children: OutputLanguage.allCases.map { choice($0.rawValue, title: $0.menuTitle) })
-        }
-        return choice(captured.preferences.language.rawValue, title: title)
-      }
-      if captured.catalog.status == .ready {
-        for saved in captured.catalog.actions {
-          actions.append(action(saved.name, kind: saved.kind == "translation" ? "translate" : "rewrite", saved: saved, enabled: saved.enabled && saved.ready))
-        }
-        if actions.isEmpty { actions.append(UIAction(title: L("Nenhuma ação salva."), attributes: .disabled) { _ in }) }
-        if captured.catalog.actions.isEmpty || captured.catalog.actions.contains(where: { !$0.enabled || !$0.ready }) {
-          actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in })
-        }
-      } else if captured.catalog.status == .unsupported {
-        actions = [action(L("Reescrever"), kind: "rewrite", enabled: captured.rewriteReady),
-          action(L("Traduzir"), kind: "translate", enabled: captured.translateReady)]
-      } else { actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in }) }
-      if let title = captured.dictionaryTitle {
-        actions.append(UIAction(title: title, image: UIImage(systemName: selectedTermSaved ? "checkmark" : "plus"),
-          attributes: captured.dictionaryEnabled ? [] : .disabled) { [weak self] _ in
-          guard let self, self.menuIsCurrent(captured) else { return }; self.saveSelectedTerm()
-        })
-      }
-      groups.append(UIMenu(title: L("Texto selecionado"), options: .displayInline, children: actions))
-    }
     return UIMenu(children: groups)
+  }
+  private func selectionMenu(_ captured: SelectedTextMenuState) -> UIMenu {
+    // Quick edits use only the advertised default definition. A deleted or
+    // unavailable default must not silently select another saved prompt.
+    func definition(_ id: String, kind: String) -> TextActionDescriptor? {
+      captured.catalog.actions.first { $0.id == id && $0.kind == kind && $0.enabled && $0.ready }
+    }
+    let rewrite = definition("rewrite", kind: "rewrite")
+    let translation = definition("translation", kind: "translation")
+    let legacy = captured.catalog.status == .unsupported
+    func choice(_ title: String, action: String, language: String, saved: TextActionDescriptor? = nil,
+      style: OutputStyle? = nil, enabled: Bool) -> UIAction {
+      UIAction(title: title, attributes: enabled && captured.enabled ? [] : .disabled) { [weak self] _ in
+        guard let self, self.menuIsCurrent(captured), captured.enabled, enabled, self.hasFullAccess else { return }
+        let preferences = style.map { OutputPreferences(language: .auto, style: $0) }
+        self.processSelection(saved == nil ? action : "text_action", language: language, savedAction: saved, outputPreferences: preferences)
+      }
+    }
+    let languageChoices: [UIMenuElement] = OutputLanguage.allCases.filter { $0 != .auto }.map {
+      choice($0.menuTitle, action: "translate", language: $0.rawValue, saved: translation,
+        enabled: translation != nil || (legacy && captured.translateReady))
+    }
+    let tones: [OutputStyle] = [.natural, .formal, .casual]
+    let toneChoices: [UIMenuElement] = tones.map {
+      choice($0.title, action: "rewrite", language: "auto", saved: rewrite, style: $0,
+        enabled: captured.preferencesSupported && (rewrite != nil || (legacy && captured.rewriteReady)))
+    }
+    var actions: [UIMenuElement] = []
+    if captured.catalog.status == .ready {
+      for saved in captured.catalog.actions {
+        if saved.kind == "translation" {
+          actions.append(UIMenu(title: saved.name, children: OutputLanguage.allCases.filter { $0 != .auto }.map {
+            choice($0.menuTitle, action: "translate", language: $0.rawValue, saved: saved, enabled: saved.enabled && saved.ready)
+          }))
+        } else {
+          actions.append(choice(saved.name, action: "rewrite", language: captured.preferences.language.rawValue,
+            saved: saved, enabled: saved.enabled && saved.ready))
+        }
+      }
+      if actions.isEmpty { actions.append(UIAction(title: L("Nenhuma ação salva."), attributes: .disabled) { _ in }) }
+      if captured.catalog.actions.isEmpty || captured.catalog.actions.contains(where: { !$0.enabled || !$0.ready }) {
+        actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in })
+      }
+    } else if legacy {
+      actions.append(choice(L("Reescrever"), action: "rewrite", language: captured.preferences.language.rawValue, enabled: captured.rewriteReady))
+    } else { actions.append(UIAction(title: L("Atualize as ações no Clarify."), attributes: .disabled) { _ in }) }
+    var output: [UIMenuElement] = [UIMenu(title: L("Traduzir"), children: languageChoices),
+      UIMenu(title: L("Alterar tom"), children: toneChoices), UIMenu(title: L("Executar ação"), children: actions)]
+    if let title = captured.dictionaryTitle {
+      output.append(UIAction(title: title, image: UIImage(systemName: selectedTermSaved ? "checkmark" : "plus"),
+        attributes: captured.dictionaryEnabled ? [] : .disabled) { [weak self] _ in
+        guard let self, self.menuIsCurrent(captured) else { return }; self.saveSelectedTerm()
+      })
+    }
+    return UIMenu(children: [UIMenu(title: L("Texto selecionado"), options: .displayInline, children: output)])
   }
   private func toggleDictationEdit() {
     guard !state.phase.busy, !applyingDictationEdit, var edit = dictationEdit else { return }
