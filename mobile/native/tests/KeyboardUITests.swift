@@ -577,10 +577,19 @@ final class KeyboardUITests: XCTestCase {
       grid.beginPress("after-accent", at: nextPoint); grid.endPress("after-accent", at: nextPoint)
       XCTAssertEqual(text, beforeAccent + "eq", "Accent recognition must not suppress the next tap")
       let dragged = try startAccent(), foreign = AccentGesture()
+      let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
+        $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == "è" }
+      })
+      let choices = picker.arrangedSubviews.compactMap { $0 as? UIButton }
+      XCTAssertEqual(choices.filter { $0.accessibilityTraits.contains(.selected) }.compactMap { $0.title(for: .normal) }, ["e"])
+      XCTAssertTrue(choices.allSatisfy { $0.accessibilityTraits.contains(.keyboardKey) })
       try key("a").addGestureRecognizer(foreign)
       emit(foreign, .began); emit(foreign, .ended)
       XCTAssertEqual(text, beforeAccent + "eq", "Another recognizer must not consume the active picker")
-      emit(dragged, .changed, at: try accentPoint("è")); emit(dragged, .ended)
+      emit(dragged, .changed, at: try accentPoint("è"))
+      XCTAssertEqual(choices.filter { $0.accessibilityTraits.contains(.selected) }.compactMap { $0.title(for: .normal) }, ["è"])
+      XCTAssertTrue(choices.allSatisfy { $0.accessibilityTraits.contains(.keyboardKey) })
+      emit(dragged, .ended)
       emit(dragged, .ended)
       XCTAssertEqual(text, beforeAccent + "eqè", "Release must keep the last highlighted drag choice")
       for phase in [UIGestureRecognizer.State.cancelled, .failed] {

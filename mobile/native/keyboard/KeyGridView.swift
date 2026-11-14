@@ -612,7 +612,10 @@ final class KeyGridView: UIView {
       bar.layoutIfNeeded()
       let index = gesture.state == .began ? (accentKeys.firstIndex { $0.title(for: .normal) == title } ?? 0) :
         (accentKeys.indices.min { abs(accentKeys[$0].frame.midX - point.x) < abs(accentKeys[$1].frame.midX - point.x) } ?? 0)
-      for (i, key) in accentKeys.enumerated() { key.backgroundColor = i == index ? .systemBlue : .clear; key.setTitleColor(i == index ? .white : .label, for: .normal) }
+      for (i, key) in accentKeys.enumerated() {
+        key.backgroundColor = i == index ? .systemBlue : .clear; key.setTitleColor(i == index ? .white : .label, for: .normal)
+        key.accessibilityTraits = i == index ? [.keyboardKey, .selected] : .keyboardKey
+      }
       selectedAccent = accentKeys[index].title(for: .normal)
     }
     if [.ended, .cancelled, .failed].contains(gesture.state) {
