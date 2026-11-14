@@ -537,8 +537,9 @@ artifact ID and SHA-256 digest, and the exact Apple build UUID. The authenticate
 evidence bundle contains the signed IPA verification, confirmed upload receipt,
 Apple availability receipt and source/run/attempt-bound file manifest. Historical
 PR179 QA receipts cannot satisfy this gate. Native acceptance, metadata and
-store-policy clearance remain required. The handoff does not claim submission,
-public release or regional availability.
+store-policy review remain required; apply the
+[standing keyboard release decision](../docs/release-automation.md#existing-keyboard-private-apis).
+The handoff does not claim submission, public release or regional availability.
 
 `expo.ios.buildNumber` stays aligned in the container, keyboard and activity.
 The upload workflow checks JavaScript, Swift and UIKit simulator contracts before
@@ -625,8 +626,10 @@ bundle with LSApplicationWorkspace, then tries the system breadcrumb action.
 On earlier versions, the candidate uses a guarded PKService/XPC lookup from the
 attached keyboard's parent. It does not reuse a previous host or launch a guessed
 app. The previous version had no host lookup on these iOS versions.
-These are private Apple APIs: availability, behavior and store approval are not
-guaranteed. No claim is made that Wispr Flow uses this implementation.
+These are private Apple APIs. Retaining this implementation for TestFlight and
+public App Store releases follows the
+[standing keyboard release decision](../docs/release-automation.md#existing-keyboard-private-apis).
+No claim is made that Wispr Flow uses this implementation.
 Runtime selectors and signatures are checked; errors fall back to manual return.
 An App Group handoff has a single-use UUID nonce and expires after 120 seconds.
 The URL cannot supply an arbitrary return destination. Permission denial,

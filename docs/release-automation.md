@@ -282,9 +282,10 @@ Provide fresh operator readiness for that exact source and Apple build:
 
 These are operator assertions, not Apple API proof. The report must cover
 physical-device acceptance, privacy, screenshots, metadata, export compliance,
-agreements, availability and current store-policy risks. The retained keyboard
-experiment uses private APIs. TestFlight permission does not establish App Store
-eligibility. Missing native acceptance or policy clearance blocks handoff.
+agreements, availability and current store-policy decisions, including the
+[standing keyboard decision](#existing-keyboard-private-apis). Missing native
+acceptance or an unresolved material review finding blocks handoff. The existing,
+accepted keyboard implementation alone does not.
 
 `prepare-submission` requires `PREPARE_FOR_SUBMISSION` or `READY_FOR_REVIEW`.
 The operator selects this existing build in App Store Connect, chooses manual
@@ -295,6 +296,27 @@ Verify regional public availability separately. The artifact explicitly records
 that no Apple mutation or public availability verification occurred. No successful
 handoff, upload, TestFlight availability, submission or approval is public-release
 proof. A complete producer gap needs reviewed manual reconciliation, never a rebuild.
+
+### Existing keyboard private APIs
+
+João Victor has given standing authorization to retain the existing keyboard
+private-API implementation in both TestFlight and public App Store releases:
+host-app detection, automatic return to the originating app, and keyboard-height
+synchronization. He reports that earlier releases used private APIs without
+problems. Treat this as an accepted maintainer decision, not a new approval gate
+on each release.
+
+For the same implementation, do not repeat the private-API warning, ask for
+permission again, block an otherwise authorized release solely on this basis,
+or require a public-API-only replacement. Reopen the decision only for new
+private-API behavior, a new Apple validation or review objection, or another
+material change to the accepted facts. Report that new evidence specifically.
+
+The store-policy review records this accepted exception; it does not certify
+Apple compliance or approval. Keep all other release checks, metadata and native
+acceptance requirements, duplicate-submission guards, and verification of actual
+Apple review and availability states. Authorization to retain these APIs is not
+proof that a submission or public release has occurred.
 
 ## Reference and local checks
 
