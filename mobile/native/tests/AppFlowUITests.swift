@@ -17,17 +17,27 @@ final class AppFlowUITests: XCTestCase {
   }
   @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
     for attempt in 0...12 {
-      let page = app.scrollViews.containing(element.elementType, identifier: identifier).firstMatch
+      let containingPage = app.scrollViews.containing(.any, identifier: identifier).firstMatch
+      // Only absent AX targets need a fallback scroll search. Fixed sheet
+      // headers are visible outside the scroll view and use window bounds.
+      let page = containingPage.exists || element.exists ? containingPage : app.scrollViews.allElementsBoundByIndex.reversed().first {
+        $0.exists && $0.isHittable && $0.frame.intersects(app.frame)
+      } ?? app.scrollViews.firstMatch
       var viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
       let tabBar = app.tabBars.firstMatch
       if tabBar.exists && tabBar.isHittable && viewport.intersects(tabBar.frame) {
         viewport.size.height = max(0, tabBar.frame.minY - viewport.minY)
       }
-      let frame = element.frame
+      let keyboard = app.keyboards.firstMatch
+      if keyboard.exists && viewport.intersects(keyboard.frame) {
+        viewport.size.height = max(0, keyboard.frame.minY - viewport.minY)
+      }
+      let frame = element.exists ? element.frame : CGRect.null
       let located = !frame.isNull && !frame.isInfinite && frame.width > 0 && frame.height > 0
       let center = CGPoint(x: frame.midX, y: frame.midY)
-      // A partly exposed control can be hittable while its center is under the tab bar.
-      if located && element.isHittable && viewport.contains(center) { return true }
+      let fits = frame.width <= viewport.width && frame.height <= viewport.height
+      let visible = fits ? viewport.contains(frame) : viewport.contains(center)
+      if located && element.isHittable && visible { return true }
       if attempt == 12 { break }
       if page.exists && page.frame.height > 0 && !viewport.isEmpty {
         // Clipped React Native elements can have an infinite AX frame. Search
@@ -48,14 +58,15 @@ final class AppFlowUITests: XCTestCase {
   }
   func press(_ identifier: String, allowScroll: Bool = true) {
     let button = app.descendants(matching: .any)[identifier].firstMatch
-    guard button.waitForExistence(timeout: 15) else {
+    let exists = button.waitForExistence(timeout: 15)
+    guard exists || allowScroll else {
       diagnose("missing-\(identifier)"); XCTFail("Missing action: \(identifier)"); return
     }
+    if allowScroll && !reveal(button, identifier: identifier) { return }
     let enabled = expectation(for: NSPredicate(format: "enabled == true"), evaluatedWith: button)
     guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
       diagnose("disabled-\(identifier)"); XCTFail("Disabled action: \(identifier)"); return
     }
-    if allowScroll && !reveal(button, identifier: identifier) { return }
     let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
     guard XCTWaiter.wait(for: [reachable], timeout: 5) == .completed else {
       diagnose("unreachable-\(identifier)"); XCTFail("Unreachable action: \(identifier)"); return
@@ -271,7 +282,12 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.waitForExistence(timeout: 30))
     capture("onboarding-first-open")
     press("onboarding.skip")
-    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    // The first route after cold launch uses the same readiness budget as
+    // onboarding presentation; loaded simulators can settle after 15 seconds.
+    guard app.textFields["account.email"].waitForExistence(timeout: 30) else {
+      diagnose("account-form-after-onboarding")
+      XCTFail("The account form did not appear after closing onboarding"); return
+    }
     if checkPersistence {
       app.terminate(); app.launch()
       XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
