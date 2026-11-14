@@ -282,7 +282,12 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.waitForExistence(timeout: 30))
     capture("onboarding-first-open")
     press("onboarding.skip")
-    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    // The first route after cold launch uses the same readiness budget as
+    // onboarding presentation; loaded simulators can settle after 15 seconds.
+    guard app.textFields["account.email"].waitForExistence(timeout: 30) else {
+      diagnose("account-form-after-onboarding")
+      XCTFail("The account form did not appear after closing onboarding"); return
+    }
     if checkPersistence {
       app.terminate(); app.launch()
       XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
