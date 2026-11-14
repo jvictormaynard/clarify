@@ -18,9 +18,9 @@ final class AppFlowUITests: XCTestCase {
   @discardableResult func reveal(_ element: XCUIElement, identifier: String) -> Bool {
     for attempt in 0...12 {
       let containingPage = app.scrollViews.containing(.any, identifier: identifier).firstMatch
-      // An offscreen React Native row can be absent from the current AX snapshot.
-      // Search the visible foreground scroll view until the target is exposed.
-      let page = containingPage.exists ? containingPage : app.scrollViews.allElementsBoundByIndex.reversed().first {
+      // Only absent AX targets need a fallback scroll search. Fixed sheet
+      // headers are visible outside the scroll view and use window bounds.
+      let page = containingPage.exists || element.exists ? containingPage : app.scrollViews.allElementsBoundByIndex.reversed().first {
         $0.exists && $0.isHittable && $0.frame.intersects(app.frame)
       } ?? app.scrollViews.firstMatch
       var viewport = page.exists ? page.frame.intersection(app.frame) : app.frame
