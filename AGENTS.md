@@ -76,7 +76,7 @@ and the conditional reference that resolves the current question.
 | Requested retrospective or repeated delivery failure | `retro` |
 | Desktop release, tag, or publication | `clarify-release` |
 | CI/CD or server/client release automation | `docs/ci-delivery.md`, then `docs/server-delivery.md` or `docs/release-automation.md` |
-| iOS build or TestFlight | `mobile/README.md` and `.github/workflows/ios-testflight.yml` |
+| iOS build, TestFlight, or App Store release | `mobile/README.md`, `.github/workflows/ios-testflight.yml`, and the [standing keyboard release decision](docs/release-automation.md#existing-keyboard-private-apis) |
 
 Skills are regular versioned files in `.agents/skills/`. Keep changes inside this
 repository. `python scripts/check_agent_skills.py` checks their metadata, links,
