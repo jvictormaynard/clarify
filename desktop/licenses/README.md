@@ -1,18 +1,11 @@
-# License archive supplements
+# Frontend source notices
 
-Some published npm and Cargo archives declare a license but omit its text.
-`manifest.json` maps exact package URLs and versions to upstream license texts,
-with source URLs and SHA-256 digests. The inventory fails on an unknown missing
-license or changed text; dependency updates do not silently inherit a supplement.
+`source-components.json` records copied source and assets outside the npm
+dependency graph. Each entry pins its source revision, package URL, license text,
+source URL and SHA-256 digest. The inventory verifies these notices and includes
+them in the packaged Settings notices and SBOM.
 
-Cargo source commits come from each archive's `.cargo_vcs_info.json`. The
-standard MPL 2.0 text for `selectors` comes from Mozilla; generated notices also
-link to the exact unmodified crate source, which retains its source notices.
-
-`source-components.json` records copied source outside the npm/Cargo dependency
-graph. Each entry pins its source revision, package URL, license text, source
-URL, and SHA-256 digest. The inventory includes these components in the SBOM
-and verifies and appends their notices to the packaged Settings notices.
-
-These files supplement the package license texts, not the project's MIT license.
-The build copies them verbatim into `Clarify-settings-NOTICES.txt` with provenance.
+Installed npm packages must supply their license texts. Electron contributes
+its native runtime notices. Missing text or a changed source-notice checksum
+fails the build. These notices preserve each component's terms; the project's
+MIT license does not replace them.

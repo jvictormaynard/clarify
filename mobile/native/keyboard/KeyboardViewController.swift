@@ -4,8 +4,9 @@ import SwiftUI
 import KeyboardHostSupport
 #endif
 
-final class KeyboardInputView: UIInputView {
+final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
   static let contentHeight: CGFloat = 278
+  var enableInputClicksWhenVisible: Bool { true }
   override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
     super.init(frame: frame, inputViewStyle: inputViewStyle)
     // Publish one height before UIKit attaches and animates this input view.
@@ -178,6 +179,7 @@ class KeyboardViewController: UIInputViewController {
   private let insert = UIButton(type: .system)
   private let cancel = UIButton(type: .system)
   private let finishRecordingButton = UIButton(type: .system)
+  private let retryRecordingButton = UIButton(type: .system)
   private let recordingPanel = UIView()
   private let waveform = RecordingWaveform()
   private let recordingStatus = UILabel()
@@ -190,6 +192,7 @@ class KeyboardViewController: UIInputViewController {
   private var recordingPanelVisible = false
   private var recordingError: String?
   private let keys = KeyGridView()
+  private var requestedNumbersAndPunctuation = false
   private let typing = TypingAssistant(autocorrectionEnabled: false)
   private var typingVocabularyRevision = -1
   private var typingVocabularyCheckedAt = Date.distantPast
@@ -286,7 +289,19 @@ class KeyboardViewController: UIInputViewController {
     cancel.accessibilityIdentifier = "clarify.keyboard.cancel"
     cancel.addAction(UIAction { [weak self] _ in self?.cancelRecording() }, for: .touchUpInside)
     keys.previewContainer = view
-    keys.onKeyPress = { [weak self] in self?.feedback.type() }
+    keys.onKeyPress = { [weak self] in self?.feedback.pressKey() }
+    keys.onPrepareCursor = { [weak self] in
+      guard let self, self.attached else { return }
+      self.typing.prepareCursor(in: self.textDocumentProxy)
+    }
+    keys.onMoveCursor = { [weak self] offset in
+      guard let self, self.attached, !self.keys.isHidden else { return false }
+      self.dictationEdit = nil
+      let accepted = self.typing.moveCursor(offset, in: self.textDocumentProxy)
+      self.updateCapitalization(); self.updateSuggestions()
+      return accepted
+    }
+    keys.onEndCursor = { [weak self] in self?.typing.endCursor() }
     keys.onInsert = { [weak self] text in
       guard let self = self else { return }
       self.dictationEdit = nil
@@ -374,44 +389,63 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+    updateInputTraits()
     ClarifyKeyboardHeightDidAppear(self)
   }
   override func textDidChange(_ textInput: UITextInput?) {
     super.textDidChange(textInput)
+    updateInputTraits()
     // Context is used only locally for casing; it is never saved or sent to Groq.
-    let proxy = textDocumentProxy
-    let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
-    let returnType = proxy.returnKeyType ?? .default
-    let changed = view.overrideUserInterfaceStyle != appearance || keys.returnType != returnType
-    view.overrideUserInterfaceStyle = appearance
-    keys.returnType = returnType
     updateCapitalization()
-    if changed { keys.rebuild() }
     updateSuggestions()
+  }
+  private func updateInputTraits() {
+    let numeric = textDocumentProxy.keyboardType == .numbersAndPunctuation
+    if requestedNumbersAndPunctuation != numeric {
+      requestedNumbersAndPunctuation = numeric
+      keys.model.page = numeric ? .numbers : .letters
+      keys.rebuild()
+    }
+    // UIKit updates the controller's appearance traits even when the proxy's
+    // keyboardAppearance still describes the previous host appearance.
+    // Let the view inherit those traits instead of pinning it to stale data.
+    let returnType = textDocumentProxy.returnKeyType ?? .default
+    if keys.returnType != returnType { keys.returnType = returnType; keys.rebuild() }
+    updateReturnAvailability()
+  }
+  private func updateReturnAvailability() {
+    keys.returnEnabled = textDocumentProxy.enablesReturnKeyAutomatically != true || textDocumentProxy.hasText
   }
   private func updateCapitalization() {
     let proxy = textDocumentProxy
     guard !keys.model.shiftIsManual else { return }
-    // An empty host field may expose nil context. Do not mistake unavailable
-    // context in a nonempty field for the beginning of a sentence.
-    guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
     let type = proxy.autocapitalizationType ?? .sentences
-    let next: KeyboardState.Shift = type == .allCharacters ? .caps :
-      ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
+    let next: KeyboardState.Shift
+    switch type {
+    case .none: next = .off
+    case .allCharacters: next = .caps
+    default:
+      // An empty host field may expose nil context. Do not mistake unavailable
+      // context in a nonempty field for the beginning of a sentence.
+      guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
+      next = ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
        (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
+    }
     if keys.model.shift != next { keys.model.shift = next; keys.rebuild() }
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
     super.selectionDidChange(textInput)
+    updateInputTraits()
     updateCapitalization()
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated); attached = true; feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
+    super.viewWillAppear(animated); attached = true; updateInputTraits(); feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshFromStore() }
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    keys.cancelAllPresses()
     waveform.update(level: 0, recording: false)
     dictationEdit = nil; undoDictation.isHidden = true
     invalidateActivationSource()
@@ -427,7 +461,9 @@ class KeyboardViewController: UIInputViewController {
     // Cancel preserves intent for the operation this controller already owns.
     guard action == "cancel" || state.isLive else { return }
     let id: String
-    if action == "start" {
+    let retryOf = action == "retry" ? state.operationID : nil
+    if action == "start" || action == "retry" {
+      if action == "retry", !state.canRetryRecording { return }
       textOperationID = nil; textSelection = nil
       guard !state.phase.busy, recordingRequest.action == nil else { return }
       id = UUID().uuidString
@@ -438,11 +474,12 @@ class KeyboardViewController: UIInputViewController {
       }
     }
     guard recordingRequest.submit(action, operationID: id, now: Date().timeIntervalSince1970) else { return }
-    if action == "start" {
+    if action == "start" || action == "retry" {
+      let ownsDocument = operationID == retryOf && documentID == textDocumentProxy.documentIdentifier
       dictationEdit = nil; recordingError = nil
-      operationID = id; documentID = textDocumentProxy.documentIdentifier
+      operationID = id; documentID = action == "start" ? textDocumentProxy.documentIdentifier : ownsDocument ? documentID : nil
     }
-    do { try store.send(action, operationID: id, context: state.processingContext); feedback.record(action) }
+    do { try store.send(action, operationID: id, context: state.processingContext, retryOfOperationID: retryOf); if action != "retry" { feedback.record(action) } }
     catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
     refreshFromStore()
   }
@@ -537,8 +574,13 @@ class KeyboardViewController: UIInputViewController {
     globe.accessibilityLabel = L("Próximo teclado")
     globe.addTarget(self, action: #selector(nextRecordingKeyboard(_:event:)), for: .allTouchEvents)
     processingSpinner.color = .systemBackground; processingSpinner.hidesWhenStopped = true
+    retryRecordingButton.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
+    retryRecordingButton.backgroundColor = .secondarySystemFill; retryRecordingButton.layer.cornerRadius = 22
+    retryRecordingButton.accessibilityIdentifier = "clarify.keyboard.retry"
+    retryRecordingButton.accessibilityLabel = L("Tentar transcrição novamente")
+    retryRecordingButton.addAction(UIAction { [weak self] _ in self?.send("retry") }, for: .touchUpInside)
     view.addSubview(recordingPanel); recordingPanel.translatesAutoresizingMaskIntoConstraints = false
-    for element in [cancel, finishRecordingButton, waveform, recordingStatus, globe] {
+    for element in [cancel, finishRecordingButton, retryRecordingButton, waveform, recordingStatus, globe] {
       recordingPanel.addSubview(element); element.translatesAutoresizingMaskIntoConstraints = false
     }
     finishRecordingButton.addSubview(processingSpinner); processingSpinner.translatesAutoresizingMaskIntoConstraints = false
@@ -551,6 +593,9 @@ class KeyboardViewController: UIInputViewController {
       cancel.widthAnchor.constraint(equalToConstant: 44), cancel.heightAnchor.constraint(equalToConstant: 44),
       finishRecordingButton.trailingAnchor.constraint(equalTo: recordingPanel.trailingAnchor, constant: -10), finishRecordingButton.topAnchor.constraint(equalTo: cancel.topAnchor),
       finishRecordingButton.widthAnchor.constraint(equalToConstant: 44), finishRecordingButton.heightAnchor.constraint(equalToConstant: 44),
+      retryRecordingButton.trailingAnchor.constraint(equalTo: finishRecordingButton.trailingAnchor),
+      retryRecordingButton.topAnchor.constraint(equalTo: finishRecordingButton.topAnchor),
+      retryRecordingButton.widthAnchor.constraint(equalToConstant: 44), retryRecordingButton.heightAnchor.constraint(equalToConstant: 44),
       processingSpinner.centerXAnchor.constraint(equalTo: finishRecordingButton.centerXAnchor), processingSpinner.centerYAnchor.constraint(equalTo: finishRecordingButton.centerYAnchor),
       waveform.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor), waveform.centerYAnchor.constraint(equalTo: recordingPanel.centerYAnchor, constant: -16),
       waveform.widthAnchor.constraint(equalToConstant: 144), waveform.heightAnchor.constraint(equalToConstant: 56),
@@ -564,10 +609,12 @@ class KeyboardViewController: UIInputViewController {
   private func updateRecordingPanel() {
     let pending = recordingRequest.action
     // A saved audio interruption must not cover the keys after the session ends.
-    let error = outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity)
+    let error = pending != "retry" && (outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity))
     let visible = hasFullAccess && ((state.isLive && (state.phase.busy || pending != nil)) || error)
     let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
-    let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"
+    let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish" || pending == "retry"
+    retryRecordingButton.isHidden = !error || outputPreferenceError != nil || !state.canRetryRecording
+    retryRecordingButton.isEnabled = pending == nil
     finishRecordingButton.isEnabled = recording && pending == nil
     finishRecordingButton.setImage(processing ? nil : UIImage(systemName: "checkmark"), for: .normal)
     finishRecordingButton.alpha = (recording && pending == nil) || processing ? 1 : 0.4
@@ -636,6 +683,7 @@ class KeyboardViewController: UIInputViewController {
     return !state.textOperation || (textOperationID == id && textSelection == currentTextSelection())
   }
   private func updateSuggestions() {
+    updateReturnAvailability()
     if typingVocabularyRevision != state.libraryRevision || Date().timeIntervalSince(typingVocabularyCheckedAt) >= 1 {
       let vocabulary = store?.keyboardDictionary()
       let pending = vocabulary.map { store?.keyboardAdditions(scope: $0.scope).map { $0.1.term } ?? [] } ?? []
@@ -887,7 +935,7 @@ class KeyboardViewController: UIInputViewController {
   private var errorIdentity: String { (state.operationID ?? "") + "|" + (state.message ?? "") }
   @objc private func cancelRecording() {
     if outputPreferenceError != nil { outputPreferenceError = nil; updateRecordingPanel(); return }
-    if state.phase == .error { dismissedError = errorIdentity; updateRecordingPanel(); return }
+    if state.phase == .error, recordingRequest.action == nil { dismissedError = errorIdentity; updateRecordingPanel(); return }
     send("cancel")
   }
 }

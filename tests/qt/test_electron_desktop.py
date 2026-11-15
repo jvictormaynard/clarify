@@ -6,11 +6,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QEventLoop, QObject, Property, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QObject, Property, QProcess, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
-from clarify.desktop.qml_electron import ElectronDesktopProcess
+from clarify.desktop.qml_electron import ElectronDesktopProcess, ElectronQtShell
 from clarify.desktop.qml_settings import QmlSettingsController
 from local_asr_product import LocalASRProductState
 from tests.support.settings import _repositories
@@ -59,6 +59,83 @@ class ElectronDesktopTests(unittest.TestCase):
         self.host.flush_timer.stop()
         self.settings.shutdown()
         self.directory.cleanup()
+
+    def test_leaving_settings_hides_it_and_closes_activity_without_accepting_drafts(
+        self,
+    ):
+        with (
+            patch.object(self.host, "start", return_value=True),
+            patch.object(self.host, "_close_settings_activity") as cleanup,
+        ):
+            self.bridge.openSettings()
+            self.host.show()
+            self.assertTrue(self.host._visible)
+            self.bridge.openFiles()
+            self.assertFalse(self.host._visible)
+            self.assertTrue(self.host.blocks_update())
+            self.assertIn({"window": "settings-hide"}, self.messages)
+            cleanup.assert_called_once()
+            self.bridge.surfaceChanged.emit()
+            cleanup.assert_called_once()
+
+    def test_renderer_failures_restart_with_a_bounded_budget_and_fresh_snapshots(self):
+        with (
+            patch.object(self.host.process, "state", return_value=QProcess.NotRunning),
+            patch.object(self.host.process, "start") as start,
+            patch(
+                "clarify.desktop.qml_electron.desktop_executable",
+                return_value=__import__("pathlib").Path("/test/desktop"),
+            ),
+        ):
+            self.host._visible = True
+            self.host._last_settings = {"dirty": False}
+            self.host._last_workflow = {"surface": "idle"}
+            for expected in range(1, 4):
+                self.host._failed(None)
+                self.assertEqual(self.host._restart_attempts, expected)
+                self.assertTrue(self.host.restart_timer.isActive())
+                self.host._finished(1, None)
+                self.assertEqual(self.host._restart_attempts, expected)
+                self.host.restart_timer.stop()
+                self.host._restart()
+                self.assertIsNone(self.host._last_settings)
+                self.assertIsNone(self.host._last_workflow)
+                self.host._receive({"event": "ready"})
+                self.assertTrue(self.host._ready)
+                self.assertTrue(self.host._visible)
+            self.host._failed(None)
+            self.assertTrue(self.host.failed)
+            self.assertFalse(self.host.restart_timer.isActive())
+            self.host._unavailable.assert_called_once()
+            self.assertEqual(start.call_count, 3)
+            self.assertTrue(self.host.retry())
+            self.assertEqual(self.host._restart_attempts, 0)
+
+    def test_renderer_that_does_not_exit_cannot_restart_forever(self):
+        with (
+            patch.object(self.host.process, "state", return_value=QProcess.Running),
+            patch.object(self.host.process, "kill"),
+        ):
+            self.host._failed(None)
+            for _ in range(20):
+                self.host.restart_timer.stop()
+                self.host._restart()
+            self.assertTrue(self.host.failed)
+            self.assertFalse(self.host.restart_timer.isActive())
+            self.host._unavailable.assert_called_once()
+
+    def test_clean_exit_recovers_and_shutdown_cannot_restart_the_renderer(self):
+        with patch.object(self.host.process, "state", return_value=QProcess.NotRunning):
+            self.host._finished(0, None)
+            self.assertTrue(self.host.restart_timer.isActive())
+            self.assertTrue(self.host._recovering)
+            self.host._receive({"event": "ready"})
+            self.assertFalse(self.host._ready)
+            self.host.shutdown()
+            self.host._failed(None)
+            self.host._finished(0, None)
+            self.assertFalse(self.host.restart_timer.isActive())
+            self.host._unavailable.assert_not_called()
 
     def test_only_entering_picker_grants_foreground_permission_to_the_child(self):
         self.host._ready = True
@@ -327,6 +404,20 @@ class ElectronDesktopTests(unittest.TestCase):
         self.assertFalse(
             any(message.get("window") == "settings-hide" for message in self.messages)
         )
+
+    def test_second_launch_opens_workspace_without_interrupting_active_work(self):
+        shell = ElectronQtShell(Mock(), desktop=self.host)
+        with (
+            patch.object(self.bridge, "openSettings") as open_settings,
+            patch.object(self.host, "set_pill_visible") as show_pill,
+        ):
+            shell.activationRequested.emit()
+            open_settings.assert_called_once()
+            open_settings.reset_mock()
+            self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.RECORDING))
+            shell.activationRequested.emit()
+            open_settings.assert_not_called()
+            show_pill.assert_called_with(True)
 
     def test_history_stamp_refresh_does_not_read_full_settings_library(self):
         self.host._ready = True

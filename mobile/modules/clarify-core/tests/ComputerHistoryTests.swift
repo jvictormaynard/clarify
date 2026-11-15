@@ -48,6 +48,9 @@ final class ComputerHistoryTests: XCTestCase {
     try legacy(oldB, scope: stable + "|" + routeB, root: root)
     try library.record(oldA, scope: changed.scope)
     try library.record(current, scope: changed.scope)
+    XCTAssertTrue(try library.hasHistoryEntry(current.id, scope: changed.scope, includeLocal: false))
+    XCTAssertFalse(try library.hasHistoryEntry(current.id, scope: "other-account", includeLocal: false))
+    XCTAssertFalse(try library.hasHistoryEntry(current.id, scope: nil, includeLocal: false))
     XCTAssertFalse(try library.historyBatch(scope: changed.scope).hasWork)
     let guest = entry("guest"), account = entry("account"), other = entry("route-a")
     let accountScope = "https://account.example.com|" + UUID().uuidString

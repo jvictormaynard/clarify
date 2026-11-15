@@ -1,6 +1,41 @@
 import type { Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { test, expect, settingsScenario } from "./settings-fixture";
 import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure, settingsSectionLabel } from "./settings-navigation";
+
+test("diagnostics are generated on request, reviewed and saved locally", async ({ page }, testInfo) => {
+  let requests = 0;
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method !== "getDiagnostics") return route.fallback();
+    requests++;
+    if (requests === 1) return route.fulfill({ json: { error: "Could not generate report" } });
+    return route.fallback();
+  });
+  await navigate(page, "Privacidade");
+  expect(requests).toBe(0);
+  const generate = page.getByRole("button", { name: "Gerar diagnóstico", exact: true });
+  await generate.click();
+  await expect(page.getByRole("alert")).toHaveText("Não foi possível gerar o diagnóstico. Tente novamente.");
+  await generate.click();
+  const report = page.getByRole("textbox", { name: "Conteúdo do diagnóstico", exact: true });
+  await expect(report).toHaveValue(/"application"/);
+  await expect(report).toHaveAttribute("readonly", "");
+  const contents = await report.inputValue();
+  expect(JSON.parse(contents).application.name).toBe("Clarify");
+  expect(requests).toBe(2);
+  const saving = page.waitForEvent("download");
+  const save = page.getByRole("button", { name: "Salvar diagnóstico", exact: true });
+  await save.click();
+  const download = await saving;
+  expect(download.suggestedFilename()).toBe("clarify-diagnostics.json");
+  expect(await readFile((await download.path())!, "utf8")).toBe(contents);
+  await page.screenshot({ path: testInfo.outputPath("diagnostics.png") });
+  await page.setViewportSize({ width: 640, height: 520 });
+  await save.scrollIntoViewIfNeeded();
+  await expect(save).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: testInfo.outputPath("diagnostics-compact.png") });
+});
 
 for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophones"] as const) {
   test(`responsive operations: ${method} keeps navigation and unrelated controls stable`, async ({ page }) => {
@@ -93,7 +128,7 @@ test("contextual actions wait for the requested workflow before saving", async (
   await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
   await openStyleReview(page);
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Text draft");
-  const snapshot = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  const snapshot = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
   expect(snapshot.routePrompt).not.toBe("Text draft");
 });
 
@@ -101,7 +136,7 @@ test("automatic preferences: switches persist without committing a pending promp
   await openStyleReview(page);
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
   const original = await prompt.inputValue();
-  const originalScope = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }).then((state: any) => state.selectedScope));
+  const originalScope = await page.evaluate(async () => (window as any).__testSettings({ method: "snapshot", args: [] }).then((state: any) => state.selectedScope));
   await prompt.fill("Text draft must stay private until Save.");
   await navigate(page, "Sistema");
   const setting = page.getByRole("switch", { name: "Iniciar com o Windows", exact: true });
@@ -110,7 +145,7 @@ test("automatic preferences: switches persist without committing a pending promp
   await setting.click();
   await response;
   const persisted = await page.evaluate(async scope => {
-    const invoke = (method: string, args: unknown[]) => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+    const invoke = (method: string, args: unknown[]) => (window as any).__testSettings({ method, args });
     await invoke("selectWorkflow", [scope]);
     return invoke("load", []);
   }, originalScope);
@@ -206,7 +241,7 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
   }
   await openStyleReview(page);
   await expect(prompt).toHaveValue("Pending Style instructions");
-  const state = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
   expect(state.routePrompt).not.toBe("Pending Style instructions");
   for (const id of ["rewrite", "translation"]) expect(state.textActions.find((action: any) => action.id === id).prompt).toMatch(/^Saved /);
   });
@@ -339,7 +374,7 @@ test("modifier and side mouse shortcuts can be captured and saved", async ({ pag
   await navigate(page, "Atalhos");
   const recording = page.locator(".shortcut").first();
   await recording.click();
-  const captureAction = () => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).hotkeyCaptureAction);
+  const captureAction = () => page.evaluate(async () => (await (window as any).__testSettings({ method: "snapshot", args: [] })).hotkeyCaptureAction);
   await expect.poll(captureAction).toBe("recording_hotkey");
   await page.getByRole("textbox", { name: "Novo atalho" }).press("Control");
   await expect(recording).toHaveText("Ctrl");
@@ -486,6 +521,35 @@ test("automatic updates persist immediately without a save step", async ({ page 
   await expect(page.getByRole("button", { name: "Verificar atualizações" })).toBeDisabled();
   await page.setViewportSize({ width: 640, height: 520 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+});
+
+test("manual update is available in System and explains the pending restart", async ({ page }, testInfo) => {
+  await navigate(page, "Sistema");
+  await page.screenshot({ path: testInfo.outputPath("update-before.png") });
+  const snapshot = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+  let installs = 0;
+  const waiting = "Feche a janela do Clarify para aplicar a atualização.";
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    if (!["poll", "installUpdate"].includes(request.method)) return route.fallback();
+    if (request.method === "installUpdate") installs++;
+    await route.fulfill({ json: { id: request.id, result: {
+      ...snapshot, updateSupported: true, updateAvailable: true,
+      updateVersion: "0.19.0", updateBusy: false,
+      updateStatus: installs ? waiting : "A versão 0.19.0 está disponível.",
+    } } });
+  });
+  const install = page.getByRole("button", { name: "Instalar atualização 0.19.0", exact: true });
+  await expect(install).toBeEnabled();
+  await install.click();
+  await expect(page.getByText(waiting, { exact: true })).toBeVisible();
+  expect(installs).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath("update-ready.png") });
+  await page.setViewportSize({ width: 640, height: 520 });
+  await install.scrollIntoViewIfNeeded();
+  await expect(install).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: testInfo.outputPath("update-ready-compact.png") });
 });
 
 
@@ -852,7 +916,7 @@ test("settings updates: microphone telemetry stays compact with a full snippet l
       enabled: true,
       case_sensitive: false,
     }));
-    await (window as any).__TAURI_INTERNALS__.invoke("settings_call", {
+    await (window as any).__testSettings({
       method: "setSnippets", args: [entries, "local"],
     });
   });
@@ -912,10 +976,10 @@ test.describe(() => {
   test("snippets account: a staged draft cannot be saved under a new session", async ({ page }) => {
     await navigate(page, "Snippets");
     await addLibraryEntry(page, false, "private phrase", "Account draft");
-    await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] }));
+    await page.evaluate(() => (window as any).__testSettings({ method: "accountCommand", args: ["logout", ""] }));
     await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect(page.getByRole("alert")).toContainText("A conta mudou.");
-    const saved = await page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).snippets);
+    const saved = await page.evaluate(async () => (await (window as any).__testSettings({ method: "snapshot", args: [] })).snippets);
     expect(saved).toEqual([]);
   });
 });
@@ -946,7 +1010,7 @@ test("snippets: dialog preserves both fields typed while an earlier row Save wai
   await expect(trigger).toHaveValue("new unsaved phrase");
   await expect(replacement).toHaveValue("New text typed during Save");
   await expect(replacement).toBeFocused();
-  const saved = await page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).snippets);
+  const saved = await page.evaluate(async () => (await (window as any).__testSettings({ method: "snapshot", args: [] })).snippets);
   expect(saved).toHaveLength(1);
   expect(saved[0].replacement).toBe("Earlier row revision");
 });
@@ -1058,7 +1122,7 @@ for (const dictionary of [true, false]) {
     if (!dictionary) {
       await page.getByRole("switch", { name: "Diferenciar maiúsculas e minúsculas", exact: true }).click();
       await page.getByRole("button", { name: "Aplicar", exact: true }).click();
-      await expect.poll(() => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).snippets[0].case_sensitive)).toBe(true);
+      await expect.poll(() => page.evaluate(async () => (await (window as any).__testSettings({ method: "snapshot", args: [] })).snippets[0].case_sensitive)).toBe(true);
       await expect(save).toBeHidden();
     } else await page.keyboard.press("Escape");
     const searchToggle = page.getByRole("button", { name: dictionary ? "Buscar termos" : "Buscar snippets", exact: true });
@@ -1086,7 +1150,7 @@ for (const dictionary of [true, false]) {
     await navigate(page, dictionary ? "Dicionário" : "Snippets");
     await page.getByRole("button", { name: "Adicionar novo", exact: true }).click();
     await page.getByRole("textbox", { name: dictionary ? "Novo termo" : "Nova frase de ativação", exact: true }).fill("Private draft");
-    await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["logout", ""] }));
+    await page.evaluate(() => (window as any).__testSettings({ method: "accountCommand", args: ["logout", ""] }));
     await expect(page.getByRole("dialog")).toBeHidden();
     await page.getByRole("button", { name: "Adicionar novo", exact: true }).click();
     await expect(page.getByRole("textbox", { name: dictionary ? "Novo termo" : "Nova frase de ativação", exact: true })).toHaveValue("");
@@ -1103,7 +1167,7 @@ for (const dictionary of [true, false]) {
     await page.getByRole("switch", { name: dictionary ? "Usar termo 1" : "Usar snippet 1", exact: true }).click();
     await expect(page.getByText(dictionary ? "Remote term" : "Remote replacement", { exact: true })).toBeVisible();
     await save.click(); await expect(save).toBeHidden();
-    const saved = await page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })));
+    const saved = await page.evaluate(async () => (await (window as any).__testSettings({ method: "snapshot", args: [] })));
     const entries = dictionary ? saved.dictionaryEntries : saved.snippets;
     expect(entries).toHaveLength(2);
     expect(dictionary ? entries[0].term : entries[0].replacement).toBe("Local unsaved revision");

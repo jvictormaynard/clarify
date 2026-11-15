@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
     [string]$InstallPath = $env:CLARIFY_INSTALL_PATH,
-    [string]$SettingsExecutable,
     [string]$DesktopShellDirectory,
     # Use the physical profile of the installed app, not the build host's AppData.
     [string]$ProfilePath,
@@ -140,8 +139,7 @@ if (-not $BuildOnly) {
     $taskBackupRoot = [System.IO.Path]::GetFullPath($ProfileBackupRoot).TrimEnd('\', '/') + '\'
     $taskProfileRoot = [System.IO.Path]::GetFullPath($ProfilePath).TrimEnd('\', '/') + '\'
     $taskProtectedRoots = @($taskProfileRoot, $taskBackupRoot)
-    $taskMutableRoots = @($repoRoot, $targetDir, $buildRoot,
-        $taskBuildPaths.SettingsStageRoot, $taskBuildPaths.SettingsTarget)
+    $taskMutableRoots = @($repoRoot, $targetDir, $buildRoot)
     foreach ($taskRoot in @($ProfilePath, $ProfileBackupRoot) + $taskMutableRoots) {
         $taskAncestor = [System.IO.Path]::GetFullPath($taskRoot)
         while ($taskAncestor) {
@@ -169,32 +167,23 @@ if (-not $BuildOnly) {
     }
 }
 
-if ($SettingsExecutable -and $DesktopShellDirectory) { throw 'Choose either the Electron shell or the legacy Settings executable.' }
-if (-not $SettingsExecutable -and -not $DesktopShellDirectory) {
+if (-not $DesktopShellDirectory) {
     & (Join-Path $PSScriptRoot 'setup.ps1') -Dev
     & (Join-Path $PSScriptRoot 'build-desktop.ps1')
     if ($LASTEXITCODE -ne 0) { throw 'Desktop shell build failed.' }
     $DesktopShellDirectory = Join-Path $repoRoot 'dist\desktop-shell'
 }
-if ($DesktopShellDirectory) {
-    $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory).ProviderPath
-    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) {
-        throw 'The Electron desktop shell executable is missing.'
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app.asar') -PathType Leaf) -and
-        -not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app\package.json') -PathType Leaf)) {
-        throw 'The Electron desktop shell has no application payload.'
-    }
-    $presentationInput = $DesktopShellDirectory
-} else {
-    $SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath
-    $presentationInput = $SettingsExecutable
+$DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory -ErrorAction Stop).ProviderPath
+if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) {
+    throw 'The Electron desktop shell executable is missing.'
 }
+if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app.asar') -PathType Leaf) -and
+    -not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app\package.json') -PathType Leaf)) {
+    throw 'The Electron desktop shell has no application payload.'
+}
+$presentationInput = $DesktopShellDirectory
 $presentationInputs = Split-Path -Parent $presentationInput
-$backupExe = "$targetExe.backup"
-if ($DesktopShellDirectory) {
-    $backupExe = "$targetExe.electron-backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
-}
+$backupExe = "$targetExe.electron-backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
 
 Write-Host "Building Clarify..."
 New-Item $buildRoot, $requirementsDir -ItemType Directory -Force | Out-Null
@@ -288,6 +277,7 @@ foreach ($backendModule in @(
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "experimental_audio_history.py",
+    "recording_recovery.py",
     "history_corrections.py",
     "history_store.py",
     "hotkey_config.py",
@@ -396,21 +386,19 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
 
 # Never copy or bundle the repository .env. Public and local executables read
 # provider credentials from the user's Clarify config directory instead.
-if ($presentationInput) {
+
     & $venvPython (Join-Path $PSScriptRoot 'qt_distribution.py') --output-dir $presentationInputs --cache-dir (Join-Path $buildRoot 'qt-sources')
     if ($LASTEXITCODE -ne 0) { throw 'Qt source and notice verification failed.' }
     & $venvPython (Join-Path $PSScriptRoot 'portable_crypto_inventory.py') --output-dir $presentationInputs
     if ($LASTEXITCODE -ne 0) { throw 'Crypto attribution verification failed.' }
-    if ($DesktopShellDirectory) {
         $pyinstallerArgs += @('--add-data', "${DesktopShellDirectory};desktop-shell")
         $pyinstallerArgs += @('--add-data', "$(Join-Path $presentationInputs 'Clarify-desktop-payload.json');.")
-    } else { $pyinstallerArgs += @('--add-binary', "${SettingsExecutable};.") }
     foreach ($noticeName in @('Clarify-settings.sbom.json', 'Clarify-settings-NOTICES.txt', 'Clarify-qt-NOTICES.txt', 'Clarify-crypto-NOTICES.txt')) {
         $noticePath = Join-Path $presentationInputs $noticeName
         if (-not (Test-Path -LiteralPath $noticePath -PathType Leaf)) { throw "Missing Settings inventory: $noticeName" }
         $pyinstallerArgs += @('--add-data', "${noticePath};.")
     }
-}
+
 $pyinstallerArgs += $source
 
 $inheritedPath = $env:PATH
@@ -463,7 +451,7 @@ $taskParentIds = $taskAppIds
 while ($taskParentIds.Count -gt 0) {
     $taskNextChildren = @($taskProcessSnapshot | Where-Object {
         $_.ParentProcessId -in $taskParentIds -and
-        $_.Name -in @('sox.exe', 'whisper-server.exe', 'clarify-settings.exe', 'Clarify Desktop.exe')
+        $_.Name -in @('sox.exe', 'whisper-server.exe', 'Clarify Desktop.exe')
     })
     $taskChildren += $taskNextChildren
     $taskParentIds = @($taskNextChildren | Select-Object -ExpandProperty ProcessId)
@@ -515,7 +503,7 @@ $desktopShellTarget = Join-Path $targetDir 'desktop-shell'
 $desktopShellBackup = $null
 $desktopShellCreated = $false
 try {
-    if ($DesktopShellDirectory) {
+
         # Keep Chromium beside the engine to avoid extracting it on each launch.
         $resolvedTargetDir = [System.IO.Path]::GetFullPath($targetDir).TrimEnd('\')
         $resolvedShellTarget = [System.IO.Path]::GetFullPath($desktopShellTarget)
@@ -531,17 +519,15 @@ try {
         }
         $desktopShellCreated = $true
         Copy-Item -LiteralPath $DesktopShellDirectory -Destination $desktopShellTarget -Recurse
-    }
 
-    if (-not $DesktopShellDirectory) {
-        Remove-Item $backupExe -Force -ErrorAction SilentlyContinue
-    }
+
+
     if (Test-Path $targetExe) {
         Move-Item $targetExe $backupExe -Force
     }
     Copy-Item $builtExe $targetExe -Force
 } catch {
-    if ($DesktopShellDirectory -and (Test-Path -LiteralPath $backupExe)) {
+    if (Test-Path -LiteralPath $backupExe) {
         if (Test-Path -LiteralPath $targetExe) {
             Remove-Item -LiteralPath $targetExe -Force
         }

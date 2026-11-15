@@ -99,7 +99,6 @@ SETTINGS_INPUTS = {
 PACKAGE_INPUTS = {
     "build.bat",
     "scripts/build.ps1",
-    "scripts/build-settings.ps1",
     "scripts/build-desktop.ps1",
     "scripts/windows-build-paths.ps1",
     "scripts/deploy.ps1",

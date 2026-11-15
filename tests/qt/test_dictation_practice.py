@@ -168,9 +168,7 @@ class PracticeSettingsTests(unittest.TestCase):
     def test_protocol_allowlist_and_window_close_cancel_practice(self):
         from clarify.desktop.qml_web_settings import (
             SettingsProtocol,
-            WebSettingsProcess,
         )
-        from unittest.mock import Mock
 
         protocol = SettingsProtocol(self.settings)
         for args in ([], ["start", "extra"], [7], ["rewrite"], ["shutdown"]):
@@ -178,12 +176,11 @@ class PracticeSettingsTests(unittest.TestCase):
                 "error", protocol.dispatch({"method": "practiceCommand", "args": args})
             )
         self.settings.completeOnboarding("local", "")
-        host = WebSettingsProcess(
-            self.settings,
-            SimpleNamespace(surface="settings", closeSettings=Mock()),
-            Mock(),
+        from clarify.desktop.qml_electron import ElectronDesktopProcess
+
+        ElectronDesktopProcess._close_settings_activity(
+            SimpleNamespace(settings=self.settings)
         )
-        host._finished(0, None)
         self.assertFalse(self.settings.practiceState["open"])
 
     def test_session_change_stops_the_microphone_test_and_clears_results(self):

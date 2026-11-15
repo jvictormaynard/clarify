@@ -12,13 +12,13 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from PySide6.QtCore import QCoreApplication, QObject, Signal, Qt, Slot, QTimer
+from PySide6.QtCore import QCoreApplication, QObject, Signal, Qt, Slot
 from types import SimpleNamespace
 from tests.support.settings import _repositories, _MicrophoneBackend
 from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
-from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
+from clarify.desktop.qml_web_settings import SettingsProtocol
 from contextlib import ExitStack
 
 _fixture_stdout_lock = threading.Lock()
@@ -256,58 +256,6 @@ class OnboardingAccount:
         )
 
 
-def check_native_corners(process_id):
-    """Inspect only the isolated fixture's HWND; never inspect user windows."""
-    import ctypes
-    from ctypes import wintypes
-
-    user32 = ctypes.windll.user32
-    dwm = ctypes.windll.dwmapi
-    user32.GetWindowThreadProcessId.argtypes = [
-        wintypes.HWND,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    dwm.DwmGetWindowAttribute.argtypes = [
-        wintypes.HWND,
-        wintypes.DWORD,
-        ctypes.c_void_p,
-        wintypes.DWORD,
-    ]
-    matches = []
-
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def visit(hwnd, _):
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if pid.value == process_id:
-            corner = wintypes.DWORD()
-            corner_result = dwm.DwmGetWindowAttribute(hwnd, 33, ctypes.byref(corner), 4)
-            if corner_result == 0 and corner.value == 2:
-                matches.append(hwnd)
-                # Border color is a set-only DWM attribute on this Windows
-                # build. Capture the actual frame for visual verification.
-                import os
-
-                screenshot = os.environ.get("CLARIFY_TEST_CHROME_SCREENSHOT")
-                if screenshot:
-                    from PIL import ImageGrab
-
-                    rect = wintypes.RECT()
-                    if (
-                        dwm.DwmGetWindowAttribute(
-                            hwnd, 9, ctypes.byref(rect), ctypes.sizeof(rect)
-                        )
-                        == 0
-                    ):
-                        ImageGrab.grab(
-                            bbox=(rect.left, rect.top, rect.right, rect.bottom)
-                        ).save(screenshot)
-        return True
-
-    user32.EnumWindows(visit, 0)
-    return bool(matches)
-
-
 class Dispatcher(QObject):
     request = Signal(object)
 
@@ -540,6 +488,46 @@ def main():
             # Clipboard effects stay inside the isolated fixture.
             settings._history_test_clipboard = []
             settings._write_history_clipboard = settings._history_test_clipboard.append
+        if "--recording-recovery" in sys.argv:
+            from recording_recovery import RecordingRecovery
+            from tests.support.audio_history import wav_bytes
+
+            recovery = RecordingRecovery(Path(directory))
+            recovery.save(wav_bytes(frames=16000 * 181))
+            from clarify.desktop.qml_runtime import (
+                QtRecordingAudioGateway,
+                QtHistoryRecorder,
+            )
+            from tests.support.workflows import WorkflowFixture
+            from provider_types import TranscriptionResult
+
+            fixture = WorkflowFixture()
+            fixture.setUp()
+            fixture.provider.transcribe = lambda *_args, **_kwargs: TranscriptionResult(
+                "Texto recuperado editado.",
+                "gemini",
+                "gemini-test",
+                raw_text="Texto recuperado original.",
+                refined_text="Texto recuperado editado.",
+            )
+            repositories.config.apply(
+                replace(repositories.config.load(), history_enabled=True)
+            )
+            history = QtHistoryRecorder(repositories, fixture.scheduler)
+            fixture.service.subscribe(history.on_state)
+            audio = QtRecordingAudioGateway(SimpleNamespace(config=None, sox=None))
+
+            def reprocess_recording(path):
+                with patch(
+                    "clarify.desktop.qml_runtime._data_directory",
+                    return_value=Path(directory),
+                ):
+                    recording = audio.create_recovery_session(path)
+                return recording is not None and fixture.service.recover_dictation(
+                    recording, "auto"
+                )
+
+            settings._recording_reprocessor = reprocess_recording
         if "--history" in sys.argv:
             from history_store import HistoryRecord, HistoryStore
             from datetime import datetime, timezone
@@ -597,33 +585,6 @@ def main():
                     ),
                     encoding="utf-8",
                 )
-        native = "--native" in sys.argv
-        host = None
-        if native:
-            host = WebSettingsProcess(
-                settings,
-                SimpleNamespace(surface="settings", closeSettings=app.quit),
-                lambda: app.exit(3),
-                app,
-            )
-            if not host.show():
-                raise RuntimeError("Native test executable is missing")
-            if "--check-chrome" in sys.argv:
-                chrome_attempts = 0
-
-                def verify_chrome():
-                    nonlocal chrome_attempts
-                    chrome_attempts += 1
-                    if check_native_corners(host.process.processId()):
-                        print("PASS: native rounded corners", flush=True)
-                    elif chrome_attempts >= 100:
-                        print("FAIL: native corner/border attributes", flush=True)
-                        app.exit(5)
-                    else:
-                        QTimer.singleShot(200, verify_chrome)
-
-                QTimer.singleShot(200, verify_chrome)
-            QTimer.singleShot(90000, lambda: app.exit(4))
         dispatcher = Dispatcher(SettingsProtocol(settings))
 
         def read():
@@ -631,14 +592,11 @@ def main():
                 dispatcher.request.emit(json.loads(line))
             app.quit()
 
-        if not native:
-            threading.Thread(target=read, daemon=True).start()
+        threading.Thread(target=read, daemon=True).start()
         try:
             result = app.exec()
         finally:
             computer.shutdown()
-            if host is not None:
-                host.shutdown()
             settings.shutdown()
             fixtures.close()
         return result

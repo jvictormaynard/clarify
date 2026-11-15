@@ -193,16 +193,16 @@ channel remain disabled until their rollout gates are complete.
 ### Run from source on Windows
 
 Requirements: Windows 10 or 11, [Python 3.11 or newer](https://www.python.org/downloads/windows/),
-and a working microphone. Building the desktop shell also requires Node.js 22.
-The default Electron shell does not require Rust or WebView2. The legacy Tauri
-alternative needs those tools. See [Development](docs/development.md).
+and a working microphone. Building the desktop also requires Node.js 22,
+Visual Studio C++ Build Tools, and the Windows SDK. The desktop includes its
+pinned Electron runtime. See [Development](docs/development.md).
 
 ```powershell
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
 .\scripts\build-desktop.ps1
-$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify Desktop.exe").Path
 .\start.bat
 ```
 
@@ -404,9 +404,8 @@ MSIs must come from the protected signing workflow.
 ```text
 desktop/src/                  React/TypeScript Settings and shared controls
 desktop/electron/              Electron windows and private process bridge
-desktop/src-tauri/             Legacy Tauri alternative
-clarify/desktop/qml_app.py      Production Qt Quick/QML entrypoint
-clarify/desktop/qml/            Production QML surfaces and theme
+clarify/desktop/qml_app.py      Engine and Electron composition root
+clarify/desktop/qml/            Native audio-file import panel and controls
 clarify/desktop/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
 clarify/desktop/qml_bridge.py   QML-facing workflow state and commands
 provider_types.py              Typed provider requests, results, and capabilities
@@ -435,15 +434,16 @@ docs/                          Architecture and development documentation
 .agents/skills/                Repository-specific maintainer workflows
 ```
 
-The application uses Python/PySide6 for the desktop engine and native input,
-with React/TypeScript in a bundled Electron shell for Settings and the dock.
-Qt Quick supplies recovery views. `start.bat`, the portable build and the release
-workflow use the QML entrypoint. CustomTkinter is not the shipping frontend;
-Tauri remains a legacy Settings alternative. See
-[Architecture](docs/architecture.md) before making structural changes.
+React/Electron owns the desktop interface. Python/PySide6 owns the engine and
+native input contracts. Only audio-file import retains a QML panel.
+`start.bat`, packaging and releases use `clarify/desktop/qml_app.py` to compose
+these owners. The interface is required; a failure triggers bounded renderer
+recovery, never a switch to another interface.
+See [Architecture](docs/architecture.md) before making structural changes.
 Production Qt code lives in `clarify/desktop/`; `spikes/` contains only historical comparison tools.
 `app.py` is a legacy frontend retained for compatibility tests, not the shipping
-entrypoint. New UI work belongs in `desktop/` or the QML pill, not `app.py`.
+entrypoint. New desktop UI work belongs in `desktop/`; native file-import maintenance stays
+in its QML view. Do not add product UI to `app.py`.
 
 Local Whisper is an explicit provider in the current product runtime. The
 portable executable includes the pinned Local ASR manifest and license notices,

@@ -22,12 +22,12 @@ node scripts/test-settings.mjs --grep "microphone"
 `scripts/test-unit.mjs` creates a temporary profile and removes inherited provider
 credentials before starting Vitest. It removes the profile on success or failure
 and stops its owned process tree on interruption. No unit test starts Python,
-opens an audio device, or calls a real provider. Tauri transport mocks reject
+opens an audio device, or calls a real provider. Electron transport mocks reject
 requests until a test installs an in-memory fixture.
 
 Vitest resolves the actual TypeScript modules, including extensionless shared
 imports. The hook suite renders the real `useSettings` hook with React DOM and
-runs its real effects with fake timers. It substitutes the Tauri transport and
+runs its real effects with fake timers. It substitutes the Electron transport and
 native-window adapter. The page suite renders the real Account and History
 pages with small child-control fixtures. These fixtures expose the operation
 props and events under test; real control focus and layout stay in browser and

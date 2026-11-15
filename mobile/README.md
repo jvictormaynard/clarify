@@ -74,7 +74,27 @@ gets a nonsecret state projection. Pinned LAN and DNS routes require an exact
 SHA-256 hash of the leaf DER certificate. Other public DNS routes with a null pin
 retain platform CA trust. Redirects are rejected.
 The recorder's AAC clip is converted locally to PCM16 mono 16 kHz WAV, capped at
-300 seconds. Conversion and upload cancellation remove temporary audio.
+300 seconds. Converted request WAVs remain temporary. Stopped source recordings are kept
+in app-only storage and appear as normal History items in Dictation,
+including when processing fails or is cancelled. Reprocess uses the current
+account or paired computer and current dictation settings as a new request.
+History shows the timestamp and source device to the left of each transcript,
+without inline action controls. Hold an item
+to open the native context menu for copying, audio playback, transcription retry,
+export and deletion, as available. Failed or interrupted items show the audio
+duration and a retry button. Processing items hide that button. VoiceOver exposes
+the same actions through its action menu. While the keyboard session remains
+active, a recoverable recording failure also exposes Retry in the keyboard error
+panel. It reprocesses the saved audio as a new operation without opening the
+microphone. Only the containing app owns the audio path; the keyboard sends the
+failed operation ID. Changed destinations, cancelled attempts and duplicate taps
+cannot retarget that retry. Automatic insertion retains the original document
+owner; a retry from another document requires explicit Insert.
+Undo AI edit shows the original text on this device; it does not change account
+history on other devices. Clearing text history leaves saved audio as local items.
+Source audio is excluded from device backup and never enters account-history
+sync or the keyboard's shared storage. A forced termination during capture can
+still leave an incomplete temporary clip.
 
 `shared/ui_strings.json` owns the shared translations; generate the native catalog
 with `scripts/sync_locales.py`. Native contracts, UIKit fixtures,
@@ -221,6 +241,10 @@ iPhone Settings page also includes setup and privacy help.
 The practice step has a local text field in the guide. Done is enabled only
 when that field contains non-whitespace text; it does not use a global transcript
 or require another app or manual confirmation. Practice text is not persisted.
+
+Hold the keyboard Space bar, then drag left or right to move the text cursor.
+Release your finger at the position where you want to type. A held Space bar
+does not insert a space. Vertical movement across wrapped lines is not supported.
 
 Tap the keyboard microphone once to start continuous recording. There is no hold
 or upward lock gesture. A panel within the same keyboard height provides separate
@@ -677,6 +701,11 @@ simulator. No public API removes that system UI.
 Start, upward lock and finish use retained, prepared standard medium-impact
 generators. Typing uses a lighter impact. Generators do not depend
 on the extension's remote window and do not scale the standard pulse intensity.
+Each new key highlight also requests the standard system keyboard click through
+`UIDevice.playInputClick()`. UIKit controls playback from the keyboard-sound
+setting and input-view visibility. Non-key typing feedback and recording actions
+do not request this click. Audible output and click timing need physical-device
+acceptance.
 The host enables haptics before activating audio input. Mobile and desktop use
 the same original WAV cues from `assets/sounds/`: two hollow pops with 55 ms
 between note starts. Start ascends; stop and recording cancellation descend.

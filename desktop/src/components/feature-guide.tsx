@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { Button } from "./ui";
 import { Button as IconButton } from "./primitives/button";
 import { Dialog, DialogPopup, DialogTitle, DialogDescription } from "./primitives/dialog";
-import logo from "../../src-tauri/icons/clarify.png";
+import logo from "../../assets/clarify.png";
 import "../styles/feature-guide.css";
 
 export type GuideKind = "snippets" | "dictionary" | "actions";

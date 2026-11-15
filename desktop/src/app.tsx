@@ -1,6 +1,7 @@
+import { stopRecordingPlayback } from "./settings/recording-playback";
 import { t } from "./i18n";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import logo from "../src-tauri/icons/clarify.png";
+import logo from "../assets/clarify.png";
 import { AlertCircle, LoaderCircle, UserRound, PanelLeft } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
@@ -39,6 +40,9 @@ export function App() {
     return () => media.removeEventListener("change", change);
   }, []);
   const { state, mainPage, settingsOpen, error, saved, routeLoading, saving, discardingDrafts } = controller;
+  useEffect(() => {
+    if (state?.audioPlaybackStopRequest) void stopRecordingPlayback(state.audioPlaybackStopRequest).catch(() => {});
+  }, [state?.audioPlaybackStopRequest]);
   const scrollArea = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const settingsOpener = useRef<HTMLButtonElement>(null);
