@@ -61,27 +61,6 @@ class SettingsNavigationTests(unittest.TestCase):
         self.assertEqual(bridge.surface, "recording")
         service.finish.assert_not_called()
 
-    def test_menu_action_runs_once_for_both_close_orders(self):
-        import os
-        from pathlib import Path
-        import subprocess
-        import sys
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / "support/qml_settings_menu_smoke.py"
-                ),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            env=dict(os.environ, QT_QPA_PLATFORM="offscreen"),
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
     def test_settings_preserves_failed_operation_for_retry(self):
         service = SimpleNamespace(
             state=WorkflowState(phase=WorkflowPhase.FAILED, operation_id="retry"),
@@ -95,24 +74,3 @@ class SettingsNavigationTests(unittest.TestCase):
         bridge.closeSettings()
         self.assertEqual(bridge.surface, "error")
         service.finish.assert_not_called()
-
-    def test_settings_hides_toolbar_after_completed_workflow(self):
-        from clarify.desktop.qml_app import _WorkflowWindowVisibility
-
-        service = SimpleNamespace(
-            state=WorkflowState(), subscribe=lambda listener: None, finish=Mock()
-        )
-        bridge = QmlWorkflowBridge(service)
-        bridge._on_workflow_state(
-            WorkflowState(phase=WorkflowPhase.COMPLETED, operation_id="done")
-        )
-        window = Mock()
-        window.isVisible.return_value = True
-        shell = Mock()
-        coordinator = _WorkflowWindowVisibility(bridge, shell, window)
-        bridge.openSettings()
-        bridge._on_workflow_state(WorkflowState())
-        self.assertEqual(bridge.surface, "settings")
-        shell.show_window.assert_not_called()
-        self.assertTrue(coordinator._restore_visible)
-        shell.hide_window.assert_called()

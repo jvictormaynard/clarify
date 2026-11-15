@@ -283,8 +283,8 @@ API or synthetic input path.
 
 The Python engine retains recording, provider, clipboard, account and storage
 ownership. Qt still supplies its event loop, native hotkeys and the file-import
-panel during this migration. The QML presentation remains a recovery path if
-the Electron child fails.
+panel. Electron is the required presenter; child failures use bounded recovery
+and a minimal native error dialog.
 
 The local pilot resolves `desktop-shell/Clarify Desktop.exe` beside the installed
 engine, or an absolute `CLARIFY_DESKTOP_EXECUTABLE` for source development. The
@@ -301,19 +301,26 @@ events use the small workflow snapshot; Settings events read notified fields
 and preserve the existing account and library ownership guards.
 
 `desktop/src/` contains the React/TypeScript Settings pages, Base UI controls,
-and styles. `desktop/src-tauri/` retains the explicitly selected legacy Tauri
-build. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
+and styles. React/Electron is the only desktop presenter. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
 complete Electron app in the portable EXE. The payload manifest and SBOM bind
 the renderer, native runtime and license files to that build. The existing
 portable update signature therefore covers the complete desktop application.
 
-`clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
-exchanges JSON messages over private standard input/output pipes. The Python
+`clarify/desktop/qml_electron.py` starts the Electron child with Qt `QProcess`
+and exchanges JSON messages over private standard input/output pipes.
+`qml_web_settings.py` owns the shared, explicit Settings protocol. The Python
 allowlist controls which Settings properties and methods are exposed. There is
 no public HTTP Settings server. Python owns config, credentials, model assets,
 and audio devices; React displays state and submits changes through this bridge.
-`qml_settings.py` remains the shared controller. The QML Settings view remains a
-fallback when the native child is unavailable.
+`qml_settings.py` remains the shared controller. The engine requires the desktop shell at startup. There is no QML workflow or
+Settings fallback. Unexpected renderer exits, launch failures and startup
+handshake timeouts trigger at most three bounded restart attempts. A healthy
+renderer resets the budget after thirty seconds. Each restarted child receives
+fresh Settings and workflow snapshots. Exhaustion shows only a small native
+Retry/Close error dialog, while processing and saved audio remain engine-owned.
+`AudioFilesWindow.qml` is the only native product view; it owns active file import.
+The Qt status controller supplies input levels, capture readiness and target
+icons to Electron without rendering a second pill.
 
 React and QML use the shared translation catalog. Desktop-only copy stays in
 the reviewed desktop projection and does not add unused mobile strings.
@@ -490,20 +497,20 @@ the direct OAuth flow, shared limits and current VM support boundary.
 These modules are the production desktop entrypoint and Qt integration layer:
 
 - `qml_app.py` creates `QApplication`, registers the real QML controllers,
-  starts the tray/single-instance shell, and wires shutdown ownership;
+  starts the single-instance and hotkey shell, and wires shutdown ownership;
 - `qml_bridge.py` exposes typed workflow state, commands, settings, files, and
-  voice-translation surfaces to QML;
+  voice-translation state to the Electron protocol and native file panel;
 - `qml_runtime.py` composes provider, recording, clipboard, statistics, and
   audio-file gateways without importing the old widget frontend; and
-- `clarify/desktop/qml/` contains the compact black-and-white theme, overlay,
-  fallback settings, legacy result assets, translation, and file-import surfaces.
+- `clarify/desktop/qml/` contains the active file-import window and its shared
+  native controls. The pill, results, translation picker and Settings use React.
 
 The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
 release packaging. Root `app.py` remains for legacy compatibility tests; new
 features must not be added there. Production Qt adapters and assets live in
 `clarify/desktop/`; historical comparison tools remain under `spikes/`.
 The earlier Electron prototype remains in Git history. The retained desktop
-host described above is the current local migration pilot.
+host described above owns the current presentation.
 
 ### Provider layer
 
@@ -961,7 +968,18 @@ For API keys, documented environment variables (`GEMINI_API_KEY`, legacy
 for that process and are never persisted. Other settings retain the precedence
 of persisted settings, then their environment defaults, then built-in defaults.
 
-Recordings use session-owned temporary WAV files. Cleanup must wait until no
+Recordings use session-owned temporary WAV files. A stopped desktop capture is
+copied to the device-only `recording-recovery` directory before provider
+finalization. Each copy appears as a normal History item with playback and
+export. A failed item exposes retry directly. The desktop pill also offers
+explicit retry for processing errors while detached audio is available. Pill
+retries keep their result copied for manual paste because the saved window
+handle cannot prove that the original text field is still selected. The pill
+keeps a recovered-result message and Copy action until dismissal. Successful processing links the
+audio to its text entry. History can reprocess the copy as a new operation with
+the current route. These copies remain until explicit deletion and never enter
+account text-history sync. Before a new microphone capture starts, Settings
+must stop active playback and acknowledge the native playback lease. Cleanup must wait until no
 provider, retry, or cancellation-Undo operation needs the audio. Process shutdown
 and file cleanup are separate responsibilities; forced termination and cleanup
 failures can leave artifacts. Do not promise secure deletion or assume a process
@@ -978,9 +996,10 @@ one launch context appears empty.
 ## Packaging
 
 PyInstaller creates a one-file Windows executable containing the Python runtime,
-PySide6/Qt Quick modules, QML assets, the compiled React/Tauri Settings child,
+PySide6/Qt Quick modules, native file-import assets, the complete Electron shell,
 immutable distribution policy, and the vendored SoX runtime. The build verifies
-that the embedded Settings child matches its input hash. `.env` is
+that the embedded desktop manifest matches every renderer and native runtime
+file. `.env` is
 never bundled. End-user provider settings are read from the user data directory.
 
 The staged distribution workflow signs the executable, embeds it in a per-user

@@ -72,18 +72,25 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       }
     }
     else return;
-    if (message.event === 'settings') emit(windows.settings, 'clarify:state', message);
+    if (message.event === 'settings') {
+      if (message.state.audioPlaybackStopRequest) emit(windows.settings, 'clarify:stop-audio', message.state.audioPlaybackStopRequest);
+      emit(windows.settings, 'clarify:state', message);
+    }
     else { emit(windows.pill, 'clarify:state', message); refreshTray(); }
   }, () => { stopping = true; app.quit(); });
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-    // Packaged assets only. No network, arbitrary local files, or external handlers.
+    // Packaged assets and Settings-owned audio blobs. No network or arbitrary files.
     let allowed = false;
     try {
       const url = new URL(details.url);
-      const relative = path.relative(path.resolve(__dirname, '../dist'), fileURLToPath(url));
-      allowed = url.protocol === 'file:' && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+      if (url.protocol === 'blob:' && Number.isInteger(details.webContentsId) && details.webContentsId === windows.settings?.webContents.id) {
+        allowed = true;
+      } else {
+        const relative = path.relative(path.resolve(__dirname, '../dist'), fileURLToPath(url));
+        allowed = url.protocol === 'file:' && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+      }
     } catch {}
     if (!allowed) process.stderr.write('Blocked content: ' + details.url + '\n');
     callback({cancel: !allowed});

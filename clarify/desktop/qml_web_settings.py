@@ -2,13 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
-import sys
-
-from PySide6.QtCore import QObject, QProcess, QTimer
-
 
 # Never expose QObject reflection, repository access, saved API keys, or paths.
 # Full guest vocabulary and snippets can contain 6.7M characters. JSON control
@@ -17,6 +10,8 @@ from PySide6.QtCore import QObject, QProcess, QTimer
 MAX_SETTINGS_MESSAGE_BYTES = 64 * 1024 * 1024
 
 PROPERTIES = (
+    "audioPlaybackStopRequest",
+    "recordingRevision",
     "textActions",
     "textActionProfiles",
     "textActionProviders",
@@ -267,6 +262,22 @@ class SettingsProtocol:
                     raise ValueError()
                 # This response is never retained in a general snapshot or poll.
                 result = self.settings.getComputerPairing()
+            elif method in {"beginRecordingPlayback", "endRecordingPlayback"}:
+                if len(args) != 1 or type(args[0]) is not str:
+                    raise ValueError()
+                result = getattr(self.settings, method)(*args)
+            elif method == "recordingRecoveryAudio":
+                if (
+                    len(args) != 2
+                    or type(args[0]) is not str
+                    or type(args[1]) is not int
+                ):
+                    raise ValueError()
+                result = self.settings.recordingRecoveryAudio(*args)
+            elif method == "recordingRecovery":
+                if len(args) != 2 or any(type(value) is not str for value in args):
+                    raise ValueError()
+                result = self.settings.recordingRecovery(*args)
             elif method == "getHistoryPage":
                 if len(args) not in (2, 3) or any(
                     type(value) is not str for value in args
@@ -398,136 +409,3 @@ class SettingsProtocol:
             if method in {"getHistoryPage", "getHistoryTextPart"}:
                 return {**reply, "error": "Não foi possível carregar o histórico."}
             return {**reply, "error": "Não foi possível ler as configurações."}
-
-
-def settings_executable() -> Path | None:
-    override = os.environ.get("CLARIFY_SETTINGS_EXECUTABLE")
-    if override:
-        candidate = Path(override)
-        return candidate if candidate.is_absolute() and candidate.is_file() else None
-    roots = [Path(sys.executable).parent]
-    if getattr(sys, "_MEIPASS", None):
-        roots.insert(0, Path(sys._MEIPASS))
-    for root in roots:
-        candidate = root / "clarify-settings.exe"
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-class WebSettingsProcess(QObject):
-    """The Python engine remains the only owner of config and audio devices."""
-
-    def __init__(self, settings, bridge, fallback, parent=None):
-        super().__init__(parent)
-        self.settings = settings
-        self.bridge = bridge
-        self.fallback = fallback
-        self.protocol = SettingsProtocol(settings)
-        self.process = QProcess(self)
-        self.process.readyReadStandardOutput.connect(self._read)
-        self.process.finished.connect(self._finished)
-        self.process.errorOccurred.connect(self._failed)
-        self.buffer = bytearray()
-        self.failed = False
-        self._visible = False
-        self._shutting_down = False
-        self.process.started.connect(lambda: self._window_command("show"))
-        self.process.readyReadStandardError.connect(self.process.readAllStandardError)
-        self.startup_timer = QTimer(self)
-        self.startup_timer.setSingleShot(True)
-        self.startup_timer.setInterval(15000)
-        self.startup_timer.timeout.connect(lambda: self._failed(None))
-
-    def _window_command(self, action):
-        if self.process.state() == QProcess.ProcessState.Running:
-            self.process.write((json.dumps({"window": action}) + "\n").encode())
-
-    def blocks_update(self) -> bool:
-        # Hidden WebView instances can still own local unsaved form fields.
-        # A confirmed close ends the child and permits a safe app restart.
-        return self.process.state() != QProcess.ProcessState.NotRunning
-
-    def show(self) -> bool:
-        path = settings_executable()
-        if path is None or self.failed:
-            return False
-        if self.process.state() == QProcess.ProcessState.NotRunning:
-            self.buffer.clear()
-            self._visible = True
-            self.process.start(str(path), [])
-            self.startup_timer.start()
-        elif not self._visible:
-            self._visible = True
-            self._window_command("show")
-        return True
-
-    def hide(self):
-        self.settings.practiceCommand("close")
-        self.settings.cancelChatGPT()
-        self.settings.cancelTextActionPreview()
-        if self._visible:
-            self._visible = False
-            self.settings.closeComputerPairing()
-            self.settings.stopMicrophoneTest()
-            self.settings.cancelHotkeyCapture()
-            self._window_command("hide")
-
-    def activate(self):
-        if not self.failed:
-            self._window_command("show")
-
-    def _read(self):
-        self.buffer.extend(bytes(self.process.readAllStandardOutput()))
-        if len(self.buffer) > MAX_SETTINGS_MESSAGE_BYTES:
-            self.process.kill()
-            return
-        while b"\n" in self.buffer:
-            line, _, remaining = self.buffer.partition(b"\n")
-            self.buffer = bytearray(remaining)
-            try:
-                request = json.loads(line)
-            except (ValueError, UnicodeError):
-                continue
-            self.startup_timer.stop()
-            reply = self.protocol.dispatch(request)
-            self.process.write((json.dumps(reply, ensure_ascii=False) + "\n").encode())
-
-    def _failed(self, error):
-        self.settings.practiceCommand("close")
-        self.settings.cancelChatGPT()
-        self.startup_timer.stop()
-        self.failed = True
-        if self.process.state() != QProcess.ProcessState.NotRunning:
-            self.process.kill()
-        if not self._shutting_down and self.bridge.surface == "settings":
-            self.fallback()
-
-    def _finished(self, code, status):
-        self.settings.practiceCommand("close")
-        self.settings.cancelChatGPT()
-        self.settings.cancelTextActionPreview()
-        self.startup_timer.stop()
-        self._visible = False
-        self.settings.closeComputerPairing()
-        self.settings.stopMicrophoneTest()
-        if self._shutting_down:
-            return
-        self.settings.cancelHotkeyCapture()
-        if code != 0:
-            self.failed = True
-            if self.bridge.surface == "settings":
-                self.fallback()
-        elif self.bridge.surface == "settings":
-            self.bridge.closeSettings()
-
-    def shutdown(self):
-        self.settings.practiceCommand("close")
-        self.settings.cancelChatGPT()
-        self._shutting_down = True
-        self.startup_timer.stop()
-        if self.process.state() != QProcess.ProcessState.NotRunning:
-            self.process.terminate()
-            if not self.process.waitForFinished(1000):
-                self.process.kill()
-                self.process.waitForFinished(1000)

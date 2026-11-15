@@ -6,7 +6,7 @@ import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog,
 // The native runtime delivers these commands; OS hotkeys have contract coverage.
 async function practiceCommand(page: Page, action: "start" | "stop" | "cancel") {
   await page.evaluate(async action => {
-    await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "practiceCommand", args: [action] });
+    await (window as any).__testSettings({ method: "practiceCommand", args: [action] });
   }, action);
 }
 
@@ -30,7 +30,7 @@ settingsScenario({ signedIn: true }, () => {
     const cancel = dialog.getByRole("button", { name: "Cancelar", exact: true });
     await expect(cancel).toBeFocused();
     const account = await page.evaluate(async () => {
-      const snapshot = await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] });
+      const snapshot = await (window as any).__testSettings({ method: "snapshot", args: [] });
       return snapshot.accountState;
     });
     await page.route("**/__test_rpc", async route => {
@@ -189,7 +189,7 @@ settingsScenario({ onboarding: true }, () => {
 });
 
 test("login methods: Settings keeps the email draft and guest preferences", async ({ page }) => {
-  const before = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  const before = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
   await navigate(page, "Conta Clarify");
   const email = page.getByRole("textbox", { name: "E-mail", exact: true });
   const chooseEmail = page.getByRole("button", { name: "Continuar com e-mail", exact: true });
@@ -201,11 +201,11 @@ test("login methods: Settings keeps the email draft and guest preferences", asyn
   await expect(chooseEmail).toBeFocused();
   await chooseEmail.click();
   await expect(email).toHaveValue("unsent@example.test");
-  const afterEdit = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  const afterEdit = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
   expect(afterEdit.accountState.pending).toBeFalsy();
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Geral", exact: true })).toBeVisible();
-  const after = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  const after = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
   expect(after.accountState.signedIn).toBe(false);
   expect(after.selectedMicrophoneId).toBe(before.selectedMicrophoneId);
   expect(after.historyEnabled).toBe(before.historyEnabled);
@@ -225,7 +225,7 @@ settingsScenario({ onboarding: true }, () => {
     await expect(page.getByRole("button", { name: "Conferir configuração", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Começar ditado", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Parar teste", exact: true }).click();
-    await expect.poll(() => page.evaluate(async () => (await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] })).microphoneTestBusy)).toBe(false);
+    await expect.poll(() => page.evaluate(async () => (await (window as any).__testSettings({ method: "snapshot", args: [] })).microphoneTestBusy)).toBe(false);
     await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
     for (const width of [640, 820, 1040]) {
       await page.setViewportSize({ width, height: 760 });

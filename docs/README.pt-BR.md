@@ -171,14 +171,14 @@ git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
 .\scripts\build-desktop.ps1
-$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify Desktop.exe").Path
 .\start.bat
 ```
 
 É necessário ter Windows 10 ou 11, Python 3.11 ou mais recente e um microfone.
-O build da interface desktop exige Node.js 22. A interface padrão usa Electron
-e não exige Rust nem WebView2. Esses componentes pertencem à alternativa Tauri
-legada. O usuário do executável pronto não precisa das ferramentas de build.
+O build do desktop exige Node.js 22, Visual Studio C++ Build Tools e Windows
+SDK. A interface usa Electron. O usuário do executável pronto não precisa de
+Python ou Node.js.
 Na primeira execução, o script cria um ambiente virtual e instala as
 dependências automaticamente.
 

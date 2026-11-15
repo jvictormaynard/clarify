@@ -96,7 +96,7 @@ struct RecordingRequest {
   private var cancelledOperations: Set<String> = []
   func isCancelled(_ id: String?) -> Bool { id.map { cancelledOperations.contains($0) } ?? false }
   mutating func submit(_ next: String, operationID id: String, now: TimeInterval) -> Bool {
-    guard ["start", "finish", "cancel"].contains(next) else { return false }
+    guard ["start", "retry", "finish", "cancel"].contains(next) else { return false }
     guard action == nil || (next == "cancel" && action != "cancel" && operationID == id) else { return false }
     action = next; operationID = id; requestedAt = now
     if next == "cancel" { cancelledOperations.insert(id) }
@@ -107,10 +107,10 @@ struct RecordingRequest {
     guard let action else { return false }
     if !state.isLive { reset(); return false }
     let same = state.operationID == operationID
-    let acknowledged = same && (action == "start" ? state.phase != .idle :
+    let acknowledged = same && (["start", "retry"].contains(action) ? state.phase != .idle :
       action == "finish" ? ![.recording, .locked].contains(state.phase) :
       !state.phase.busy && state.heartbeat >= requestedAt)
-    if acknowledged || (state.phase == .error && state.heartbeat >= requestedAt) ||
+    if acknowledged || (action != "retry" && state.phase == .error && state.heartbeat >= requestedAt) ||
       (action == "cancel" && !state.phase.busy && state.operationID == nil && state.heartbeat >= requestedAt) { reset(); return false }
     // Commands older than five seconds are rejected by the app. Do not permit
     // another start until that delivery window has closed.

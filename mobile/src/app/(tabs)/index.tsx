@@ -4,15 +4,17 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, SectionList, Modal, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
-import Core, { type HistoryEntry } from '../../../modules/clarify-core';
-import { Button, Card, EmptyState, TableRow, ui, usePalette, useReducedMotion } from '../../components/ui';
+import Core, { type HistoryEntry, type RecoveryRecording } from '../../../modules/clarify-core';
+import { Button, Card, EmptyState, ui, usePalette, useReducedMotion } from '../../components/ui';
 import { report, useClarify } from '../../state/clarify';
 import { MicrophoneSwitch } from '../../components/microphone-switch';
 import { WorkspaceHeader } from '../../components/workspace-header';
 import { NatureCard } from '../../components/nature-card';
 
-import { groupHistory, historyDayTitle, historyTime } from '../../history';
+import { groupHistory, historyDayTitle } from '../../history';
 
+
+import { HistoryItem } from '../../components/history-item';
 
 import { RecordButton } from '../../components/record-button';
 
@@ -40,6 +42,7 @@ export default function Home() {
     }).catch(report);
   }, [params.activate, params.request, params.token, activate, refresh, setKeyboardEntry, setKeyboardToken]);
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [recordings, setRecordings] = useState<RecoveryRecording[]>([]);
   const [pageContext, setPageContext] = useState('');
   const currentContext = useRef(account?.historyContext);
   useLayoutEffect(() => { currentContext.current = account?.historyContext; }, [account?.historyContext]);
@@ -47,7 +50,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [selection, setSelected] = useState<HistoryEntry | null>(null);
-  const selected = selection?.context === account?.historyContext ? selection : null;
+  const selected = selection && selection.context === account?.historyContext ? entries.find(entry => entry.id === selection.id) ?? selection : null;
   const [original, setOriginal] = useState(false);
   const [action, setAction] = useState<'copy' | 'delete' | null>(null);
   const generation = useRef(0);
@@ -58,9 +61,10 @@ export default function Home() {
     const context = currentContext.current;
     pending.current = true; setLoading(true); setError(false);
     try {
-      const page = await Core.getHistory(before);
+      const [page, audio] = await Promise.all([Core.getHistory(before), Core.getRecoveryRecordings()]);
       if (id !== generation.current || context !== currentContext.current || page.context !== currentContext.current) return;
       setPageContext(page.context);
+      setRecordings(audio.filter(row => !row.linked));
       setEntries((previous) => append ? [...previous, ...page.entries] : page.entries);
       setCursor(page.nextCursor);
     } catch { if (id === generation.current) setError(true); }
@@ -72,13 +76,18 @@ export default function Home() {
   // The native library revision invalidates the focused page, including keyboard dictations.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load, state.libraryRevision, account?.historyContext]));
-  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), account?.mode === 'computer' || entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos."), [
+  const remove = (entry: HistoryEntry) => Alert.alert(t("Excluir transcrição?"), (account?.mode === 'computer' || entry.localOnly ? t("Este texto será removido do histórico deste iPhone.") : t("Este texto será removido do histórico da sua conta em todos os dispositivos.")) + (entry.recording ? " " + t("O áudio salvo neste dispositivo também será excluído.") : ""), [
     { text: t("Cancelar"), style: 'cancel' }, { text: t("Excluir"), style: 'destructive', onPress: () => {
       setAction('delete');
       void Core.deleteHistory(entry.id, entry.localOnly, entry.context).then(async () => { setSelected(null); await refresh(); await load(); }).catch(report).finally(() => setAction(null));
     } },
   ]);
-  const sections = groupHistory(pageContext === account?.historyContext ? entries : []);
+  type Item = HistoryEntry & { audioOnly?: boolean };
+  const visible: Item[] = pageContext === account?.historyContext ? [...entries, ...recordings.map(recording => ({
+    id: `audio:${recording.id}`, createdAt: recording.createdAt, transcript: '', text: t(recording.processing ? 'Processando áudio…' : recording.status === 'complete' ? 'Áudio salvo' : 'Áudio não processado'),
+    rewritten: false, sourceDevice: 'mobile' as const, localOnly: true, context: account?.historyContext ?? '', recording, audioOnly: true,
+  }))] : [];
+  const sections = groupHistory(visible);
   const [today, setToday] = useState(() => new Date());
   useEffect(() => {
     const next = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
@@ -102,19 +111,8 @@ export default function Home() {
         {state.phase === 'error' && !state.textOperation && state.message && <Text accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(state.message)}</Text>}
       </View>}
       renderSectionHeader={({ section }) => <Text accessibilityRole="header" style={[ui.section, { color: c.text, paddingTop: 28, paddingBottom: 12 }]}>{historyDayTitle(section.date, today, uiLanguage, t("Hoje"))}</Text>}
-      renderItem={({ item, index, section }) => <TableRow first={index === 0} last={index === section.data.length - 1}
-        accessibilityLabel={`${timestamp(item.createdAt)}. ${item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}. ${item.text}`} onPress={() => { setOriginal(false); setSelected(item); }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
-          <View style={{ alignItems: 'flex-start', gap: 4, maxWidth: 78 }}>
-            <Text style={[ui.small, { color: c.muted, fontVariant: ['tabular-nums'], textAlign: 'left' }]}>{historyTime(item.createdAt, uiLanguage)}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <SymbolView name={item.sourceDevice === 'desktop' ? 'desktopcomputer' : 'iphone'} size={13} tintColor={c.muted} accessible={false} />
-              <Text style={[ui.small, { color: c.muted }]}>{item.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile'}</Text>
-            </View>
-          </View>
-          <Text numberOfLines={4} style={[ui.body, { color: c.text, flex: 1 }]}>{item.text}</Text>
-        </View>
-      </TableRow>}
+      renderItem={({ item, index, section }) => <HistoryItem entry={item} first={index === 0} last={index === section.data.length - 1}
+        onOpen={() => { setOriginal(false); setSelected(item); }} onDelete={() => remove(item)} />}
       ListEmptyComponent={!loading && !error ? <View style={{ paddingTop: 20 }}><EmptyState title={t('Seu histórico está vazio')}
         detail={account?.historyAccount ? t("Seus próximos ditados aparecerão aqui e nos dispositivos conectados à sua conta.") : t("Seus próximos ditados aparecerão aqui. O histórico fica somente neste iPhone.")}>
         </EmptyState></View> : null}

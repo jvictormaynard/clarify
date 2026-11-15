@@ -7,6 +7,7 @@ export interface Snapshot {
   heartbeat: number;
   phase: 'idle' | 'recording' | 'locked' | 'transcribing' | 'rewriting' | 'ready' | 'error';
   operationID?: string;
+  playingRecordingID?: string;
   text?: string;
   message?: string;
   errorCode?: string;
@@ -26,6 +27,7 @@ export interface VocabularyEntry {
 }
 export interface Snippet { trigger: string; replacement: string; enabled: boolean; case_sensitive: boolean }
 export interface HistoryEntry {
+  recording?: RecoveryRecording;
   id: string;
   createdAt: number;
   transcript: string;
@@ -108,6 +110,12 @@ export default requireNativeModule<{
   copyResult(): Promise<void>;
   copyText(text: string): Promise<void>;
   copyTextOperationResult(operationID: string, context: string): Promise<boolean>;
+  playRecoveryRecording(id: string): Promise<boolean>;
+  exportRecoveryRecording(id: string): Promise<void>;
+  undoRecoveryEdit(id: string, context: string): Promise<void>;
+  getRecoveryRecordings(): Promise<RecoveryRecording[]>;
+  reprocessRecording(id: string, context: string): Promise<string>;
+  deleteRecoveryRecording(id: string): Promise<void>;
   getHistory(before: string): Promise<HistoryPage>;
   deleteHistory(id: string, localOnly: boolean, context: string): Promise<void>;
   clearHistory(context: string): Promise<void>;
@@ -116,3 +124,8 @@ export default requireNativeModule<{
   getDictionary(): Promise<VocabularyEntry[]>;
   saveDictionary(entries: VocabularyEntry[], base: VocabularyEntry[]): Promise<void>;
 }>('ClarifyCore');
+
+export type RecoveryRecording = {
+  id: string; createdAt: number; duration: number; historyId?: string; linked?: boolean; useOriginal?: boolean;
+  status: 'saved' | 'failed' | 'complete'; processing: boolean;
+};

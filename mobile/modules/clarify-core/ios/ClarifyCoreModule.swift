@@ -6,6 +6,11 @@ public class ClarifyCoreModule: Module {
   private var computerScanning = false
   public func definition() -> ModuleDefinition {
     Name("ClarifyCore")
+    View(HistoryContextMenu.self) {
+      Events("onAction")
+      Prop("menuID") { (view: HistoryContextMenu, value: String) in view.menuID = value }
+      Prop("actions") { (view: HistoryContextMenu, value: [HistoryMenuAction]) in view.actions = value }
+    }
     Constant("uiLanguage") { ClarifyLocale.language }
     Function("newOperationID") { UUID().uuidString }
     Constant("keyboardDiagnosticAvailable") { Bundle.main.object(forInfoDictionaryKey: "ClarifyKeyboardDiagnostic") as? Bool == true }
@@ -249,14 +254,56 @@ public class ClarifyCoreModule: Module {
       UIPasteboard.general.string = text
       return true
     }.runOnQueue(.main)
+    AsyncFunction("playRecoveryRecording") { (id: String) -> Bool in
+      try ClarifyAudioSession.shared.toggleRecoveryPlayback(id)
+    }.runOnQueue(.main)
+    AsyncFunction("undoRecoveryEdit") { (id: String, context: String) in
+      try ClarifyAudioSession.shared.undoRecoveryEdit(id, context: context)
+    }.runOnQueue(.main)
+    AsyncFunction("exportRecoveryRecording") { (id: String, promise: Promise) in
+      guard UIApplication.shared.applicationState == .active,
+            let presenter = self.appContext?.utilities?.currentViewController(), presenter.presentedViewController == nil else {
+        promise.reject("AUDIO_EXPORT", L("Não foi possível extrair o áudio.")); return
+      }
+      do {
+        let owner = ClarifyAudioSession.shared
+        let url = try owner.beginSharingRecording(id)
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+          popover.sourceView = presenter.view
+          popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+        }
+        controller.completionWithItemsHandler = { _, _, _, _ in
+          DispatchQueue.main.async { owner.endSharingRecording(id); promise.resolve(nil) }
+        }
+        presenter.present(controller, animated: true)
+      } catch { promise.reject("AUDIO_EXPORT", L("Não foi possível extrair o áudio.")) }
+    }.runOnQueue(.main)
+    AsyncFunction("getRecoveryRecordings") { () -> [[String: Any]] in
+      try ClarifyAudioSession.shared.recoveryRecordings()
+    }.runOnQueue(.main)
+    AsyncFunction("reprocessRecording") { (id: String, context: String) -> String in
+      try ClarifyAudioSession.shared.reprocessRecording(id, context: context)
+    }.runOnQueue(.main)
+    AsyncFunction("deleteRecoveryRecording") { (id: String) in
+      try ClarifyAudioSession.shared.deleteRecoveryRecording(id)
+    }.runOnQueue(.main)
     AsyncFunction("getHistory") { (before: String) -> [String: Any] in
       let page = try ClarifyAudioSession.shared.library().history(before: before, scope: ProcessingDestination.shared.historyScope, includeLocal: !ProcessingDestination.shared.computerMode)
+      let recordings = (try? ClarifyAudioSession.shared.recoveryRecordings()) ?? []
       var result = try JSONSerialization.jsonObject(with: JSONEncoder().encode(page)) as? [String: Any] ?? [:]
       result["context"] = ProcessingDestination.shared.historyContext
       if var entries = result["entries"] as? [[String: Any]] {
         for index in entries.indices {
           entries[index]["localOnly"] = page.localEntries[index]
           entries[index]["context"] = ProcessingDestination.shared.historyContext
+          if let recording = recordings.first(where: { ($0["historyId"] as? String) == page.entries[index].id }) {
+            entries[index]["recording"] = recording
+            if recording["useOriginal"] as? Bool == true {
+              entries[index]["text"] = page.entries[index].transcript
+              entries[index]["rewritten"] = false
+            }
+          }
         }
         result["entries"] = entries
       }
@@ -265,7 +312,11 @@ public class ClarifyCoreModule: Module {
     }.runOnQueue(.main)
     AsyncFunction("deleteHistory") { (id: String, localOnly: Bool, context: String) in
       guard context == ProcessingDestination.shared.historyContext else { throw ClarifyError(L("A conta mudou. Abra o histórico novamente.")) }
+      let owner = ClarifyAudioSession.shared
+      let recordingID = try owner.recoveryRecordings().first(where: { ($0["historyId"] as? String) == id })?["id"] as? String
+      if let recordingID { try owner.assertRecordingCanBeDeleted(recordingID) }
       try ClarifyAudioSession.shared.library().deleteHistory(id, scope: (localOnly && !ProcessingDestination.shared.computerMode) ? nil : ProcessingDestination.shared.historyScope)
+      if let recordingID { try owner.deleteRecoveryRecording(recordingID) }
       ClarifyAudioSession.shared.libraryChanged()
       ClarifyAudioSession.shared.syncHistory(force: true)
     }.runOnQueue(.main)

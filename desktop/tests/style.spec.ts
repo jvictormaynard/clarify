@@ -4,7 +4,7 @@ import { navigate, openStyleReview, openDisclosure } from "./settings-navigation
 settingsScenario({ initialPage: "style" }, () => {
 test("styles: simplified choices persist, legacy tones remain readable, and forbidden routes hide tone", async ({ page }, testInfo) => {
   const rpc = (method: string, args: unknown[] = []) => page.evaluate(request =>
-    (window as any).__TAURI_INTERNALS__.invoke("settings_call", request), { method, args });
+    (window as any).__testSettings(request), { method, args });
   await rpc("savePreference", ["setLanguage", ["en"]]);
   await rpc("savePreference", ["setDictationCleanupLevel", [""]]);
   await rpc("savePreference", ["setDictationWritingStyle", [""]]);
@@ -49,7 +49,7 @@ test("styles: output preference saves through the toolbar owner without saving p
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this unsaved provider draft.");
   const output = page.getByRole("combobox", { name: "Idioma de saída", exact: true });
   await output.click(); await page.getByRole("option", { name: "Español", exact: true }).click();
-  const state = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
   expect(state.language).toBe("es"); expect(state.routePrompt).not.toBe("Keep this unsaved provider draft.");
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this unsaved provider draft.");
   await page.reload(); await navigate(page, "Estilo"); await openDisclosure(page, "Mais opções");

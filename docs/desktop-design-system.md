@@ -4,13 +4,12 @@ The React/Electron desktop window follows the Wispr Flow Windows reference
 with Clarify branding and semantic colors. Shared React controls retain their
 existing focus, keyboard, bridge and lifecycle owners. Its workspace includes dictation, style, text actions, dictionary,
 snippets and history. Application preferences and account access use a Settings
-dialog. The fixed dock,
-quick menus and Qt/QML recovery views retain their own theme and
-behavior. Mobile and the server are outside this system.
+dialog. The dock and quick menus use their existing compact React styles. The native
+file-import panel retains its Qt/QML theme. Mobile and the server are outside this system.
 
 ## Required use
 
-This guide is the sole visual specification for React/Tauri desktop pages and
+This guide is the sole visual specification for React/Electron desktop pages and
 controls, including new pages. Read it before any desktop visual change. Apply
 the standard within authorized UI work even when the request has no prior
 conversation or does not repeat the style requirement. Routine work that follows
@@ -22,9 +21,9 @@ colors in separate page controls is not sufficient. Keep visual metrics here;
 update the shared implementation and this guide together when the standard
 changes. Do not create another style guide or copy the metrics into `AGENTS.md`.
 
-For Qt/QML work, preserve the native theme, shell, passive pill focus and existing
-interaction contracts. Do not apply Settings panels, dialogs or popup geometry
-to the pill or its quick menus.
+The pill and quick menus have one React/Electron implementation. Qt/QML owns
+only the native file-import panel and its existing theme. Preserve passive pill
+focus and the native input ownership contracts.
 
 ## Source reference
 
@@ -471,7 +470,7 @@ isolated controller-backed browser checks. Cover labels, help, keyboard, focus,
 page navigation, local filters, automatic preferences, drafts, managed accounts
 and 640/820/1040 px geometry. Run the TypeScript/production build and Settings
 suite. Python behavior changes also require the Python suite. Native Windows checks cover the
-Tauri/QProcess boundary and the actual window.
+Electron/QProcess boundary and the actual window.
 
 Automated checks establish only the tested interactions. Manual Windows
 acceptance of DPI, global hotkeys, tray, transparency and passive pill focus
