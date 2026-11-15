@@ -222,6 +222,10 @@ The practice step has a local text field in the guide. Done is enabled only
 when that field contains non-whitespace text; it does not use a global transcript
 or require another app or manual confirmation. Practice text is not persisted.
 
+Hold the keyboard Space bar, then drag left or right to move the text cursor.
+Release your finger at the position where you want to type. A held Space bar
+does not insert a space. Vertical movement across wrapped lines is not supported.
+
 Tap the keyboard microphone once to start continuous recording. There is no hold
 or upward lock gesture. A panel within the same keyboard height provides separate
 cancel and finish actions, with the globe still available. Its waveform uses the
@@ -677,6 +681,11 @@ simulator. No public API removes that system UI.
 Start, upward lock and finish use retained, prepared standard medium-impact
 generators. Typing uses a lighter impact. Generators do not depend
 on the extension's remote window and do not scale the standard pulse intensity.
+Each new key highlight also requests the standard system keyboard click through
+`UIDevice.playInputClick()`. UIKit controls playback from the keyboard-sound
+setting and input-view visibility. Non-key typing feedback and recording actions
+do not request this click. Audible output and click timing need physical-device
+acceptance.
 The host enables haptics before activating audio input. Mobile and desktop use
 the same original WAV cues from `assets/sounds/`: two hollow pops with 55 ms
 between note starts. Start ascends; stop and recording cancellation descend.

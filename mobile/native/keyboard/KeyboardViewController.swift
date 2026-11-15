@@ -4,8 +4,9 @@ import SwiftUI
 import KeyboardHostSupport
 #endif
 
-final class KeyboardInputView: UIInputView {
+final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
   static let contentHeight: CGFloat = 278
+  var enableInputClicksWhenVisible: Bool { true }
   override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
     super.init(frame: frame, inputViewStyle: inputViewStyle)
     // Publish one height before UIKit attaches and animates this input view.
@@ -190,6 +191,7 @@ class KeyboardViewController: UIInputViewController {
   private var recordingPanelVisible = false
   private var recordingError: String?
   private let keys = KeyGridView()
+  private var requestedNumbersAndPunctuation = false
   private let typing = TypingAssistant(autocorrectionEnabled: false)
   private var typingVocabularyRevision = -1
   private var typingVocabularyCheckedAt = Date.distantPast
@@ -286,7 +288,19 @@ class KeyboardViewController: UIInputViewController {
     cancel.accessibilityIdentifier = "clarify.keyboard.cancel"
     cancel.addAction(UIAction { [weak self] _ in self?.cancelRecording() }, for: .touchUpInside)
     keys.previewContainer = view
-    keys.onKeyPress = { [weak self] in self?.feedback.type() }
+    keys.onKeyPress = { [weak self] in self?.feedback.pressKey() }
+    keys.onPrepareCursor = { [weak self] in
+      guard let self, self.attached else { return }
+      self.typing.prepareCursor(in: self.textDocumentProxy)
+    }
+    keys.onMoveCursor = { [weak self] offset in
+      guard let self, self.attached, !self.keys.isHidden else { return false }
+      self.dictationEdit = nil
+      let accepted = self.typing.moveCursor(offset, in: self.textDocumentProxy)
+      self.updateCapitalization(); self.updateSuggestions()
+      return accepted
+    }
+    keys.onEndCursor = { [weak self] in self?.typing.endCursor() }
     keys.onInsert = { [weak self] text in
       guard let self = self else { return }
       self.dictationEdit = nil
@@ -374,44 +388,63 @@ class KeyboardViewController: UIInputViewController {
   }
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
+    updateInputTraits()
     ClarifyKeyboardHeightDidAppear(self)
   }
   override func textDidChange(_ textInput: UITextInput?) {
     super.textDidChange(textInput)
+    updateInputTraits()
     // Context is used only locally for casing; it is never saved or sent to Groq.
-    let proxy = textDocumentProxy
-    let appearance: UIUserInterfaceStyle = proxy.keyboardAppearance == .dark ? .dark : (proxy.keyboardAppearance == .light ? .light : .unspecified)
-    let returnType = proxy.returnKeyType ?? .default
-    let changed = view.overrideUserInterfaceStyle != appearance || keys.returnType != returnType
-    view.overrideUserInterfaceStyle = appearance
-    keys.returnType = returnType
     updateCapitalization()
-    if changed { keys.rebuild() }
     updateSuggestions()
+  }
+  private func updateInputTraits() {
+    let numeric = textDocumentProxy.keyboardType == .numbersAndPunctuation
+    if requestedNumbersAndPunctuation != numeric {
+      requestedNumbersAndPunctuation = numeric
+      keys.model.page = numeric ? .numbers : .letters
+      keys.rebuild()
+    }
+    // UIKit updates the controller's appearance traits even when the proxy's
+    // keyboardAppearance still describes the previous host appearance.
+    // Let the view inherit those traits instead of pinning it to stale data.
+    let returnType = textDocumentProxy.returnKeyType ?? .default
+    if keys.returnType != returnType { keys.returnType = returnType; keys.rebuild() }
+    updateReturnAvailability()
+  }
+  private func updateReturnAvailability() {
+    keys.returnEnabled = textDocumentProxy.enablesReturnKeyAutomatically != true || textDocumentProxy.hasText
   }
   private func updateCapitalization() {
     let proxy = textDocumentProxy
     guard !keys.model.shiftIsManual else { return }
-    // An empty host field may expose nil context. Do not mistake unavailable
-    // context in a nonempty field for the beginning of a sentence.
-    guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
     let type = proxy.autocapitalizationType ?? .sentences
-    let next: KeyboardState.Shift = type == .allCharacters ? .caps :
-      ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
+    let next: KeyboardState.Shift
+    switch type {
+    case .none: next = .off
+    case .allCharacters: next = .caps
+    default:
+      // An empty host field may expose nil context. Do not mistake unavailable
+      // context in a nonempty field for the beginning of a sentence.
+      guard let context = proxy.documentContextBeforeInput ?? (proxy.hasText ? nil : "") else { return }
+      next = ((type == .sentences && KeyboardState.startsSentence(after: context)) ||
        (type == .words && (context.isEmpty || context.last?.isWhitespace == true)) ? .once : .off)
+    }
     if keys.model.shift != next { keys.model.shift = next; keys.rebuild() }
   }
   override func selectionDidChange(_ textInput: UITextInput?) {
     super.selectionDidChange(textInput)
+    updateInputTraits()
     updateCapitalization()
     updateSuggestions()
   }
   override func viewWillAppear(_ animated: Bool) {
-    super.viewWillAppear(animated); attached = true; feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
+    super.viewWillAppear(animated); attached = true; updateInputTraits(); feedback.prepare(); refreshFromStore(); updateCapitalization(); updateSuggestions(); timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.refreshFromStore() }
   }
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated); attached = false; timer?.invalidate(); timer = nil
+    keys.cancelAllPresses()
     waveform.update(level: 0, recording: false)
     dictationEdit = nil; undoDictation.isHidden = true
     invalidateActivationSource()
@@ -636,6 +669,7 @@ class KeyboardViewController: UIInputViewController {
     return !state.textOperation || (textOperationID == id && textSelection == currentTextSelection())
   }
   private func updateSuggestions() {
+    updateReturnAvailability()
     if typingVocabularyRevision != state.libraryRevision || Date().timeIntervalSince(typingVocabularyCheckedAt) >= 1 {
       let vocabulary = store?.keyboardDictionary()
       let pending = vocabulary.map { store?.keyboardAdditions(scope: $0.scope).map { $0.1.term } ?? [] } ?? []
