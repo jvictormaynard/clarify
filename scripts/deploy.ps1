@@ -140,6 +140,11 @@ if (-not $BuildOnly) {
     $taskProfileRoot = [System.IO.Path]::GetFullPath($ProfilePath).TrimEnd('\', '/') + '\'
     $taskProtectedRoots = @($taskProfileRoot, $taskBackupRoot)
     $taskMutableRoots = @($repoRoot, $targetDir, $buildRoot)
+    if ($DesktopShellDirectory) {
+        $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory -ErrorAction Stop).ProviderPath
+        # Distribution notices are written beside a supplied shell, not inside it.
+        $taskMutableRoots += @($DesktopShellDirectory, (Split-Path -Parent $DesktopShellDirectory))
+    }
     foreach ($taskRoot in @($ProfilePath, $ProfileBackupRoot) + $taskMutableRoots) {
         $taskAncestor = [System.IO.Path]::GetFullPath($taskRoot)
         while ($taskAncestor) {
