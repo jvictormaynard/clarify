@@ -5,3 +5,5 @@ djangorestframework==3.18.3
 psycopg[binary]==3.3.6
 gunicorn==26.2.0
 requests==2.34.2
+# Keep Django's Windows timezone dependency in the shared cross-platform lock.
+tzdata==2026.3
