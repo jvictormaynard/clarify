@@ -6,9 +6,9 @@ published Windows x64 executable, a real sidecar, and a versioned audio
 fixture. Unit tests and a successful PyInstaller job are useful gates, but they
 do not prove the packaged Settings flow, offline inference, or process cleanup.
 
-## Current evidence
+## Historical source evidence (2026-08-04)
 
-The current source baseline is commit `fd23eeaa548745688706fdbb9933f6f52d231eaf`
+These results apply only to commit `fd23eeaa548745688706fdbb9933f6f52d231eaf`
 (2026-08-04). From the isolated Linux worktree:
 
 | Gate | Command/evidence | Result |
