@@ -1,6 +1,41 @@
 import type { Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import { test, expect, settingsScenario } from "./settings-fixture";
 import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure, settingsSectionLabel } from "./settings-navigation";
+
+test("diagnostics are generated on request, reviewed and saved locally", async ({ page }, testInfo) => {
+  let requests = 0;
+  await page.route("**/__test_rpc", async route => {
+    if (route.request().postDataJSON().method !== "getDiagnostics") return route.fallback();
+    requests++;
+    if (requests === 1) return route.fulfill({ json: { error: "Could not generate report" } });
+    return route.fallback();
+  });
+  await navigate(page, "Privacidade");
+  expect(requests).toBe(0);
+  const generate = page.getByRole("button", { name: "Gerar diagnóstico", exact: true });
+  await generate.click();
+  await expect(page.getByRole("alert")).toHaveText("Não foi possível gerar o diagnóstico. Tente novamente.");
+  await generate.click();
+  const report = page.getByRole("textbox", { name: "Conteúdo do diagnóstico", exact: true });
+  await expect(report).toHaveValue(/"application"/);
+  await expect(report).toHaveAttribute("readonly", "");
+  const contents = await report.inputValue();
+  expect(JSON.parse(contents).application.name).toBe("Clarify");
+  expect(requests).toBe(2);
+  const saving = page.waitForEvent("download");
+  const save = page.getByRole("button", { name: "Salvar diagnóstico", exact: true });
+  await save.click();
+  const download = await saving;
+  expect(download.suggestedFilename()).toBe("clarify-diagnostics.json");
+  expect(await readFile((await download.path())!, "utf8")).toBe(contents);
+  await page.screenshot({ path: testInfo.outputPath("diagnostics.png") });
+  await page.setViewportSize({ width: 640, height: 520 });
+  await save.scrollIntoViewIfNeeded();
+  await expect(save).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: testInfo.outputPath("diagnostics-compact.png") });
+});
 
 for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophones"] as const) {
   test(`responsive operations: ${method} keeps navigation and unrelated controls stable`, async ({ page }) => {
