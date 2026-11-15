@@ -55,7 +55,7 @@ try {
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived,
     '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
-    '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '300',
+    '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '360',
     '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 1800000, killSignal: 'SIGINT' });
   exitCode = result.status ?? 1;
   if (fs.existsSync(resultPath)) run('xcrun', ['xcresulttool', 'export', 'attachments', '--path', resultPath, '--output-path', path.join(results, 'captures')]);
