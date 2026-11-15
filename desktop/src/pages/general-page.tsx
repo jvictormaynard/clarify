@@ -41,8 +41,10 @@ export function GeneralPage({ controller }: SettingsPageProps) {
               type="button"
               className="w-full"
               disabled={!state.updateSupported || state.updateBusy}
-              onClick={() => void run("checkForUpdates")}
-            >{t("Verificar atualizações")}</Button>
+              onClick={() => void run(state.updateAvailable ? "installUpdate" : "checkForUpdates")}
+            >{state.updateAvailable
+              ? t("Instalar atualização {v0}", { v0: state.updateVersion || "" })
+              : t("Verificar atualizações")}</Button>
           </Row>
         </Section>
       )}

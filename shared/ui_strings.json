@@ -8688,5 +8688,50 @@
     "pt": "Selecione de uma a cinco palavras, com até 256 caracteres.",
     "en": "Select one to five words, up to 256 characters.",
     "es": "Selecciona entre una y cinco palabras, hasta 256 caracteres."
+  },
+  "Conclua as tarefas em andamento para atualizar.": {
+    "pt": "Conclua as tarefas em andamento para atualizar.",
+    "en": "Finish the active tasks to update.",
+    "es": "Termina las tareas en curso para actualizar."
+  },
+  "Salve ou descarte as alterações para atualizar.": {
+    "pt": "Salve ou descarte as alterações para atualizar.",
+    "en": "Save or discard your changes to update.",
+    "es": "Guarda o descarta los cambios para actualizar."
+  },
+  "Feche a prática de ditado para atualizar.": {
+    "pt": "Feche a prática de ditado para atualizar.",
+    "en": "Close dictation practice to update.",
+    "es": "Cierra la práctica de dictado para actualizar."
+  },
+  "Pare o teste do microfone para atualizar.": {
+    "pt": "Pare o teste do microfone para atualizar.",
+    "en": "Stop the microphone test to update.",
+    "es": "Detén la prueba del micrófono para actualizar."
+  },
+  "Aguarde a tarefa do modelo local terminar para atualizar.": {
+    "pt": "Aguarde a tarefa do modelo local terminar para atualizar.",
+    "en": "Wait for the local model task to finish before updating.",
+    "es": "Espera a que termine la tarea del modelo local para actualizar."
+  },
+  "Aguarde a conexão com o provedor terminar para atualizar.": {
+    "pt": "Aguarde a conexão com o provedor terminar para atualizar.",
+    "en": "Wait for the provider connection to finish before updating.",
+    "es": "Espera a que termine la conexión con el proveedor para actualizar."
+  },
+  "Feche a janela do Clarify para aplicar a atualização.": {
+    "pt": "Feche a janela do Clarify para aplicar a atualização.",
+    "en": "Close the Clarify window to apply the update.",
+    "es": "Cierra la ventana de Clarify para aplicar la actualización."
+  },
+  "Conclua a gravação ou o processamento e feche o resultado para atualizar.": {
+    "pt": "Conclua a gravação ou o processamento e feche o resultado para atualizar.",
+    "en": "Finish recording or processing and close the result to update.",
+    "es": "Termina la grabación o el procesamiento y cierra el resultado para actualizar."
+  },
+  "Instalar atualização {v0}": {
+    "pt": "Instalar atualização {v0}",
+    "en": "Install update {v0}",
+    "es": "Instalar actualización {v0}"
   }
 }

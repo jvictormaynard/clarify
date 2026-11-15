@@ -341,7 +341,14 @@ final class KeyboardExtensionTests: XCTestCase {
       let choices = row(names), grouped = row([group], exact: true)
       var selected = false
       for _ in 0..<8 {
-        if choices.exists && choices.isHittable { choices.tap(); selected = true; break }
+        if choices.exists && choices.isEnabled {
+          let frame = choices.frame
+          // Settings can expose a valid regional row without an AX activation point.
+          if !frame.isNull && !frame.isInfinite && !frame.isEmpty && settings.frame.contains(frame) {
+            choices.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            selected = true; break
+          }
+        }
         if grouped.exists && grouped.isHittable {
           grouped.tap()
           XCTAssertTrue(choices.waitForExistence(timeout: 5), settings.debugDescription)

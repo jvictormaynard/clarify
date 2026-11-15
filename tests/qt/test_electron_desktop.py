@@ -10,7 +10,7 @@ from PySide6.QtCore import QEventLoop, QObject, Property, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
-from clarify.desktop.qml_electron import ElectronDesktopProcess
+from clarify.desktop.qml_electron import ElectronDesktopProcess, ElectronQtShell
 from clarify.desktop.qml_settings import QmlSettingsController
 from local_asr_product import LocalASRProductState
 from tests.support.settings import _repositories
@@ -327,6 +327,20 @@ class ElectronDesktopTests(unittest.TestCase):
         self.assertFalse(
             any(message.get("window") == "settings-hide" for message in self.messages)
         )
+
+    def test_second_launch_opens_workspace_without_interrupting_active_work(self):
+        shell = ElectronQtShell(Mock(), desktop=self.host)
+        with (
+            patch.object(self.bridge, "openSettings") as open_settings,
+            patch.object(self.host, "set_pill_visible") as show_pill,
+        ):
+            shell.activationRequested.emit()
+            open_settings.assert_called_once()
+            open_settings.reset_mock()
+            self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.RECORDING))
+            shell.activationRequested.emit()
+            open_settings.assert_not_called()
+            show_pill.assert_called_with(True)
 
     def test_history_stamp_refresh_does_not_read_full_settings_library(self):
         self.host._ready = True
