@@ -328,7 +328,7 @@ export const copyTextActionPreview = (context: string, generation: number, isCur
   if (!isCurrent()) return null;
   return invoke<Settings>({ method: "copyTextActionPreview", args: [context, generation] });
 });
-
+export const getDiagnostics = () => queuedCall<string>("getDiagnostics", []);
 // Pairing images contain a bootstrap credential. Keep them out of Settings state.
 export const getComputerPairing = () => queuedCall<{ image?: string; expiresAt?: number }>("getComputerPairing", []);
 export function call<M extends SettingsMethod>(

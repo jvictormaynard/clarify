@@ -252,6 +252,11 @@ class SettingsProtocol:
                 result = self._client_snapshot()
             elif method == "poll" and not args:
                 result = self.poll()
+            elif method == "getDiagnostics":
+                if args:
+                    raise ValueError()
+                # Reports are user-requested responses, never snapshot properties.
+                result = self.settings.getDiagnostics()
             elif method == "getComputerPairing":
                 if args:
                     raise ValueError()
