@@ -89,7 +89,7 @@ registration is deferred until a business account is available.
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
 - Portuguese, English and Spanish interfaces, independently of dictation language
-- A React/Tauri workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
+- A React/Electron workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
 - A Settings dialog for General, Devices, Models and services, Shortcuts, Privacy and Clarify account
 - Named text actions with custom instructions, optional shortcuts and previews
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
@@ -108,9 +108,9 @@ chave** (Validate and save key). Validate or discard those edits before saving
 other drafts. Closing Settings can save or discard drafts from all pages.
 
 Use **Style** for dictation cleanup, an optional action after dictation and
-application writing styles. **Text actions** starts with Rewrite and Translation;
-create another action to use your own instructions. Action, processing-profile
-and application-style dialogs keep edits as drafts until **Save**. **Cancel**
+one general writing style. **Text actions** starts with Rewrite and Translation;
+create another action to use your own instructions. Action and processing-profile
+dialogs keep edits as drafts until **Save**. **Cancel**
 discards that dialog's edits. Previews use sample text and do not paste into
 another application. Local Whisper remains an audio transcription provider.
 
@@ -154,7 +154,7 @@ hours while running. Automatic installation is off by default. A red dot on
 the home pill's Settings button marks an available update. Open its menu and
 select **Install update** to download and install it.
 
-To enable automatic installation, open **Settings → Geral → Atualizações** and
+To enable automatic installation, open **Settings → Sistema → Atualizações** and
 enable **Atualização automática**. This preference saves automatically. Clarify
 downloads in the background, waits until active work is complete and Settings are closed,
 then restarts to apply the update. Settings, keys, models, and shortcuts stay
@@ -186,22 +186,23 @@ do not need Python, Node.js, or SoX.
    endpoint, enablement, and optional prompt independently.
 
 Community portable executables are not code-signed. Verify the SHA-256 file
-published with the release before running the download. The MSI and in-app
-update path remain disabled until the signed rollout gates are complete.
+published with the release before running the download. Portable updates use
+authenticated Ed25519 metadata. The MSI and its separate Authenticode update
+channel remain disabled until their rollout gates are complete.
 
 ### Run from source on Windows
 
 Requirements: Windows 10 or 11, [Python 3.11 or newer](https://www.python.org/downloads/windows/),
-and a working microphone. Building the new Settings also requires Node.js 22,
-Rust MSVC, Visual Studio C++ Build Tools, and the Windows SDK. Running Settings
-requires Microsoft Edge WebView2. See [Development](docs/development.md).
+and a working microphone. Building the desktop shell also requires Node.js 22.
+The default Electron shell does not require Rust or WebView2. The legacy Tauri
+alternative needs those tools. See [Development](docs/development.md).
 
 ```powershell
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\scripts\build-settings.ps1
-$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
 .\start.bat
 ```
 
@@ -402,7 +403,8 @@ MSIs must come from the protected signing workflow.
 
 ```text
 desktop/src/                  React/TypeScript Settings and shared controls
-desktop/src-tauri/             Tauri window and private process bridge
+desktop/electron/              Electron windows and private process bridge
+desktop/src-tauri/             Legacy Tauri alternative
 clarify/desktop/qml_app.py      Production Qt Quick/QML entrypoint
 clarify/desktop/qml/            Production QML surfaces and theme
 clarify/desktop/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
@@ -433,12 +435,11 @@ docs/                          Architecture and development documentation
 .agents/skills/                Repository-specific maintainer workflows
 ```
 
-The application uses Python/PySide6/Qt Quick for the pill and desktop engine,
-and React/TypeScript in a Tauri WebView2 window for Settings. It is not Electron.
-`start.bat`, the
-portable build, and the release workflow all use the QML entrypoint; the old
-CustomTkinter entrypoint is not part of the runtime or package. The Electron
-prototype was removed from the checkout and remains available in Git history. See
+The application uses Python/PySide6 for the desktop engine and native input,
+with React/TypeScript in a bundled Electron shell for Settings and the dock.
+Qt Quick supplies recovery views. `start.bat`, the portable build and the release
+workflow use the QML entrypoint. CustomTkinter is not the shipping frontend;
+Tauri remains a legacy Settings alternative. See
 [Architecture](docs/architecture.md) before making structural changes.
 Production Qt code lives in `clarify/desktop/`; `spikes/` contains only historical comparison tools.
 `app.py` is a legacy frontend retained for compatibility tests, not the shipping
