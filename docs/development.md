@@ -306,13 +306,25 @@ startup. The pill microphone remains a click-to-toggle control in either mode.
 ## Maintainer deploy from WSL
 
 ```bash
-npm run deploy
+npm run deploy -- -ProfilePath 'C:\Users\you\AppData\Roaming\Clarify' -ProfileBackupRoot 'C:\Users\you\ClarifyBackups' -ExclusiveProfileAccess
 ```
 
 This invokes `scripts/deploy.ps1` with Windows PowerShell, stages source files on
-the native Windows temporary directory, builds, backs up the installed
-executable, replaces it, and restarts Clarify. Override the discovered
+the native Windows temporary directory, builds, verifies a private profile backup,
+backs up the installed executable, replaces it, and restarts Clarify. Override the discovered
 target with `CLARIFY_INSTALL_PATH` when needed.
+Use the installed app's physical profile (`CLARIFY_DATA_DIR`, otherwise
+`%APPDATA%\Clarify`), accounting for MSIX redirection. The existing backup directory
+must be outside profile, source, installation and build trees.
+`-ExclusiveProfileAccess` confirms that all other writers are stopped and cannot
+restart during deployment; it is not an application lock. Known process identities
+are checked before shutdown. Backup failure prevents replacement/restart.
+
+The private backup includes hidden files, SQLite sidecars and experimental audio.
+Only attempts with `manifest.json` passed inventory/hash verification. Backups
+preserve file bytes and modification times, not original ACLs or alternate streams.
+Retention is unchanged. Keep backups local/private; verify hashes and stop all
+writers before a separate restore. Links, reparse points and overlapping trees fail.
 The script also builds Settings unless `-SettingsExecutable` is supplied.
 Use `-BuildOnly` to validate a complete portable package without stopping,
 replacing, or launching the installed app.

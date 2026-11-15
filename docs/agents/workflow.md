@@ -17,6 +17,11 @@ ownership, scope, or a costly design choice. Continue independent work while
 waiting; silence is not approval. A clarification or status question does not
 cancel the active task unless the user says so.
 
+Check configured remote runners and linked hosts before declaring a platform
+unavailable. Reuse standing decisions unless material facts change. When an
+explicit restriction blocks progress, prepare the smallest correction and name
+the restriction once.
+
 Preserve unrelated work and the starting checkout. Commit, push, PR creation,
 merge, tracker changes, account changes, deployment, and publication follow the
 user's request and prior authorization. Prepare a reviewable local result before
@@ -54,11 +59,17 @@ checks, governing instructions, and permitted Git actions. Use the environment's
 worktree delegation facility when it provides checkout isolation. Serialize
 competing changes to schemas, locks, migrations, and release metadata.
 
+Set shared interfaces first and limit writers to ready work that integration
+and validation capacity can accept.
+
 Workers verify their directory before edits. They do not edit sibling worktrees,
 publish, integrate other workers, or start more agents without assignment.
 Do not share writable profiles, test databases, build outputs, recordings, or
 ports. Read-only reviewers can inspect one fixed candidate without a new worktree.
 If delegation is unavailable, use sequential passes and report the limit.
+
+Reserve shared CPU/disk capacity and exclusive native test/install windows;
+worktrees do not isolate devices, shortcuts or installed applications.
 
 The coordinator integrates explicit task diffs in dependency order and validates
 the complete result. Use a separate integration worktree for independent feature
@@ -83,6 +94,9 @@ actions, frontend/backend consistency, test signal, and real UI behavior where
 affected. Load design or specification methods only when a concrete decision
 needs them. Explain material decisions in the PR or result; do not create a
 per-task design or audit document by default.
+
+Remove replaced callers within scope and preserve required migrations. Test a
+minimal real path early for external and native integrations.
 
 Preserve stale-result rejection, accepted publication ownership, once-only usage
 accounting, focus-safe clipboard effects, audio cleanup, atomic persistence,
@@ -122,6 +136,9 @@ changes and a short recording when motion or timing matters. State native
 Windows acceptance separately. Static Swift checks on Windows do not prove
 iOS behavior. Environment failures and unavailable platforms remain unexecuted
 gates; repair in-scope failures and report unrelated failures with evidence.
+
+Resolve navigation and representative states in the real client before expanding
+a broad UI change. Label mockups and fixture captures accurately.
 
 ## Tests worth retaining
 
@@ -214,6 +231,8 @@ engineering. Reviewers receive the same fixed candidate, request, rules, and
 terminal check results; they do not write, run mutating checks, or delegate.
 Repair confirmed findings and rerun affected checks. Disclose unavailable review.
 
+Consolidate known repairs before another expensive validation run.
+
 Use at most three review rounds by default, including the initial review.
 Limit follow-ups to changed behavior and open findings. Up to five rounds are
 permitted only for an evidenced security, data, permissions, or concurrency
@@ -235,11 +254,23 @@ required checks/reviews for the actual candidate and verified merge state.
 Report the outcome, relevant evidence, and material open gates. Never call a
 running check, pending CI, or unverified deployment complete.
 
+Report the exact candidate, new results, blocker, owner and next action or event.
+Do not schedule repeated checks solely to restate an unchanged block.
+
 ## Publication
 
 Validation and publication are separate. CI passing does not prove manual
 Windows acceptance, Apple availability, or a public release. Each platform has
 one publication coordinator after feature integration.
+
+Prepare native control, isolated profiles/instances, fake routes, shortcut access
+and the test window during implementation or CI. Check Apple access/agreements
+before submission. Readiness does not replace final-candidate acceptance.
+Before an authorized installation update, stop profile writers and verify a
+private data backup; an executable rollback does not protect recordings.
+
+Select each platform's source and explain included/excluded changes before
+packaging. Follow the platform guide for acceptance and public verification.
 
 For desktop, follow [clarify-release](../../.agents/skills/clarify-release/SKILL.md)
 and [release automation](../release-automation.md): dedicated preparation, exact

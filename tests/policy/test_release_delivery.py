@@ -5,6 +5,8 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import io
+import os
 from pathlib import Path
 import threading
 import tempfile
@@ -14,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from ci import evidence
 from ci.tasks import release_jobs
+from scripts import release_status as report_status
 from scripts import release_delivery as delivery
 from scripts import app_store_handoff as store
 
@@ -312,6 +315,153 @@ class ReleaseDeliveryTests(unittest.TestCase):
 
     def save_intent(self):
         self.files[(".github/release-intent.json", SOURCE)] = json.dumps(self.intent)
+
+    def test_status_pins_source_and_never_writes(self):
+        api = report_status.ReadOnlyGitHub("fake", self.api.base.split("/repos/")[0])
+        result = report_status.report(api, "desktop", SOURCE)
+        self.assertEqual(result["source_sha"], SOURCE)
+        self.assertEqual(result["tag"], "v1.2.4")
+        self.assertEqual(result["ci"]["coverage"], "verified")
+        self.assertEqual(result["preparation"]["state"], "verified")
+        self.assertEqual(result["included_changes"]["state"], "unknown")
+        self.assertEqual(result["acceptance"]["state"], "unknown")
+        self.assertEqual(result["publication"]["state"], "missing")
+        self.assertTrue(all(method == "GET" for method, _, _ in self.calls))
+        for method in ("POST", "PATCH", "DELETE", "PUT"):
+            with self.subTest(method=method), self.assertRaises(delivery.ReleaseError):
+                api.request(method, "/git/refs", {})
+        with self.assertRaises(delivery.ReleaseError):
+            report_status.report(api, "desktop", "main")
+        with self.assertRaises(delivery.ReleaseError):
+            report_status.report(api, "desktop", SOURCE, tag="ios/v1.2.4-build1")
+        self.tag = BASE
+        with self.assertRaisesRegex(delivery.ReleaseError, "another source"):
+            report_status.report(api, "desktop", SOURCE)
+
+    def test_status_does_not_turn_green_aggregate_or_pending_ci_into_coverage(self):
+        for outcome in ("failure", None, "success"):
+            with self.subTest(outcome=outcome):
+                self.run.update(
+                    conclusion=outcome,
+                    status="in_progress" if outcome is None else "completed",
+                )
+                self.coverage.return_value = set()
+                result = report_status.report(self.api, "desktop", SOURCE)
+                self.assertEqual(result["ci"]["coverage"], "unverified")
+                self.assertIn("CI coverage", result["next_action"])
+        with patch.object(self.api, "pages", wraps=self.api.pages) as pages:
+            # The workflow list can contain no evidence at all.
+            pages.side_effect = lambda path, key=None: (
+                []
+                if "ci.yml/runs" in path
+                else delivery.GitHub.pages(self.api, path, key)
+            )
+            result = report_status.report(self.api, "desktop", SOURCE)
+            self.assertEqual(result["ci"]["state"], "missing")
+
+    def test_status_mobile_keeps_apple_and_other_component_intent_unknown(self):
+        result = report_status.report(self.api, "mobile", SOURCE)
+        self.assertEqual(result["tag"], "ios/v0.9.2-build33")
+        self.assertEqual(result["preparation"]["state"], "unverified")
+        self.assertEqual(result["publication"]["state"], "unknown")
+        self.assertEqual(result["acceptance"]["state"], "unknown")
+
+    def test_status_cli_works_locally_with_token_and_json_without_workflow_outputs(
+        self,
+    ):
+        api = report_status.ReadOnlyGitHub("fake", self.api.base.split("/repos/")[0])
+        with (
+            patch.dict(os.environ, {"GH_TOKEN": "fake"}, clear=True),
+            patch(
+                "sys.argv",
+                [
+                    "release_delivery.py",
+                    "status",
+                    "--component",
+                    "desktop",
+                    "--source-sha",
+                    SOURCE,
+                    "--json",
+                ],
+            ),
+            patch.object(report_status, "ReadOnlyGitHub", return_value=api),
+            patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            self.assertEqual(delivery.main(), 0)
+        self.assertEqual(json.loads(output.getvalue())["source_sha"], SOURCE)
+        self.assertTrue(all(method == "GET" for method, _, _ in self.calls))
+
+    def test_status_candidate_existence_and_success_do_not_prove_acceptance(self):
+        # A successful run and artifact listing do not authenticate a producer.
+        self.publication_runs = [
+            {
+                "id": 55,
+                "run_attempt": 2,
+                "head_sha": SOURCE,
+                "head_branch": "v1.2.4",
+                "conclusion": "success",
+                "status": "completed",
+            }
+        ]
+        self.routes["/actions/runs/55"] = self.publication_runs[0]
+        self.routes["/actions/runs/55/artifacts"] = {
+            "artifacts": [
+                {
+                    "id": 88,
+                    "name": "desktop-candidate-55-2",
+                    "digest": "sha256:" + "f" * 64,
+                    "expired": True,
+                }
+            ]
+        }
+        result = report_status.report(self.api, "desktop", SOURCE)
+        artifact = result["candidates"][0]["artifacts"][0]
+        self.assertEqual(artifact["producer"]["state"], "unverified")
+        self.assertEqual(result["acceptance"]["state"], "unknown")
+        self.assertEqual(result["publication"]["state"], "missing")
+        self.assertTrue(all(method == "GET" for method, _, _ in self.calls))
+
+    def test_status_range_requires_published_component_ancestor_and_complete_commits(
+        self,
+    ):
+        self.routes["/releases"] = [
+            {"tag_name": "v1.2.3", "published_at": "2026-10-01"},
+            {"tag_name": "ios/v1.2.3-build99", "published_at": "2026-10-02"},
+        ]
+        self.tag = BASE
+        comparison = self.routes["/compare/" + BASE + "..." + SOURCE]
+        comparison.update(
+            merge_base_commit={"sha": BASE},
+            total_commits=1,
+            commits=[
+                {
+                    "sha": SOURCE,
+                    "commit": {"message": "Fix shared clipboard\n\nDetails"},
+                }
+            ],
+        )
+        result = report_status.included_changes(
+            self.api, "desktop", SOURCE, "v1.2.4", None
+        )
+        self.assertEqual(result["previous_tag"], "v1.2.3")
+        self.assertEqual(result["previous_source_sha"], BASE)
+        self.assertEqual(
+            result["commits"], [{"sha": SOURCE, "subject": "Fix shared clipboard"}]
+        )
+        for previous in ("ios/v1.2.3-build99", "v1.2.2", "v1.2.4"):
+            with (
+                self.subTest(previous=previous),
+                self.assertRaises(delivery.ReleaseError),
+            ):
+                report_status.included_changes(
+                    self.api, "desktop", SOURCE, "v1.2.4", previous
+                )
+        for values in ({"status": "diverged"}, {"status": "ahead", "total_commits": 2}):
+            comparison.update(values)
+            with self.assertRaises(delivery.ReleaseError):
+                report_status.included_changes(
+                    self.api, "desktop", SOURCE, "v1.2.4", None
+                )
 
     def mutations(self):
         return [(path, body) for method, path, body in self.calls if method == "POST"]

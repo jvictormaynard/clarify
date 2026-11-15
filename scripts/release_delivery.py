@@ -974,6 +974,7 @@ def main():
     parser.add_argument(
         "command",
         choices=[
+            "status",
             "prepare",
             "promote",
             "verify",
@@ -987,11 +988,33 @@ def main():
     parser.add_argument("--source-sha")
     parser.add_argument("--tag")
     parser.add_argument("--output")
+    parser.add_argument("--previous-tag")
+    parser.add_argument("--json", action="store_true")
     parser.add_argument("--availability-only", action="store_true")
     parser.add_argument("--reuse-internal-ci", action="store_true")
     args = parser.parse_args()
     reuse_proof = {} if args.reuse_internal_ci else None
     try:
+        if args.command == "status":
+            from scripts import release_status
+
+            require(
+                os.environ.get("GITHUB_REPOSITORY", REPOSITORY) == REPOSITORY,
+                "Use the canonical repository",
+            )
+            result = release_status.report(
+                release_status.ReadOnlyGitHub(os.environ.get("GH_TOKEN", "")),
+                args.component,
+                args.source_sha,
+                tag=args.tag,
+                previous_tag=args.previous_tag,
+            )
+            print(
+                json.dumps(result, indent=2)
+                if args.json
+                else release_status.human_report(result)
+            )
+            return 0
         if args.command == "preview-build":
             require(
                 os.environ.get("GITHUB_REPOSITORY") == REPOSITORY
