@@ -84,15 +84,16 @@ class SettingsPackagingTests(unittest.TestCase):
             script = (ROOT / "scripts" / name).read_text()
             with self.subTest(script=name):
                 self.assertIn(
-                    "if (-not $SettingsExecutable -and -not $DesktopShellDirectory)",
+                    "if (-not $DesktopShellDirectory)",
                     script,
                 )
                 self.assertIn("'build-desktop.ps1'", script)
+                self.assertNotIn("$SettingsExecutable", script)
                 self.assertIn('"${DesktopShellDirectory};desktop-shell"', script)
                 normalized = script.index(
-                    "$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath"
+                    "$DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory).ProviderPath"
                 )
-                self.assertLess(normalized, script.index("'--add-binary'"))
+                self.assertLess(normalized, script.index("'--add-data'"))
         self.assertIn(
             "check_settings_payload.py", (ROOT / "scripts/build.ps1").read_text()
         )

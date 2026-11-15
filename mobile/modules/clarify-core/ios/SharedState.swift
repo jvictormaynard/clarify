@@ -102,6 +102,8 @@ enum DictationPhase: String, Codable {
 }
 
 struct DictationSnapshot: Codable {
+  var retryAvailable = false
+  var playingRecordingID: String?
   var sessionActive = false
   var heartbeat = Date().timeIntervalSince1970
   var phase = DictationPhase.idle
@@ -126,20 +128,25 @@ struct DictationSnapshot: Codable {
   var toneAllowed = false
   var libraryRevision = 0
   var isLive: Bool { sessionActive && Date().timeIntervalSince1970 - heartbeat < 3 }
+  var canRetryRecording: Bool {
+    isLive && configured && phase == .error && !textOperation && retryAvailable && operationID != nil
+  }
   func textResult(for id: String, context: String, currentContext: String) -> String? {
     guard !context.isEmpty, context == currentContext, processingContext == context,
       operationID == id, textOperation, phase == .ready,
       let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return text
   }
-  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, text, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported, dictationMode, dictationModes, dictationActionID, toneAllowed }
+  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, retryAvailable, playingRecordingID, text, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported, dictationMode, dictationModes, dictationActionID, toneAllowed }
   init() {}
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
     sessionActive = try values.decode(Bool.self, forKey: .sessionActive)
     heartbeat = try values.decode(TimeInterval.self, forKey: .heartbeat)
     phase = try values.decode(DictationPhase.self, forKey: .phase)
+    retryAvailable = try values.decodeIfPresent(Bool.self, forKey: .retryAvailable) ?? false
     operationID = try values.decodeIfPresent(String.self, forKey: .operationID)
+    playingRecordingID = try values.decodeIfPresent(String.self, forKey: .playingRecordingID)
     text = try values.decodeIfPresent(String.self, forKey: .text)
     message = try values.decodeIfPresent(String.self, forKey: .message)
     errorCode = try values.decodeIfPresent(String.self, forKey: .errorCode)
@@ -164,6 +171,7 @@ struct DictationSnapshot: Codable {
 }
 
 struct DictationCommand: Codable {
+  let retryOfOperationID: String?
   let commandID: String
   let operationID: String
   let action: String
@@ -175,7 +183,8 @@ struct DictationCommand: Codable {
   let actionRevision: String?
   let outputPreferences: OutputPreferences?
   init(_ action: String, operationID: String, text: String? = nil, language: String? = nil, context: String? = nil,
-    actionID: String? = nil, actionRevision: String? = nil, outputPreferences: OutputPreferences? = nil) {
+    actionID: String? = nil, actionRevision: String? = nil, outputPreferences: OutputPreferences? = nil, retryOfOperationID: String? = nil) {
+    self.retryOfOperationID = retryOfOperationID
     self.actionID = actionID; self.actionRevision = actionRevision; self.outputPreferences = outputPreferences
     self.text = text; self.language = language; self.context = context
     self.commandID = UUID().uuidString
@@ -235,11 +244,11 @@ struct SharedState {
     return updated
   }
   func send(_ action: String, operationID: String, context: String?, text: String? = nil, language: String? = nil,
-    actionID: String? = nil, actionRevision: String? = nil, preferences: OutputPreferences? = nil) throws {
+    actionID: String? = nil, actionRevision: String? = nil, preferences: OutputPreferences? = nil, retryOfOperationID: String? = nil) throws {
     // The caller supplies the context that authorized this action. Reading a
     // newer snapshot here could retarget text to another processing owner.
     let command = DictationCommand(action, operationID: operationID, text: text, language: language, context: context,
-      actionID: actionID, actionRevision: actionRevision, outputPreferences: preferences ?? outputPreferences())
+      actionID: actionID, actionRevision: actionRevision, outputPreferences: preferences ?? outputPreferences(), retryOfOperationID: retryOfOperationID)
     // Persist intent before command delivery. App acknowledgement, command
     // expiry and controller replacement must not restore a cancelled result.
     if action == "cancel" {

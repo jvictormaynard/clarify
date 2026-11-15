@@ -178,6 +178,7 @@ class KeyboardViewController: UIInputViewController {
   private let insert = UIButton(type: .system)
   private let cancel = UIButton(type: .system)
   private let finishRecordingButton = UIButton(type: .system)
+  private let retryRecordingButton = UIButton(type: .system)
   private let recordingPanel = UIView()
   private let waveform = RecordingWaveform()
   private let recordingStatus = UILabel()
@@ -427,7 +428,9 @@ class KeyboardViewController: UIInputViewController {
     // Cancel preserves intent for the operation this controller already owns.
     guard action == "cancel" || state.isLive else { return }
     let id: String
-    if action == "start" {
+    let retryOf = action == "retry" ? state.operationID : nil
+    if action == "start" || action == "retry" {
+      if action == "retry", !state.canRetryRecording { return }
       textOperationID = nil; textSelection = nil
       guard !state.phase.busy, recordingRequest.action == nil else { return }
       id = UUID().uuidString
@@ -438,11 +441,12 @@ class KeyboardViewController: UIInputViewController {
       }
     }
     guard recordingRequest.submit(action, operationID: id, now: Date().timeIntervalSince1970) else { return }
-    if action == "start" {
+    if action == "start" || action == "retry" {
+      let ownsDocument = operationID == retryOf && documentID == textDocumentProxy.documentIdentifier
       dictationEdit = nil; recordingError = nil
-      operationID = id; documentID = textDocumentProxy.documentIdentifier
+      operationID = id; documentID = action == "start" ? textDocumentProxy.documentIdentifier : ownsDocument ? documentID : nil
     }
-    do { try store.send(action, operationID: id, context: state.processingContext); feedback.record(action) }
+    do { try store.send(action, operationID: id, context: state.processingContext, retryOfOperationID: retryOf); if action != "retry" { feedback.record(action) } }
     catch { recordingRequest.reset(); recordingError = L("Abra o Clarify para configurar o teclado.") }
     refreshFromStore()
   }
@@ -537,8 +541,13 @@ class KeyboardViewController: UIInputViewController {
     globe.accessibilityLabel = L("Próximo teclado")
     globe.addTarget(self, action: #selector(nextRecordingKeyboard(_:event:)), for: .allTouchEvents)
     processingSpinner.color = .systemBackground; processingSpinner.hidesWhenStopped = true
+    retryRecordingButton.setImage(UIImage(systemName: "arrow.clockwise"), for: .normal)
+    retryRecordingButton.backgroundColor = .secondarySystemFill; retryRecordingButton.layer.cornerRadius = 22
+    retryRecordingButton.accessibilityIdentifier = "clarify.keyboard.retry"
+    retryRecordingButton.accessibilityLabel = L("Tentar transcrição novamente")
+    retryRecordingButton.addAction(UIAction { [weak self] _ in self?.send("retry") }, for: .touchUpInside)
     view.addSubview(recordingPanel); recordingPanel.translatesAutoresizingMaskIntoConstraints = false
-    for element in [cancel, finishRecordingButton, waveform, recordingStatus, globe] {
+    for element in [cancel, finishRecordingButton, retryRecordingButton, waveform, recordingStatus, globe] {
       recordingPanel.addSubview(element); element.translatesAutoresizingMaskIntoConstraints = false
     }
     finishRecordingButton.addSubview(processingSpinner); processingSpinner.translatesAutoresizingMaskIntoConstraints = false
@@ -551,6 +560,9 @@ class KeyboardViewController: UIInputViewController {
       cancel.widthAnchor.constraint(equalToConstant: 44), cancel.heightAnchor.constraint(equalToConstant: 44),
       finishRecordingButton.trailingAnchor.constraint(equalTo: recordingPanel.trailingAnchor, constant: -10), finishRecordingButton.topAnchor.constraint(equalTo: cancel.topAnchor),
       finishRecordingButton.widthAnchor.constraint(equalToConstant: 44), finishRecordingButton.heightAnchor.constraint(equalToConstant: 44),
+      retryRecordingButton.trailingAnchor.constraint(equalTo: finishRecordingButton.trailingAnchor),
+      retryRecordingButton.topAnchor.constraint(equalTo: finishRecordingButton.topAnchor),
+      retryRecordingButton.widthAnchor.constraint(equalToConstant: 44), retryRecordingButton.heightAnchor.constraint(equalToConstant: 44),
       processingSpinner.centerXAnchor.constraint(equalTo: finishRecordingButton.centerXAnchor), processingSpinner.centerYAnchor.constraint(equalTo: finishRecordingButton.centerYAnchor),
       waveform.centerXAnchor.constraint(equalTo: recordingPanel.centerXAnchor), waveform.centerYAnchor.constraint(equalTo: recordingPanel.centerYAnchor, constant: -16),
       waveform.widthAnchor.constraint(equalToConstant: 144), waveform.heightAnchor.constraint(equalToConstant: 56),
@@ -564,10 +576,12 @@ class KeyboardViewController: UIInputViewController {
   private func updateRecordingPanel() {
     let pending = recordingRequest.action
     // A saved audio interruption must not cover the keys after the session ends.
-    let error = outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity)
+    let error = pending != "retry" && (outputPreferenceError != nil || (state.isLive && state.phase == .error && state.message != nil && dismissedError != errorIdentity))
     let visible = hasFullAccess && ((state.isLive && (state.phase.busy || pending != nil)) || error)
     let recording = [.recording, .locked].contains(state.phase) && pending != "cancel"
-    let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish"
+    let processing = [.transcribing, .rewriting].contains(state.phase) || pending == "finish" || pending == "retry"
+    retryRecordingButton.isHidden = !error || outputPreferenceError != nil || !state.canRetryRecording
+    retryRecordingButton.isEnabled = pending == nil
     finishRecordingButton.isEnabled = recording && pending == nil
     finishRecordingButton.setImage(processing ? nil : UIImage(systemName: "checkmark"), for: .normal)
     finishRecordingButton.alpha = (recording && pending == nil) || processing ? 1 : 0.4
@@ -887,7 +901,7 @@ class KeyboardViewController: UIInputViewController {
   private var errorIdentity: String { (state.operationID ?? "") + "|" + (state.message ?? "") }
   @objc private func cancelRecording() {
     if outputPreferenceError != nil { outputPreferenceError = nil; updateRecordingPanel(); return }
-    if state.phase == .error { dismissedError = errorIdentity; updateRecordingPanel(); return }
+    if state.phase == .error, recordingRequest.action == nil { dismissedError = errorIdentity; updateRecordingPanel(); return }
     send("cancel")
   }
 }

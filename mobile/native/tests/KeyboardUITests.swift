@@ -1210,6 +1210,37 @@ final class KeyboardUITests: XCTestCase {
       assistant.insert(" ", into: field); XCTAssertEqual(field.before, "victor@obrigaddo ")
     }
   }
+  func testFailedRecordingOffersOneRetryWithoutStartingTheMicrophone() async throws {
+    try await MainActor.run {
+      for changedDocument in [false, true] {
+        let (keyboard, store, window) = try self.makeDictationFixture()
+        defer { window.isHidden = true; try? FileManager.default.removeItem(at: store.root) }
+        let failedID = try self.beginProcessing(in: keyboard, store: store)
+        var state = store.snapshot(); state.phase = .error; state.text = nil
+        state.message = "Connection failed"; state.retryAvailable = true
+        state.heartbeat = Date().timeIntervalSince1970
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        let retry = try XCTUnwrap(self.descendants(keyboard.view).compactMap { $0 as? UIButton }
+          .first { $0.accessibilityIdentifier == "clarify.keyboard.retry" })
+        XCTAssertFalse(retry.isHidden); XCTAssertTrue(retry.isEnabled)
+        if changedDocument { keyboard.field.documentIdentifier = UUID() }
+        let before = store.commands().count
+        retry.sendActions(for: .touchUpInside); retry.sendActions(for: .touchUpInside)
+        let commands = Array(store.commands().dropFirst(before))
+        XCTAssertEqual(commands.count, 1)
+        let command = try XCTUnwrap(commands.first?.1)
+        XCTAssertEqual(command.action, "retry"); XCTAssertEqual(command.retryOfOperationID, failedID)
+        XCTAssertNotEqual(command.operationID, failedID); XCTAssertTrue(retry.isHidden)
+        state.operationID = command.operationID; state.phase = .transcribing; state.retryAvailable = false
+        state.heartbeat = Date().timeIntervalSince1970
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore()
+        state.phase = .ready; state.text = "Recovered audio"; state.heartbeat = Date().timeIntervalSince1970
+        try store.write(state, to: "state.json"); keyboard.refreshFromStore(); keyboard.refreshFromStore()
+        XCTAssertEqual(keyboard.field.before.contains("Recovered audio"), !changedDocument)
+        XCTAssertEqual(store.receipt() == command.operationID, !changedDocument)
+      }
+    }
+  }
   func testInsertionRejectsAResultClearedByAnotherDestinationBeforeTheNextPoll() async throws {
     try await MainActor.run {
       let (keyboard, store, window) = try self.makeDictationFixture()

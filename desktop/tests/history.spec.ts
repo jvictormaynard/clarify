@@ -20,7 +20,7 @@ settingsScenario({ history: true }, () => {
     await dialog.getByRole("button", { name: "Revisar correção", exact: true }).click();
     await expect(dialog.getByRole("textbox", { name: "Termo ouvido", exact: true })).toHaveValue("desktop");
     await expect(dialog.getByRole("textbox", { name: "Termo correto", exact: true })).toBeDisabled();
-    const snapshot = () => page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+    const snapshot = () => page.evaluate(async () => (window as any).__testSettings({ method: "snapshot", args: [] }));
     expect((await snapshot()).dictionaryEntries).toEqual([]);
     await page.setViewportSize({ width: 640, height: 760 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
@@ -53,13 +53,13 @@ settingsScenario({ history: true }, () => {
     };
     await review();
     await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
-    const before = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+    const before = await page.evaluate(async () => (window as any).__testSettings({ method: "snapshot", args: [] }));
     expect(before.dictionaryEntries).toEqual([]);
     await review();
     await dialog.getByRole("button", { name: "Salvar no dicionário", exact: true }).click();
     await expect(row.getByRole("button", { name: "Desfazer adição", exact: true })).toBeEnabled();
     await page.evaluate(async () => {
-      const invoke = (method: string, args: unknown[]) => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method, args });
+      const invoke = (method: string, args: unknown[]) => (window as any).__testSettings({ method, args });
       const state = await invoke("snapshot", []);
       await invoke("setDictionaryEntries", [[{ ...state.dictionaryEntries[0], pronunciation: "Later edit" }], state.snippetContext]);
       await invoke("save", [state.snippetContext]);
@@ -97,7 +97,7 @@ for (const [localTerm, correctedTerm] of [["Desktop Term", "Desktop Term"], ["St
     await page.getByRole("button", { name: "Cancelar", exact: true }).click();
     await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
-    const saved = await page.evaluate(async () => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+    const saved = await page.evaluate(async () => (window as any).__testSettings({ method: "snapshot", args: [] }));
     expect(saved.dictionaryEntries).toEqual([{ term: localTerm, pronunciation: "Pending pronunciation", aliases: ["desktop"], enabled: true }]);
   });
 });
@@ -134,10 +134,10 @@ settingsScenario({ historyLarge: true, history: true }, () => {
     const anchors = await page.evaluate(() => [new Date(2026, 9, 16, 0, 49).getTime() / 1000, new Date(2026, 9, 15, 23).getTime() / 1000]);
     await navigate(page, "Estilo");
     await page.evaluate(anchors => {
-      const runtime = (window as any).__TAURI_INTERNALS__;
-      const invoke = runtime.invoke;
-      runtime.invoke = async (command: string, request: any) => {
-        const result = await invoke(command, request);
+      const runtime = window as any;
+      const invoke = runtime.__testSettings;
+      runtime.__testSettings = async (request: any) => {
+        const result = await invoke(request);
         if (request.method === "getHistoryPage") for (const entry of result.entries) {
           const timestamp = entry.timestamp;
           const today = timestamp >= Date.UTC(2026, 9, 16, 14, 25) / 1000;
@@ -235,10 +235,10 @@ settingsScenario({ historyLarge: true, history: true }, () => {
     // Hold each completed RPC before React receives it. This forces the pending
     // continuation state, including the final reply that removes the button.
     await page.evaluate(queries => {
-      const runtime = (window as any).__TAURI_INTERNALS__;
-      const invoke = runtime.invoke;
-      runtime.invoke = async (command: string, request: any) => {
-        const result = await invoke(command, request);
+      const runtime = window as any;
+      const invoke = runtime.__testSettings;
+      runtime.__testSettings = async (request: any) => {
+        const result = await invoke(request);
         if (request.method === "getHistoryPage" && queries.includes(request.args[2])) {
           await new Promise<void>(resolve => {
             (window as any).__historyScan = { query: request.args[2], cursor: request.args[1], release: resolve };
@@ -324,5 +324,42 @@ settingsScenario({ history: true }, () => {
     await expect(row.getByRole("region", { name: "Original", exact: true })).toContainText("Isolated desktop history.");
     await page.evaluate(() => fetch("/__test_rpc", { method: "POST", body: JSON.stringify({ method: "testHistoryContextChange", args: [] }) }));
     await expect(page.locator(".history-comparison")).toHaveCount(0);
+  });
+});
+
+settingsScenario({ history: true, recordingRecovery: true }, () => {
+  test("history: audio is a normal item with playback, retry and export", async ({ page }, testInfo) => {
+    await navigate(page, "Histórico");
+    const audio = page.getByRole("listitem").filter({ hasText: "Áudio não processado" });
+    await expect(audio).toHaveCount(1);
+    await audio.getByRole("button", { name: "Reproduzir áudio", exact: true }).click();
+    await expect(audio.getByRole("button", { name: "Pausar áudio", exact: true })).toBeVisible();
+    await audio.getByRole("button", { name: "Pausar áudio", exact: true }).click();
+    await audio.getByRole("button", { name: "Tentar transcrição novamente", exact: true }).click();
+    const result = page.getByRole("listitem").filter({ hasText: "Texto recuperado editado." });
+    await expect(result).toHaveCount(1);
+    await expect(page.getByText("Áudio não processado", { exact: true })).toHaveCount(0);
+    await expect(result.getByRole("button", { name: "Tentar transcrição novamente", exact: true })).toHaveCount(0);
+    await result.getByRole("button", { name: "Mais opções", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Desfazer edição de IA", exact: true })).toBeEnabled();
+    const downloadEvent = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: "Extrair áudio", exact: true }).click();
+    const download = await downloadEvent;
+    expect(download.suggestedFilename()).toMatch(/\.wav$/);
+    await download.cancel();
+    await page.setViewportSize({ width: 640, height: 760 });
+    await result.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+    await page.screenshot({ path: testInfo.outputPath("compact-history-audio.png") });
+    await result.getByRole("button", { name: "Mais opções", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Desfazer edição de IA", exact: true }).click();
+    const original = page.getByRole("listitem").filter({ hasText: "Texto recuperado original." });
+    await expect(original).toHaveCount(1);
+    await original.getByRole("button", { name: "Mais opções", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Desfazer edição de IA", exact: true })).toBeDisabled();
+    await page.getByRole("menuitem", { name: "Excluir transcrição", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Excluir transcrição", exact: true });
+    await dialog.getByRole("button", { name: "Excluir", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Reproduzir áudio", exact: true })).toHaveCount(0);
   });
 });

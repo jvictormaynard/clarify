@@ -1,4 +1,4 @@
-import logo from "../../src-tauri/icons/clarify.png";
+import logo from "../../assets/clarify.png";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { t } from "../i18n";
 

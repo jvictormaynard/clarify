@@ -1,7 +1,6 @@
-"""Build Settings dependency evidence from installed, locked npm/Cargo inputs.
+"""Build desktop dependency evidence from locked npm and Electron inputs.
 
-No provider or user profile is read. Cargo build-only crates are retained with
-excluded scope: this is a source dependency inventory, not a binary link map.
+No provider credentials or user profiles are read.
 """
 
 from __future__ import annotations
@@ -12,9 +11,7 @@ import json
 import os
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
-from urllib.parse import quote
 
 try:
     from .desktop_payload import MANIFEST, manifest_bytes, payload_manifest
@@ -82,17 +79,7 @@ def vendored_notices(desktop: Path, entries: list[dict]) -> list[tuple[str, str]
     return result
 
 
-def dependency_notices(desktop: Path, ref: str, root: Path, explicit=None):
-    try:
-        return license_texts(root, explicit)
-    except MissingLicenseError:
-        manifest = json.loads((desktop / "licenses/manifest.json").read_text())
-        if ref not in manifest:
-            raise ValueError(f"Review missing license text: {ref}")
-        return vendored_notices(desktop, manifest[ref])
-
-
-def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
+def inventory(desktop: Path, npm: dict) -> tuple[dict, str]:
     components, dependencies, notices = [], [], []
     npm_components = [npm["metadata"]["component"], *npm.get("components", [])]
     refs = {c["bom-ref"]: c["purl"] for c in npm_components}
@@ -109,7 +96,7 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
         directory = (desktop / relative).resolve()
         if not directory.is_relative_to((desktop / "node_modules").resolve()):
             raise ValueError("npm dependency path escapes node_modules")
-        texts = dependency_notices(desktop, component["purl"], directory)
+        texts = license_texts(directory)
         notices.append((component["purl"], texts))
         components.append(component)
     for edge in npm["dependencies"]:
@@ -117,72 +104,6 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
             {
                 "ref": refs[edge["ref"]],
                 "dependsOn": sorted(refs[r] for r in edge.get("dependsOn", [])),
-            }
-        )
-
-    packages = {p["id"]: p for p in cargo["packages"]}
-    nodes = {p["id"]: p for p in cargo["resolve"]["nodes"]}
-    cargo_root = cargo["resolve"]["root"]
-    cargo_refs = {
-        key: f"pkg:cargo/{quote(p['name'])}@{p['version']}"
-        for key, p in packages.items()
-    }
-    cargo_refs[cargo_root] = root_ref
-    runtime = {cargo_root}
-    pending = [cargo_root]
-    while pending:
-        for edge in nodes[pending.pop()]["deps"]:
-            package = packages[edge["pkg"]]
-            normal = any(kind["kind"] is None for kind in edge["dep_kinds"])
-            proc_macro = any(
-                "proc-macro" in target["kind"] for target in package["targets"]
-            )
-            if normal and not proc_macro and edge["pkg"] not in runtime:
-                runtime.add(edge["pkg"])
-                pending.append(edge["pkg"])
-    # Only resolved nodes are relevant to the selected Windows target.
-    for key, node in nodes.items():
-        package = packages[key]
-        if key != cargo_root:
-            if not package.get("source", "").startswith("registry+"):
-                raise ValueError(
-                    "Review non-registry Cargo dependencies before distribution"
-                )
-            expression = package.get("license")
-            if not expression:
-                raise ValueError(f"Missing Cargo license expression: {package['name']}")
-            expression = expression.replace("MIT/Apache-2.0", "MIT OR Apache-2.0")
-            texts = dependency_notices(
-                desktop,
-                cargo_refs[key],
-                Path(package["manifest_path"]).parent,
-                package.get("license_file"),
-            )
-            source_url = f"https://crates.io/api/v1/crates/{package['name']}/{package['version']}/download"
-            texts = [("Corresponding crate source", source_url), *texts]
-            notices.append((cargo_refs[key], texts))
-            components.append(
-                {
-                    "type": "library",
-                    "name": package["name"],
-                    "version": package["version"],
-                    "bom-ref": cargo_refs[key],
-                    "purl": cargo_refs[key],
-                    "scope": "required" if key in runtime else "excluded",
-                    "licenses": [{"expression": expression}],
-                    "externalReferences": [{"type": "distribution", "url": source_url}],
-                    "properties": [
-                        {
-                            "name": "clarify:dependency-evidence",
-                            "value": "resolved Windows source graph; not a binary link map",
-                        }
-                    ],
-                }
-            )
-        dependencies.append(
-            {
-                "ref": cargo_refs[key],
-                "dependsOn": sorted({cargo_refs[e["pkg"]] for e in node["deps"]}),
             }
         )
 
@@ -222,7 +143,7 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
                 "type": "application",
                 "name": "Clarify Settings",
                 "bom-ref": root_ref,
-                "version": packages[cargo_root]["version"],
+                "version": npm_components[0]["version"],
             },
             "lifecycles": [{"phase": "build"}],
         },
@@ -233,8 +154,7 @@ def inventory(desktop: Path, npm: dict, cargo: dict) -> tuple[dict, str]:
         ],
     }
     text = "Clarify Settings — third-party license texts\n\n"
-    text += "Generated from locked npm production dependencies, vendored source notices, and the resolved Windows Cargo graph.\n"
-    text += "Build-only crates are included for attribution; inclusion does not prove binary linkage.\n"
+    text += "Generated from locked npm production dependencies and vendored source notices.\n"
     for ref, files in sorted(notices):
         text += f"\n{'=' * 72}\n{ref}\n"
         for name, content in files:
@@ -269,14 +189,7 @@ def electron_inventory(desktop: Path, npm: dict, shell: Path) -> tuple[dict, str
     version = installed["version"]
     if package["devDependencies"]["electron"] != version:
         raise ValueError("Installed Electron differs from the pinned runtime")
-    # Reuse npm/source attribution without requiring the retired Cargo frontend.
-    cargo = {
-        "packages": [
-            {"id": "root", "name": "clarify-desktop", "version": package["version"]}
-        ],
-        "resolve": {"root": "root", "nodes": [{"id": "root", "deps": []}]},
-    }
-    bom, notices = inventory(desktop, npm, cargo)
+    bom, notices = inventory(desktop, npm)
     bom["metadata"]["component"]["name"] = "Clarify Desktop"
     ref = "pkg:github/electron/electron@" + version
     bom["components"].append(
@@ -336,13 +249,6 @@ def electron_inventory(desktop: Path, npm: dict, shell: Path) -> tuple[dict, str
     next(edge for edge in bom["dependencies"] if edge["ref"] == ref)["dependsOn"] = (
         runtime_refs
     )
-    notices = notices.replace(
-        "locked npm production dependencies, vendored source notices, and the resolved Windows Cargo graph",
-        "locked npm production dependencies, vendored source notices, and the pinned Electron runtime",
-    ).replace(
-        "Build-only crates are included for attribution; inclusion does not prove binary linkage.\n",
-        "",
-    )
     for name in ("LICENSE", "LICENSES.chromium.html"):
         content = (shell / name).read_text(encoding="utf-8")
         if not content.strip():
@@ -382,66 +288,26 @@ def main() -> None:
         ],
         desktop,
     )
-    if args.electron_shell:
-        shell = args.electron_shell.resolve(strict=True)
-        manifest = manifest_bytes(payload_manifest(shell))
-        args.output_dir.mkdir(parents=True, exist_ok=True)
-        (args.output_dir / MANIFEST).write_bytes(manifest)
-        bom, notices = electron_inventory(desktop, npm, shell)
-        bom["metadata"]["component"]["hashes"] = [
-            {"alg": "SHA-256", "content": hashlib.sha256(manifest).hexdigest()}
-        ]
-        bom["metadata"]["properties"] = [
-            {
-                "name": "clarify:input-sha256:package-lock.json",
-                "value": hashlib.sha256(
-                    (desktop / "package-lock.json").read_bytes()
-                ).hexdigest(),
-            }
-        ]
-    else:
-        cargo = command_json(
-            [
-                "cargo",
-                "metadata",
-                "--format-version",
-                "1",
-                "--locked",
-                "--filter-platform",
-                "x86_64-pc-windows-msvc",
-                "--manifest-path",
-                "src-tauri/Cargo.toml",
-                "--features",
-                "custom-protocol",
-            ],
-            desktop,
+    if not args.electron_shell:
+        parser.error(
+            "--electron-shell is required when generating the desktop inventory"
         )
-        bom, notices = inventory(desktop, npm, cargo)
-        executable = args.output_dir / "clarify-settings.exe"
-        bom["metadata"]["component"]["hashes"] = [
-            {
-                "alg": "SHA-256",
-                "content": hashlib.sha256(executable.read_bytes()).hexdigest(),
-            }
-        ]
-        bom["metadata"]["properties"] = [
-            {
-                "name": f"clarify:input-sha256:{name}",
-                "value": hashlib.sha256((desktop / name).read_bytes()).hexdigest(),
-            }
-            for name in (
-                "package-lock.json",
-                "src-tauri/Cargo.lock",
-                "rust-toolchain.toml",
-            )
-        ]
-        toolchain = tomllib.loads((desktop / "rust-toolchain.toml").read_text())
-        bom["metadata"]["properties"].append(
-            {
-                "name": "clarify:rust-toolchain",
-                "value": toolchain["toolchain"]["channel"],
-            }
-        )
+    shell = args.electron_shell.resolve(strict=True)
+    manifest = manifest_bytes(payload_manifest(shell))
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    (args.output_dir / MANIFEST).write_bytes(manifest)
+    bom, notices = electron_inventory(desktop, npm, shell)
+    bom["metadata"]["component"]["hashes"] = [
+        {"alg": "SHA-256", "content": hashlib.sha256(manifest).hexdigest()}
+    ]
+    bom["metadata"]["properties"] = [
+        {
+            "name": "clarify:input-sha256:package-lock.json",
+            "value": hashlib.sha256(
+                (desktop / "package-lock.json").read_bytes()
+            ).hexdigest(),
+        }
+    ]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "Clarify-settings.sbom.json").write_text(
         json.dumps(bom, indent=2) + "\n", encoding="utf-8"

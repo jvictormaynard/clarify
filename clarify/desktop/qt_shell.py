@@ -1,7 +1,7 @@
-"""Native Qt desktop-shell services for the QML frontend.
+"""Native desktop-shell services for the shared engine.
 
 The module owns process-level shell concerns that do not belong in QML:
-single-instance ownership, tray actions, and the Windows global-hotkey bridge.
+single-instance ownership and the Windows global-hotkey bridge.
 It has no dependency on a frontend entrypoint, so the QML application can
 compose it without importing another UI toolkit.
 """
@@ -21,7 +21,6 @@ from typing import Any, Protocol
 
 from PySide6.QtCore import (
     QAbstractNativeEventFilter,
-    QEvent,
     QLockFile,
     QObject,
     QTimer,
@@ -29,8 +28,6 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from hotkey_config import HotkeyAction, HotkeySettings
 from windows_hotkeys import (
@@ -80,7 +77,7 @@ class NativeEventTarget(Protocol):
 
 
 class WindowTarget(Protocol):
-    """Small window contract used by tray and hotkey shell actions."""
+    """Small window contract used by native shell actions."""
 
     def installEventFilter(self, filter_object: QObject) -> None: ...
 
@@ -708,13 +705,12 @@ class WindowsGlobalHotkeyBackend(QObject):
 
 
 class QtShell(QObject):
-    """Compose the QML window with instance, tray, and hotkey ownership."""
+    """Compose native file-window, instance and hotkey ownership."""
 
     started = Signal()
     stopped = Signal()
     activationRequested = Signal()
     hotkeyTriggered = Signal(str)
-    quitRequested = Signal()
 
     def __init__(
         self,
@@ -722,31 +718,17 @@ class QtShell(QObject):
         *,
         instance_guard: QtSingleInstanceGuard | None = None,
         hotkeys: GlobalHotkeyBackend | None = None,
-        application: Any | None = None,
-        tray_icon_factory: Callable[[QIcon, QObject | None], Any] = QSystemTrayIcon,
-        menu_factory: Callable[[], Any] = QMenu,
         visibility_hotkey_allowed: Callable[[], bool] | None = None,
-        icon: QIcon | None = None,
-        title: str = "Clarify",
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self._window = window
         self._instance_guard = instance_guard or QtSingleInstanceGuard()
         self._hotkeys = hotkeys
-        self._application = application
-        self._tray_icon_factory = tray_icon_factory
-        self._menu_factory = menu_factory
         self._visibility_hotkey_allowed = visibility_hotkey_allowed
-        self._icon = icon or QIcon()
-        self._title = str(title)
-        self._tray: Any | None = None
-        self._menu: Any | None = None
         self._started = False
         self._hotkeys_connected = False
         self._hotkeys_started = False
-        self._window_close_filter_installed = False
-        self._tray_available = False
         self.activationRequested.connect(self.activate_existing_window)
         self._connect_hotkey_restart()
 
@@ -754,29 +736,17 @@ class QtShell(QObject):
     def is_running(self) -> bool:
         return self._started
 
-    @property
-    def tray(self) -> Any | None:
-        return self._tray
-
-    def start(self, *, tray_available: bool = True) -> bool:
-        """Start the guard and optional tray/hotkey resources.
-
-        The single-instance guard is intentionally acquired even when the
-        desktop has no system tray.  Only tray construction is optional.
-        """
+    def start(self) -> bool:
+        """Acquire the single-instance guard and native hotkey resources."""
 
         if self._started:
             return True
         if not self._instance_guard.acquire():
             return False
 
-        self._tray_available = bool(tray_available)
         hotkeys_start_attempted = False
         try:
             self._instance_guard.start_activation_listener(self._request_activation)
-            if tray_available:
-                self._create_tray()
-                self._install_window_close_filter()
             if self._hotkeys is not None:
                 if not self._hotkeys_connected:
                     self._hotkeys.triggered.connect(self._handle_hotkey)
@@ -790,8 +760,6 @@ class QtShell(QObject):
                     self._hotkeys.stop()
             finally:
                 self._hotkeys_started = False
-                self._remove_window_close_filter()
-                self._cleanup_tray()
                 self._started = False
             raise
 
@@ -800,7 +768,7 @@ class QtShell(QObject):
         return True
 
     def stop(self) -> None:
-        """Release hotkeys, tray resources, and the single-instance lock."""
+        """Release hotkeys and the single-instance lock."""
 
         if not self._started and not self._instance_guard.is_primary:
             return
@@ -811,8 +779,6 @@ class QtShell(QObject):
                 self._hotkeys.stop()
         finally:
             self._hotkeys_started = False
-            self._remove_window_close_filter()
-            self._cleanup_tray()
             self._instance_guard.release()
             self.stopped.emit()
 
@@ -822,29 +788,10 @@ class QtShell(QObject):
 
     @Slot()
     def show_window(self) -> None:
-        self._set_passive_presentation(False)
         self._set_presentation_visible(True)
         self._window.show()
         self._window.raise_()
         self._window.requestActivate()
-
-    @Slot()
-    def show_window_without_activation(self) -> None:
-        """Restore the compact card without changing the native paste target."""
-        if not self._set_passive_presentation(True):
-            # Older windows cannot guarantee a non-activating show. Stay hidden.
-            return
-        self._set_presentation_visible(True)
-        self._window.show()
-
-    def _set_passive_presentation(self, passive: bool) -> bool:
-        setter = getattr(self._window, "setProperty", None)
-        if not callable(setter):
-            return False
-        try:
-            return bool(setter("passivePresentation", bool(passive)))
-        except (RuntimeError, TypeError):
-            return False
 
     @Slot()
     def hide_window(self) -> None:
@@ -852,7 +799,7 @@ class QtShell(QObject):
             self._window.hide()
 
     def _set_presentation_visible(self, visible: bool) -> bool:
-        """Let the QML window fade before changing native visibility."""
+        """Set the native file-window visibility through its QML property."""
 
         setter = getattr(self._window, "setProperty", None)
         if not callable(setter):
@@ -863,96 +810,12 @@ class QtShell(QObject):
             return False
         return True
 
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        """Hide a tray-owned QWindow instead of destroying its native handle."""
-
-        if (
-            watched is self._window
-            and self._tray is not None
-            and event.type() == QEvent.Type.Close
-        ):
-            event.ignore()
-            self.hide_window()
-            return True
-        return bool(super().eventFilter(watched, event))
-
     @Slot()
     def toggle_window(self) -> None:
         if self._window.isVisible():
             self.hide_window()
         else:
             self.show_window()
-
-    @Slot()
-    def quit(self) -> None:
-        self.stop()
-        self.quitRequested.emit()
-        if self._application is not None:
-            self._application.quit()
-
-    def _create_tray(self) -> None:
-        tray = self._tray_icon_factory(self._icon, self)
-        self._tray = tray
-        # QMenu is a QWidget and therefore cannot use this QObject shell as
-        # its parent.  Keep the menu alive through the explicit ``_menu``
-        # reference and release it alongside the tray during shell cleanup.
-        menu = self._menu_factory()
-        self._menu = menu
-        from shared.localization import translate
-
-        show_action = menu.addAction(translate("Show {name}", name=self._title))
-        quit_action = menu.addAction(translate("Quit {name}", name=self._title))
-        show_action.triggered.connect(lambda _checked=False: self.show_window())
-        quit_action.triggered.connect(lambda _checked=False: self.quit())
-        tray.setToolTip(self._title)
-        tray.setContextMenu(menu)
-        tray.activated.connect(self._handle_tray_activation)
-        tray.show()
-
-    def _install_window_close_filter(self) -> None:
-        if self._window_close_filter_installed:
-            return
-        self._window.installEventFilter(self)
-        self._window_close_filter_installed = True
-
-    def _remove_window_close_filter(self) -> None:
-        if not self._window_close_filter_installed:
-            return
-        try:
-            self._window.removeEventFilter(self)
-        finally:
-            self._window_close_filter_installed = False
-
-    def _cleanup_tray(self) -> None:
-        """Hide and release tray resources, including partially built ones."""
-
-        menu = self._menu
-        tray = self._tray
-        self._menu = None
-        self._tray = None
-
-        for resource in (tray, menu):
-            if resource is None:
-                continue
-            hide = getattr(resource, "hide", None)
-            if callable(hide):
-                try:
-                    hide()
-                except BaseException:
-                    pass
-            delete_later = getattr(resource, "deleteLater", None)
-            if callable(delete_later):
-                try:
-                    delete_later()
-                except BaseException:
-                    pass
-
-    def _handle_tray_activation(self, reason: Any) -> None:
-        if reason in (
-            QSystemTrayIcon.ActivationReason.Trigger,
-            QSystemTrayIcon.ActivationReason.DoubleClick,
-        ):
-            self.toggle_window()
 
     def _handle_hotkey(self, action: str) -> None:
         normalized = str(action)
@@ -981,15 +844,6 @@ class QtShell(QObject):
 
         if self._started or not self._instance_guard.is_primary:
             return
-
-        try:
-            if self._tray_available:
-                self._create_tray()
-                self._install_window_close_filter()
-        except BaseException:
-            self._remove_window_close_filter()
-            self._cleanup_tray()
-            raise
 
         self._hotkeys_started = True
         self._started = True

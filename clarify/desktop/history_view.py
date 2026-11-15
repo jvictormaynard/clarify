@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 import threading
 import uuid
 
@@ -11,8 +12,10 @@ _CHANGED = "O histórico mudou. Atualize e tente novamente."
 
 
 class HistoryView:
-    def __init__(self, history):
+    def __init__(self, history, recordings=None):
         self.history = history
+        self.recordings = recordings
+        self._recordings = {}
         self._salt = uuid.uuid4().hex
         self._lock = threading.RLock()
         self._key = None
@@ -22,7 +25,12 @@ class HistoryView:
 
     def snapshot(self):
         """Only stat files; regular Settings polling never parses transcripts."""
-        return self.history.snapshot_stamp(self._salt)
+        snapshot = self.history.snapshot_stamp(self._salt)
+        if self.recordings is not None:
+            snapshot["revision"] = hashlib.sha256(
+                (snapshot["revision"] + self.recordings.revision()).encode()
+            ).hexdigest()
+        return snapshot
 
     def _check(self, context):
         if not isinstance(context, str) or not _HEX.fullmatch(context):
@@ -32,10 +40,13 @@ class HistoryView:
             raise ValueError(_CHANGED)
         return current
 
-    @staticmethod
-    def _text(record, field):
+    def _text(self, record, field):
         if field not in ("text", "transcript"):
             raise ValueError("Invalid history text field")
+        if field == "text" and self.recordings is not None:
+            linked = self._recordings.get(record.id)
+            if linked and linked.get("use_original"):
+                return record.raw_text or ""
         return (
             record.raw_text or ""
             if field == "transcript"
@@ -64,6 +75,9 @@ class HistoryView:
                 ]
                 # Legacy migration can replace the local document once.
                 current = self.snapshot()
+                self._recordings = (
+                    self.recordings.linked() if self.recordings is not None else {}
+                )
                 self._key = (current["context"], current["revision"])
                 self._items = {
                     token: (item_id, record) for token, item_id, record in self._rows
@@ -103,11 +117,17 @@ class HistoryView:
                 else:
                     offset, field_index, text_offset = offset + 1, 0, 0
             entries = []
+            recordings = self._recordings
             for token, item_id, record in rows:
                 text = self._text(record, "text")
                 entries.append(
                     {
                         "id": token,
+                        **(
+                            {"recording": recordings[record.id]}
+                            if record.id in recordings
+                            else {}
+                        ),
                         "timestamp": record.timestamp.timestamp(),
                         "text": text[:500],
                         "truncated": len(text) > 500,
@@ -190,8 +210,17 @@ class HistoryView:
 
     def delete(self, context, token):
         with self.history.account.snapshot_guard(), self._lock:
-            item_id, _ = self._resolve(context, token)
+            item_id, record = self._resolve(context, token)
+            recording = (
+                self.recordings.linked().get(record.id)
+                if self.recordings is not None
+                else None
+            )
+            if recording and recording.get("status") == "processing":
+                raise ValueError("Recording is processing")
             self.history.delete(item_id)
+            if recording:
+                self.recordings.delete(recording["id"])
 
     def clear(self, context):
         with self.history.account.snapshot_guard(), self._lock:

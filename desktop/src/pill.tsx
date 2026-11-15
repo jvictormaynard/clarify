@@ -1,6 +1,6 @@
 import { useDockPresentation } from './use-dock-presentation';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Copy, FileAudio, LoaderCircle, Mic, RotateCcw, Settings, Square, X, ClipboardPaste, Sparkles, ChevronRight } from 'lucide-react';
+import { TriangleAlert, Check, Copy, FileAudio, LoaderCircle, Mic, RotateCcw, Settings, Square, X, ClipboardPaste, Sparkles, ChevronRight } from 'lucide-react';
 import { LanguageMark } from './components/language-mark';
 import { electron } from './platform';
 import { setUiLanguage } from './i18n';
@@ -46,7 +46,7 @@ function CaptureWave({level, active}: {level: number; active: boolean}) {
 export interface WorkflowState {
   surface: string; status: string; result: string; busy: boolean; recording: boolean;
   showRecordingStop: boolean; refinementFailed: boolean; canShowResult: boolean;
-  canRetryTranscription: boolean; cancellationVisible: boolean; canUndoCancellation: boolean;
+  recoveryResultVisible: boolean; canRetryTranscription: boolean; cancellationVisible: boolean; canUndoCancellation: boolean;
   feedbackVisible: boolean; feedbackOperationId: number; feedbackTitle: string; completionId: string; recordingShortcut: string;
   transitionPending: boolean; writingStyleCaption: string; writingStyleFinished: boolean;
   writingStyleApplied: boolean; mode: string; language: string;
@@ -125,7 +125,7 @@ export function Pill() {
     const layout = feedbackLayer.current && getComputedStyle(feedbackLayer.current);
     const inset = layout ? parseFloat(layout.paddingLeft) + parseFloat(layout.paddingRight) + parseFloat(layout.columnGap) : 60;
     setFeedbackWidth(Math.min(620, Math.max(120, Math.ceil((feedbackLabel.current?.scrollWidth || 0) + (feedbackActions.current?.offsetWidth || 0) + inset + 2))));
-  }, [state.feedbackVisible, state.feedbackTitle, state.canUndoCancellation, state.canRetryTranscription, state.canShowResult, state.uiLanguage, state.targetIcon]);
+  }, [state.feedbackVisible, state.feedbackTitle, state.canUndoCancellation, state.canRetryTranscription, state.canShowResult, state.recoveryResultVisible, state.refinementFailed, state.surface, state.uiLanguage, state.targetIcon]);
   useLayoutEffect(() => {
     if (completion && doneContent.current) setDoneWidth(Math.max(72, Math.ceil(doneContent.current.getBoundingClientRect().width) + 24));
   }, [completion, state.uiLanguage]);
@@ -178,10 +178,10 @@ export function Pill() {
     return () => clearTimeout(timer);
   }, [state.completionId, state.busy, state.recording, state.transitionPending, state.feedbackVisible]);
   useEffect(() => {
-    if (!state.feedbackVisible || state.canRetryTranscription) return;
+    if (!state.feedbackVisible || state.canRetryTranscription || state.recoveryResultVisible) return;
     const timer = setTimeout(() => run('dismissFeedback', state.feedbackOperationId), state.cancellationVisible || state.refinementFailed ? 5000 : 3200);
     return () => clearTimeout(timer);
-  }, [state.feedbackVisible, state.feedbackOperationId, state.canRetryTranscription, state.cancellationVisible, state.refinementFailed]);
+  }, [state.feedbackVisible, state.feedbackOperationId, state.canRetryTranscription, state.recoveryResultVisible, state.cancellationVisible, state.refinementFailed]);
   // Native hit testing must follow the painted edges throughout expansion.
   useLayoutEffect(() => {
     const elements = Array.from(document.querySelectorAll('[data-pill-interactive]'));
@@ -207,11 +207,12 @@ export function Pill() {
   const feedback = retainedFeedback.current;
   const done = !!completion && !processing && !state.recording && !state.feedbackVisible;
   const capture = !!(state.recording || processing || state.feedbackVisible || done);
-  const starting = state.transitionPending || (state.recording && !state.recordingReady);
+  const starting = (state.transitionPending && !state.canRetryTranscription && !state.cancellationVisible) || (state.recording && !state.recordingReady);
+  const problem = !!state.feedbackVisible && (state.surface === 'error' || state.surface === 'voice_error' || !!state.refinementFailed);
   const width = state.feedbackVisible ? feedbackWidth : done ? doneWidth : state.recording ? (state.showRecordingStop ? (starting ? 112 : 128) : starting ? (state.targetIcon ? 96 : 72) : state.targetIcon ? 104 : 72) : state.targetIcon ? 96 : 72;
   const collapsed = !dock.expanded && !capture && !result && !translation && !menu && !languageMenu && !error;
   return <main className="pill-stage" onPointerDownCapture={dock.press} onPointerUpCapture={dock.release} onPointerCancelCapture={dock.release}>
-    <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
+    <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-feedback-problem={problem} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
       style={capture && !result && !translation ? {width} : undefined}
       tabIndex={!capture && !result && !translation ? 0 : undefined}
       onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave}
@@ -236,7 +237,8 @@ export function Pill() {
         <div className="pill-actions"><span>{t('Traduzir para')}</span>{button('Cancelar', <X />, 'cancelTranslation')}</div>
         <div className="pill-languages">{state.translationOptions?.map(option => <button key={option.code} onClick={() => run('chooseTranslation', option.code)}><LanguageMark code={option.code} /><span>{option.label || option.name || option.code}</span></button>)}</div>
       </> : capture ? <>
-        {state.targetIcon && !done && (!state.showRecordingStop || state.feedbackVisible) && <img className="pill-target-icon" src={state.targetIcon} alt="" />}
+        {!problem && state.targetIcon && !done && (!state.showRecordingStop || state.feedbackVisible) && <img className="pill-target-icon" src={state.targetIcon} alt="" />}
+        {problem && <TriangleAlert className="pill-problem-icon" aria-hidden="true" />}
         <span className="pill-sr-only" role="status">{t(done ? 'Concluído' : state.feedbackVisible ? state.feedbackTitle || '' : state.status || '')}</span>
         <div className="pill-live-layer" data-visible={!state.feedbackVisible} aria-hidden={!!state.feedbackVisible}>
           <div className="pill-motion-layer" data-visible={!!starting}><LoaderCircle className="pill-spinner" /></div>
@@ -252,7 +254,7 @@ export function Pill() {
           <span ref={feedbackLabel} className="pill-feedback-label">{t(feedback.feedbackTitle || '')}</span>
           <div ref={feedbackActions} className="pill-feedback-actions">
             {feedback.cancellationVisible ? <button className="pill-undo" disabled={!state.feedbackVisible || !state.canUndoCancellation} onClick={() => run('undoCancellation')}>{t('Desfazer')}</button> : <>
-              {feedback.canShowResult && button('Ver resultado', <Copy />, 'showResult', !state.feedbackVisible)}
+              {feedback.recoveryResultVisible ? button('Copiar', <Copy />, 'copyResult', !state.feedbackVisible) : feedback.canShowResult && button('Ver resultado', <Copy />, 'showResult', !state.feedbackVisible)}
               {feedback.canRetryTranscription && button('Tentar novamente', <RotateCcw />, 'retryTranscription', !state.feedbackVisible)}
               <button aria-label={t('Fechar')} disabled={!state.feedbackVisible} onClick={() => run('dismissFeedback', state.feedbackOperationId)}><X /></button>
             </>}

@@ -24,6 +24,7 @@ from typing import Any, BinaryIO, Callable
 from clarify_account import AccountService, AccountDictionaryRepository
 from account_history import AccountHistory
 from cloud_defaults import DEFAULT_CLOUD_URL
+from recording_recovery import RecordingRecovery
 from experimental_audio_history import archive_audio, prune_audio_history
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Qt, Signal, Slot
@@ -1043,6 +1044,7 @@ class QtRecordingSession(RecordingSessionGateway):
         )
         os.close(descriptor)
         self.audio_path = Path(raw_path)
+        RecordingRecovery.active(self.audio_path, True)
         self.audio_path.unlink(missing_ok=True)
         self.cancel_event = threading.Event()
         self.provider_cancel_token = CancellationToken()
@@ -1051,9 +1053,14 @@ class QtRecordingSession(RecordingSessionGateway):
         self._shutdown_callbacks: list[Callable[[], None]] = []
         self._workers: set[threading.Thread] = set()
         self._lock = threading.RLock()
+        self.before_recording: Callable[[threading.Event], None] | None = None
         self._started = False
         self._started_at: float | None = None
         self._experimental_audio_saved = False
+        self._recovery_saved = False
+        self.recovery_id = None
+        self._retain_working_audio = False
+        self._recovered_audio = None
         self._terminal = False
         self._error: Exception | None = None
         self._boundary_callback: Callable[[Any], None] | None = None
@@ -1168,6 +1175,8 @@ class QtRecordingSession(RecordingSessionGateway):
 
     def start(self) -> None:
         try:
+            if self.before_recording is not None:
+                self.before_recording(self.cancel_event)
             controls = self._prepare_boundary_policy()
             self.recorder.start(self.audio_path, self.cancel_event)
             with self._lock:
@@ -1210,6 +1219,8 @@ class QtRecordingSession(RecordingSessionGateway):
         self.wait_until_started()
         self._stop_boundary_monitor()
         stopped_at = time.monotonic()
+        if self._recovered_audio is not None:
+            return self._recovered_audio
         self.recorder.stop()
         try:
             audio_bytes = self.audio_path.read_bytes()
@@ -1224,6 +1235,12 @@ class QtRecordingSession(RecordingSessionGateway):
         duration_seconds = (
             max(0.0, stopped_at - started_at) if started_at is not None else 0.0
         )
+        if finalize_stream:
+            self.persist_audio(
+                RecordingSnapshot(
+                    self.audio_path, audio_bytes, duration_seconds=duration_seconds
+                )
+            )
         if finalize_stream and not self._experimental_audio_saved:
             self._experimental_audio_saved = True
             try:
@@ -1249,6 +1266,42 @@ class QtRecordingSession(RecordingSessionGateway):
             ),
         )
 
+    def persist_audio(self, snapshot: RecordingSnapshot) -> None:
+        """Retain before provider work, including an explicitly accepted Undo."""
+        if self._recovery_saved or self._recovered_audio is not None:
+            return
+        RecordingRecovery.active(self.audio_path, True)
+        self._retain_working_audio = True
+        try:
+            self.recovery_id = RecordingRecovery(self.audio_path.parent).save(
+                snapshot.audio_bytes
+            )
+            self._update_recovery(duration=snapshot.duration_seconds or 0)
+        except (OSError, ValueError):
+            # Keep the working WAV and let usable audio continue to processing.
+            if not self.audio_path.exists():
+                try:
+                    self.audio_path.write_bytes(snapshot.audio_bytes)
+                except OSError:
+                    pass
+            if self.audio_path.exists():
+                self.recovery_id = self.audio_path.name
+        else:
+            self._recovery_saved = True
+            self._retain_working_audio = False
+
+    def _update_recovery(self, **changes) -> None:
+        if self.recovery_id:
+            try:
+                RecordingRecovery(self.audio_path.parent).update(
+                    self.recovery_id, **changes
+                )
+            except (OSError, ValueError):
+                pass
+
+    def begin_processing(self) -> None:
+        self._update_recovery(status="processing")
+
     def cancel(self) -> None:
         self.cancel_event.set()
         self.provider_cancel_token.cancel()
@@ -1258,6 +1311,7 @@ class QtRecordingSession(RecordingSessionGateway):
         self._mark_terminal()
 
     def complete(self) -> bool:
+        self._update_recovery(status="complete")
         self._stop_boundary_monitor()
         self._cleanup()
         self._mark_terminal()
@@ -1267,6 +1321,15 @@ class QtRecordingSession(RecordingSessionGateway):
         with self._lock:
             self._error = error
         self._stop_boundary_monitor()
+        if not self._recovery_saved and self._recovered_audio is None:
+            try:
+                if self.audio_path.is_file() and self.audio_path.stat().st_size >= 1000:
+                    self.persist_audio(
+                        RecordingSnapshot(self.audio_path, self.audio_path.read_bytes())
+                    )
+            except OSError:
+                self._retain_working_audio = True
+        self._update_recovery(status="failed")
         self._cleanup()
         self._mark_terminal()
 
@@ -1274,9 +1337,19 @@ class QtRecordingSession(RecordingSessionGateway):
         stream = getattr(self, "local_stream", None)
         if stream is not None:
             stream.cancel()
-        self.audio_path.unlink(missing_ok=True)
+        if not self._retain_working_audio:
+            self.audio_path.unlink(missing_ok=True)
 
     def _mark_terminal(self) -> None:
+        if self.recovery_id:
+            try:
+                recovery = RecordingRecovery(self.audio_path.parent)
+                recovery.release_processing(self.recovery_id)
+                if recovery.metadata(self.recovery_id).get("status") == "processing":
+                    recovery.update(self.recovery_id, status="saved")
+            except (OSError, ValueError):
+                pass
+        RecordingRecovery.active(self.audio_path, False)
         callbacks = []
         with self._lock:
             self._terminal = True
@@ -1297,6 +1370,7 @@ class QtRecordingAudioGateway:
         self.config = (
             config if config is not None else getattr(recorder, "config", None)
         )
+        self.before_recording: Callable[[threading.Event], None] | None = None
         self._active: QtRecordingSession | None = None
         self._lock = threading.Lock()
 
@@ -1319,7 +1393,37 @@ class QtRecordingAudioGateway:
             if self._active is not None and not self._active.shutdown_complete.is_set():
                 return None
             self._active = QtRecordingSession(self.recorder, self.config)
+            self._active.before_recording = self.before_recording
             return self._active
+
+    def create_recovery_session(self, path: Path) -> QtRecordingSession | None:
+        session = self.create_session()
+        if session is None:
+            return None
+        try:
+            import io
+            import wave
+
+            audio = path.read_bytes()
+            with wave.open(io.BytesIO(audio), "rb") as stream:
+                duration = len(stream.readframes(stream.getnframes())) / (
+                    stream.getframerate()
+                    * stream.getnchannels()
+                    * stream.getsampwidth()
+                )
+            session.audio_path.write_bytes(audio)
+            session.recovery_id = path.name
+            session._recovered_audio = RecordingSnapshot(
+                session.audio_path,
+                audio,
+                cancel_token=session.provider_cancel_token,
+                duration_seconds=duration,
+            )
+            session.start_finished.set()
+            return session
+        except Exception as error:
+            session.fail(error)
+            raise
 
     def wait_for_shutdown(self, timeout_seconds: float) -> bool:
         """Wait for the active recording owner to release its workers."""
@@ -1739,10 +1843,16 @@ class QtHistoryRecorder:
                     if owner is not None and self.account.history.append(
                         record, owner, final_text=state.result_text
                     ):
+                        self._bind_recording(state, record.id)
                         self.account.history.sync_safely(force=True)
                 elif self.account is None or not self.account.managed:
-                    self.store.append(record)
+                    if self.store.append(record) is not None:
+                        self._bind_recording(state, record.id)
             else:
+                # The retained audio is the failed History item. Do not add a
+                # second empty text entry for the same failed recording.
+                if getattr(state, "recording_id", None):
+                    return
                 if (
                     managed
                     or owner is not None
@@ -1761,6 +1871,16 @@ class QtHistoryRecorder:
         except (HistoryStoreError, OSError, ValueError):
             # History is explicitly opt-in and must never change workflow UX.
             return
+
+    def _bind_recording(self, state, record_id):
+        token = getattr(state, "recording_id", None)
+        if token:
+            try:
+                RecordingRecovery(Path(self.repositories.config.path).parent).update(
+                    token, history_id=record_id, status="complete"
+                )
+            except (OSError, ValueError):
+                pass
 
 
 class QtWorkflowRuntime:

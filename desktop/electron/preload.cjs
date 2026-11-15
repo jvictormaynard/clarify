@@ -12,3 +12,11 @@ contextBridge.exposeInMainWorld('clarifyDesktop', Object.freeze({
   onWindow: (listener) => subscribe('clarify:window-event', listener),
   ready: () => ipcRenderer.invoke('clarify:renderer-ready'),
 }));
+
+ipcRenderer.on('clarify:stop-audio', (_event, lease) => {
+  if (typeof lease !== 'string') return;
+  // Revoke even a pending Play response before acknowledging capture admission.
+  document.dispatchEvent(new CustomEvent('clarify-stop-audio', {detail: lease}));
+  for (const audio of document.querySelectorAll('audio')) audio.pause();
+  void ipcRenderer.invoke('clarify:call', 'settings', 'endRecordingPlayback', [lease]);
+});

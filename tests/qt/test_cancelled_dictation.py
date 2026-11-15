@@ -9,7 +9,6 @@ from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication
 
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
-from clarify.desktop.qml_app import _WorkflowWindowVisibility
 from tests.support.workflows import (
     FakeAudio,
     FakeClipboard,
@@ -183,16 +182,6 @@ class CancelledDictationTests(unittest.TestCase):
         self.assertTrue(self.service.dispatch(RetryDictation(operation_id)))
         self.assertEqual(self.clipboard.writes, ["Transcribed"])
         self.assertEqual((self.audio.started, self.audio.stopped), (1, 1))
-
-    def test_cancellation_and_undo_do_not_open_or_focus_main_window(self):
-        shell = SimpleNamespace(hide_window=Mock(), show_window=Mock())
-        coordinator = _WorkflowWindowVisibility(
-            self.bridge, shell, SimpleNamespace(isVisible=lambda: True)
-        )
-        self.cancel()
-        self.bridge.undoCancellation()
-        shell.show_window.assert_not_called()
-        self.assertIsNotNone(coordinator)
 
     def test_real_recording_session_removes_wav_and_undo_uses_detached_bytes(self):
         from clarify.desktop.qml_runtime import QtRecordingAudioGateway

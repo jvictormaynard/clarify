@@ -1,14 +1,19 @@
 # Settings window
 
-Builds that include `clarify-settings.exe` use the React/Tauri settings window.
-See `desktop/README.md` for the private-pipe integration, build and tests.
-The QML window described below remains only a launch-failure fallback for web builds
-and the settings screen for QML-only builds. Normal navigation stays in React.
+React renders Settings in the retained Electron child. Python and Qt own the
+controllers, configuration, recording and providers. See
+[desktop development](../desktop/README.md) for the private-pipe integration,
+build and tests.
 
-Settings use a dedicated Qt Quick Controls ApplicationWindow. The compact dictation toolbar remains a separate tool window. The settings window has no transient parent, uses Qt.Window, and supports the Windows taskbar, native resizing, minimization, and maximization.
+Choice controls save directly. Text and service drafts retain their Save,
+Discard and validation controls. Closing waits for accepted operations and
+asks about unsaved changes. Workflow navigation hides the window and stops
+Settings-only activities while retaining drafts.
 
-The existing Basic controls and shared monochrome theme are retained. No Electron runtime or new UI dependency is needed. Form columns align across pages; the footer and errors stay visible while the page scrolls.
+Electron is the required presenter. Launch failures and unexpected exits use
+bounded restart attempts, then a minimal native Retry/Close dialog. There is
+no QML Settings fallback. The native file-import panel remains separate.
 
-Preferences are drafts until Save. Closing a draft offers Save, Discard, or Cancel. Service keys and endpoints require Validate & save; their pending state is shown separately and switching services asks before discarding a draft. Numeric recording inputs are checked before persistence.
-
-Validation includes real QML navigation and input tests, small and large window sizes, unsaved close/discard, invalid duration rejection, persisted duration updates, and native Windows owner/style checks. Native tests verify a normal unowned window with a resize frame and maximize control. Screenshots use isolated test data, without reading user credentials or starting audio capture.
+Browser tests cover navigation, input, drafts and close guards with isolated
+controllers. Native Windows acceptance checks focus, resizing, DPI and the
+complete packaged application separately.

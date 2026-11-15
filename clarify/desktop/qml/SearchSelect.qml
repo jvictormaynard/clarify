@@ -27,10 +27,7 @@ Button {
         var selected = options.find(function(item) { return item.id === control.value })
         return selected ? selected.label : value
     }
-    readonly property string selectedIcon: {
-        var selected = options.find(function(item) { return item.id === control.value })
-        return selected && selected.icon ? selected.icon : ""
-    }
+
     signal activated(string value)
     signal refreshRequested()
     signal secondaryRequested()
@@ -45,13 +42,7 @@ Button {
     Keys.onDownPressed: menu.open()
     contentItem: RowLayout {
         spacing: 8
-        RoundedFlag {
-                    displayScale: control.sceneScale
-            visible: control.selectedIcon !== ""
-            source: control.selectedIcon
-            Layout.preferredWidth: implicitWidth; Layout.preferredHeight: implicitHeight
-            Layout.alignment: Qt.AlignVCenter
-        }
+
         Label {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -205,13 +196,7 @@ Button {
                     Accessible.name: modelData.label + (modelData.id === control.value ? qsTr(", selected") : "")
                     contentItem: RowLayout {
                         spacing: 8
-                        RoundedFlag {
-                    displayScale: control.sceneScale
-                            visible: Boolean(option.modelData.icon)
-                            source: option.modelData.icon || ""
-                            Layout.preferredWidth: implicitWidth; Layout.preferredHeight: implicitHeight
-                            Layout.alignment: Qt.AlignVCenter
-                        }
+
                         Label {
                             Layout.fillWidth: true
                             Layout.fillHeight: true

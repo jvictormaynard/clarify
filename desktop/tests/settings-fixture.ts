@@ -12,6 +12,7 @@ export type SettingsScenario = {
   socialWait?: boolean;
   librarySync?: boolean;
   history?: boolean;
+  recordingRecovery?: boolean;
   historyReview?: boolean;
   historyLarge?: boolean;
   initialPage?: "style";
@@ -24,7 +25,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
   releaseUsage: async ({ page }, use) => {
     await use(async () => {
       await page.evaluate(async () => {
-        await (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "accountCommand", args: ["refresh", ""] });
+        await (window as any).__testSettings({ method: "accountCommand", args: ["refresh", ""] });
       });
     });
   },
@@ -42,6 +43,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     if (scenario.librarySync) args.push("--library-sync");
     if (scenario.history) args.push("--history");
     if (scenario.historyReview) args.push("--history-review");
+    if (scenario.recordingRecovery) args.push("--recording-recovery");
     if (scenario.historyLarge) args.push("--history-large");
     if (scenario.usage && scenario.usage !== "reserved") args.push(`--usage-${scenario.usage}`);
     const controller = new SettingsProcess(python, args, { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale });
@@ -66,10 +68,20 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
         return work;
       });
       await page.addInitScript(() => {
-        (window as any).__TAURI_INTERNALS__ = { invoke: async (_command: string, request: unknown) => {
+        const listeners = new Set<(message: any) => void>();
+        (window as any).__testSettings = async (request: unknown) => {
           const response = await fetch("/__test_rpc", { method: "POST", body: JSON.stringify(request) });
           const result = await response.json(); if (result.error) throw result.error; return result.result;
-        } };
+        };
+        (window as any).clarifyDesktop = {
+          call: async (_channel: string, method: string, args: unknown[]) => (window as any).__testSettings({ method, args }),
+          subscribe: (listener: (message: any) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+          onWindow: () => () => {}, ready: async () => {}, window: async () => {},
+        };
+        setInterval(() => {
+          if (listeners.size) void (window as any).__testSettings({method:'poll',args:[]})
+            .then((state: unknown) => listeners.forEach(listener => listener({event:'settings',state}))).catch(() => {});
+        }, 150);
       });
       await page.goto("/");
       await expect(scenario.onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("heading", { name: locale === "en" ? "Welcome back" : locale === "es" ? "Bienvenido de nuevo" : "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });

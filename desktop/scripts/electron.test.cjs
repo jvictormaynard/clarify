@@ -9,6 +9,7 @@ test('JSON lines preserve split UTF-8, route concurrent replies and fail calls o
   const input = new PassThrough(), output = new PassThrough(); let sent = ''; output.on('data', c => sent += c);
   const events = []; let ended = false;
   const bridge = new Bridge(input, output, m => events.push(m), () => ended = true);
+  assert.doesNotThrow(() => validateRequest('settings', 'recordingRecovery', ['reprocess', 'a'.repeat(32) + '.wav']));
   const first = bridge.call('settings', 'snapshot', []), second = bridge.call('workflow', 'openFiles', []);
   const frame = Buffer.from('{"id":1,"result":"ação"}\n');
   input.write(frame.subarray(0, 24)); input.write(frame.subarray(24));
@@ -27,10 +28,11 @@ test('bridge bounds frames, arguments and call lifetime', async () => {
   input.write(Buffer.alloc(MAX_FRAME + 1, 32)); assert.equal(ended, true);
 });
 function fakeElectron() {
+  let contentsID = 0;
   const handlers = {}, app = new EventEmitter(); app.whenReady = async () => {}; app.quit = () => { app.quits = (app.quits || 0) + 1; };
   class Window extends EventEmitter {
     constructor(options) { super(); this.options = options; this.focusable = options.focusable; this.messages = []; this.webContents = new EventEmitter();
-      Object.assign(this.webContents, {mainFrame: {url: ''}, send: (topic, value) => this.messages.push({topic,value}), setWindowOpenHandler: fn => this.open = fn}); }
+      Object.assign(this.webContents, {id: ++contentsID, mainFrame: {url: ''}, send: (topic, value) => this.messages.push({topic,value}), setWindowOpenHandler: fn => this.open = fn}); }
     loadURL(url) { this.webContents.mainFrame.url = url; return Promise.resolve(); }
     isDestroyed() { return false; } removeMenu() {} setPosition(x, y) { this.position = {x, y}; } setAlwaysOnTop() {} restore() {} focus() { this.focused = true; }
     getBounds() { return {...(this.position || {x: 0, y: 0}), width: this.options.width, height: this.options.height}; }
@@ -43,12 +45,18 @@ function fakeElectron() {
   }
   return {passiveWindow: {setPassive() {}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
     screen: {events:{}, on(name, callback) {this.events[name]=callback;}, reads: 0, cursor: {x:100,y:100}, getCursorScreenPoint() { this.reads++; return this.cursor; }, getPrimaryDisplay: () => ({workArea: {x:0,y:0,width:1920,height:1080}}), getDisplayNearestPoint: () => ({workArea: {x:0,y:0,width:1920,height:1080}})},
-    session: {defaultSession: {setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, webRequest: {onBeforeRequest() {}}}}};
+    session: {defaultSession: {setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, webRequest: {onBeforeRequest(fn) { handlers.content = fn; }}}}};
 }
 test('host retains settings until accepted close, resets each reopen and keeps pill passive', async () => {
   const e = fakeElectron(), input = new PassThrough(), output = new PassThrough(); let sent = ''; output.on('data', c => sent += c);
   const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow);
   const event = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
+  let contentResult;
+  e.handlers.content({url: 'blob:null/local-audio', webContentsId: settings.webContents.id}, value => contentResult = value);
+  assert.equal(contentResult.cancel, false);
+  e.handlers.content({url: 'blob:null/local-audio', webContentsId: pill.webContents.id}, value => contentResult = value);
+  assert.equal(contentResult.cancel, true);
+
   e.handlers['clarify:renderer-ready'](event(settings)); e.handlers['clarify:renderer-ready'](event(pill));
   assert.equal(sent, '{"event":"ready"}\n');
   input.write('{"window":"settings-show"}\n{"window":"pill-show"}\n');
@@ -124,4 +132,18 @@ test('host retains settings until accepted close, resets each reopen and keeps p
   assert.deepEqual(settings.open({url:'https://example.com'}), {action:'deny'});
   e.handlers['clarify:call'](event(pill), 'workflow', 'quit', []); assert.match(sent, /"event":"quit"/);
   bridge.end(); assert.ok(e.app.quits);
+});
+
+test('preload revokes and pauses hidden-window playback before acknowledging capture', async () => {
+  const fs = require('node:fs'), vm = require('node:vm');
+  const handlers = {}, effects = [];
+  const ipcRenderer = {on: (name, callback) => handlers[name] = callback,
+    invoke: async (_channel, _scope, method) => {effects.push(method); return true;}, removeListener() {}};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../electron/preload.cjs'), 'utf8'), {
+    require: () => ({ipcRenderer, contextBridge: {exposeInMainWorld() {}}}),
+    CustomEvent: class {constructor(type, options) {this.type=type; this.detail=options.detail;}},
+    document: {dispatchEvent: event => effects.push('revoke:' + event.detail), querySelectorAll: () => [{pause: () => effects.push('pause')}]},
+  });
+  handlers['clarify:stop-audio'](null, 'owned-lease');
+  assert.deepEqual(effects, ['revoke:owned-lease', 'pause', 'endRecordingPlayback']);
 });

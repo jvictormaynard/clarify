@@ -1,5 +1,3 @@
-import { isTauri } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 export type DesktopMessage = {event: 'settings' | 'workflow'; state: Record<string, unknown>};
 export interface ElectronBridge {
   call<T>(channel: 'settings' | 'workflow', method: string, args: unknown[]): Promise<T>;
@@ -10,10 +8,7 @@ export interface ElectronBridge {
 }
 declare global { interface Window { clarifyDesktop?: ElectronBridge } }
 export const electron = () => window.clarifyDesktop;
-export const nativeWindow = () => !!electron() || isTauri();
+export const nativeWindow = () => !!electron();
 export async function windowAction(method: 'minimize' | 'toggleMaximize' | 'isMaximized' | 'closeAccepted') {
   if (electron()) return electron()!.window(method);
-  if (!isTauri()) return;
-  if (method === 'closeAccepted') return getCurrentWindow().close();
-  return getCurrentWindow()[method]();
 }

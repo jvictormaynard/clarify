@@ -119,6 +119,52 @@ class QmlAudioFileImportControllerTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_native_file_import_view_loads_with_only_its_live_dependencies(self):
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from PySide6.QtCore import QUrl
+        from PySide6.QtQml import QQmlApplicationEngine
+        from clarify.desktop.qml_app import _qml_root, _register_qml_context
+        from clarify.desktop.qml_bridge import QmlWorkflowBridge
+        from clarify.desktop.qml_settings import QmlSettingsController
+        from local_asr_product import LocalASRProductState
+        from tests.support.settings import _repositories
+        from workflows import WorkflowState
+
+        with TemporaryDirectory() as directory:
+            settings = QmlSettingsController(
+                _repositories(directory),
+                local_product=Mock(state=LocalASRProductState("missing"), busy=False),
+            )
+            batch = QmlAudioFileImportController(
+                _FakeService(),
+                selection_factory=lambda *args: _selection(),
+                call_soon=lambda callback: callback(),
+            )
+            bridge = QmlWorkflowBridge(
+                SimpleNamespace(state=WorkflowState(), subscribe=lambda callback: None),
+                audio_batch_controller=batch,
+            )
+            engine = QQmlApplicationEngine()
+            try:
+                _register_qml_context(engine, bridge, settings, batch)
+                engine.load(
+                    QUrl.fromLocalFile(str(_qml_root() / "AudioFilesWindow.qml"))
+                )
+                self.assertEqual(len(engine.rootObjects()), 1)
+                self.assertEqual(
+                    engine.rootObjects()[0].objectName(), "audioFilesWindow"
+                )
+            finally:
+                for window in engine.rootObjects():
+                    window.hide()
+                from shiboken6 import delete
+
+                delete(engine)
+                self.app.processEvents()
+                settings.shutdown()
+
     def test_start_builds_typed_selection_and_existing_controller_deduplicates(self):
         service = _FakeService()
         scheduler = _QueuedScheduler()
