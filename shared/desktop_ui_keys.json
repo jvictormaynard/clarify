@@ -258,5 +258,14 @@
   "Fechar guia de {name}",
   "Buscar ações",
   "O histórico está vinculado à sua conta.",
-  "Expandir / recolher dock"
+  "Expandir / recolher dock",
+  "Conclua as tarefas em andamento para atualizar.",
+  "Salve ou descarte as alterações para atualizar.",
+  "Feche a prática de ditado para atualizar.",
+  "Pare o teste do microfone para atualizar.",
+  "Aguarde a tarefa do modelo local terminar para atualizar.",
+  "Aguarde a conexão com o provedor terminar para atualizar.",
+  "Feche a janela do Clarify para aplicar a atualização.",
+  "Conclua a gravação ou o processamento e feche o resultado para atualizar.",
+  "Instalar atualização {v0}"
 ]

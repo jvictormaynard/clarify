@@ -677,27 +677,34 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
-    def can_restart_for_update() -> bool:
-        return (
-            workflow_service.state.phase.value == "ready"
-            and bridge.surface in {"idle", "success"}
-            and not bridge.feedbackVisible
-            and not voice_translation.active
-            and not audio_batch.running
-            and not settings.microphoneTestBusy
-            and not practice.open
-            and not settings.localAsrBusy
-            and not settings.localBenchmarkBusy
-            and not settings.providerBusy
-            and not getattr(settings, "chatgptState", {}).get("busy", False)
-            and not settings.dirty
-            and not settings.providerDirty
-            and not web_settings.blocks_update()
-        )
+    def update_restart_blocker() -> str:
+        if settings.dirty or settings.providerDirty:
+            return "Salve ou descarte as alterações para atualizar."
+        if practice.open:
+            return "Feche a prática de ditado para atualizar."
+        if settings.microphoneTestBusy:
+            return "Pare o teste do microfone para atualizar."
+        if settings.localAsrBusy or settings.localBenchmarkBusy:
+            return "Aguarde a tarefa do modelo local terminar para atualizar."
+        if settings.providerBusy or getattr(settings, "chatgptState", {}).get(
+            "busy", False
+        ):
+            return "Aguarde a conexão com o provedor terminar para atualizar."
+        if voice_translation.active or audio_batch.running:
+            return "Conclua as tarefas em andamento para atualizar."
+        if web_settings.blocks_update():
+            return "Feche a janela do Clarify para aplicar a atualização."
+        if (
+            workflow_service.state.phase.value != "ready"
+            or bridge.surface not in {"idle", "success"}
+            or bridge.feedbackVisible
+        ):
+            return "Conclua a gravação ou o processamento e feche o resultado para atualizar."
+        return ""
 
     updates = QmlUpdateController(
         automatic=loaded_config.automatic_updates,
-        can_restart=can_restart_for_update,
+        restart_blocker=update_restart_blocker,
         restart=app.quit,
         parent=app,
     )

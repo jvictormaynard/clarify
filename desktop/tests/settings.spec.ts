@@ -523,6 +523,37 @@ test("automatic updates persist immediately without a save step", async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
 });
 
+test("manual update is available in System and explains the pending restart", async ({ page }, testInfo) => {
+  await navigate(page, "Sistema");
+  await page.screenshot({ path: testInfo.outputPath("update-before.png") });
+  const snapshot = await page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke(
+    "settings_call", { method: "snapshot", args: [] },
+  ));
+  let installs = 0;
+  const waiting = "Feche a janela do Clarify para aplicar a atualização.";
+  await page.route("**/__test_rpc", async route => {
+    const request = route.request().postDataJSON();
+    if (!["poll", "installUpdate"].includes(request.method)) return route.fallback();
+    if (request.method === "installUpdate") installs++;
+    await route.fulfill({ json: { id: request.id, result: {
+      ...snapshot, updateSupported: true, updateAvailable: true,
+      updateVersion: "0.19.0", updateBusy: false,
+      updateStatus: installs ? waiting : "A versão 0.19.0 está disponível.",
+    } } });
+  });
+  const install = page.getByRole("button", { name: "Instalar atualização 0.19.0", exact: true });
+  await expect(install).toBeEnabled();
+  await install.click();
+  await expect(page.getByText(waiting, { exact: true })).toBeVisible();
+  expect(installs).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath("update-ready.png") });
+  await page.setViewportSize({ width: 640, height: 520 });
+  await install.scrollIntoViewIfNeeded();
+  await expect(install).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ path: testInfo.outputPath("update-ready-compact.png") });
+});
+
 
 test("integrated titlebar stays compact and close preserves unsaved changes", async ({ page }) => {
   await expect(page.locator(".sidebar-brand")).toContainText("Clarify");
