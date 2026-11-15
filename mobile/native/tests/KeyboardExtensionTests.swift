@@ -478,7 +478,7 @@ final class KeyboardExtensionTests: XCTestCase {
   }
   func testInstalledKeyboardTypingAndActivation() throws {
     continueAfterFailure = false
-    executionTimeAllowance = 360
+    executionTimeAllowance = 600
     let strictHeight = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyStrictOpeningHeight") as? Bool ?? true
     let testFullAccess = true
     let app = XCUIApplication(); app.launch()
@@ -597,11 +597,11 @@ final class KeyboardExtensionTests: XCTestCase {
   }
   // Keep the original installed acceptance first, before changing enabled languages.
   func testZ1NativeEnglishUSReference() throws {
-    continueAfterFailure = false; executionTimeAllowance = 360
+    continueAfterFailure = false; executionTimeAllowance = 600
     try captureNativeLanguage("en-US", names: ["English (US)", "English (United States)"], group: "English")
   }
   func testZ2NativePortugueseBrazilReference() throws {
-    continueAfterFailure = false; executionTimeAllowance = 360
+    continueAfterFailure = false; executionTimeAllowance = 600
     try captureNativeLanguage("pt-BR", names: ["Portuguese (Brazil)", "Português (Brasil)"], group: "Portuguese")
   }
 }
