@@ -1,4 +1,10 @@
 [
+  "Diagnóstico",
+  "Gerar diagnóstico",
+  "Conteúdo do diagnóstico",
+  "Salvar diagnóstico",
+  "Não foi possível gerar o diagnóstico. Tente novamente.",
+  "Gere um arquivo com versão, ambiente e erros técnicos. Revise antes de compartilhar. Nada é enviado automaticamente.",
   "practice_setup_hint",
   "practice_shortcut_hold",
   "practice_shortcut_toggle",

@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
@@ -39,6 +40,41 @@ class WebSettingsTests(unittest.TestCase):
         if method == "setSnippets" and len(args) == 1:
             args = (*args, self.settings.snippetContext)
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
+
+    def test_diagnostics_are_requested_separately_and_never_export_profile_data(self):
+        from provider_http import SafeRotatingLogger
+        from version import __version__
+
+        root = Path(self.settings.repositories.config.path).parent
+        logger = SafeRotatingLogger(root / "logs")
+        logger.write(
+            {
+                "event": "provider_http_error",
+                "status_code": 503,
+                "api_key": "private-key",
+                "source_text": "private transcript",
+            }
+        )
+        logger.close()
+        (root / "account-secrets.json").write_text(
+            '"private account"', encoding="utf-8"
+        )
+        reply = self.request("getDiagnostics")
+        self.assertNotIn("error", reply)
+        data = json.loads(reply["result"])
+        self.assertEqual(data["application"]["version"], __version__)
+        self.assertEqual(data["recent_errors"][0]["status_code"], 503)
+        for private in (
+            "private-key",
+            "private transcript",
+            "private account",
+            str(root),
+        ):
+            self.assertNotIn(private, reply["result"])
+        self.assertIn(
+            "error", self.request("getDiagnostics", str(root / "config.json"))
+        )
+        self.assertNotIn("recent_errors", self.request("snapshot")["result"])
 
     def test_preference_rpc_persists_controls_without_a_global_save(self):
         from dataclasses import replace

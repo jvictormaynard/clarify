@@ -332,6 +332,7 @@ export const copyTextActionPreview = (context: string, generation: number, isCur
 });
 // Only periodic polls advance the Python baseline. Commands still return full state.
 export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);
+export const getDiagnostics = () => queuedCall<string>("getDiagnostics", []);
 // Pairing images contain a bootstrap credential. Keep them out of Settings state.
 export const getComputerPairing = () => queuedCall<{ image?: string; expiresAt?: number }>("getComputerPairing", []);
 export function call<M extends SettingsMethod>(
