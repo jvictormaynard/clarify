@@ -513,6 +513,11 @@ Cancellation Undo uses a 26 px button. Status text, Done and Undo use regular
 Microphone and Text Actions reveal adjacent menus on hover, click, or the right
 arrow key. Chevrons mark these controls. Quit remains in the tray menu.
 
+While the microphone loads, the capsule keeps its muted border and shows a
+loading indicator with its content at 45% opacity. Recording bars and the bright
+recording border appear only after captured PCM frames confirm readiness. The
+start sound uses the same readiness boundary.
+
 Recording bars are 2.5 px wide and occupy a centred 22 px track inside the 36 px
 dock. Audio levels use a 28 ms attack and 65 ms release smoothing time constant.
 Frame-rate height updates retain fully rounded ends at silence, without a

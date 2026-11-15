@@ -148,10 +148,10 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
 
 try:
     from .qml_clipboard import QmlClipboardGateway
-    from .dictation_sounds import play_dictation_cue
+    from .dictation_sounds import DictationCuePlayer
 except ImportError:  # PyInstaller analyzes this module as top-level source.
     from qml_clipboard import QmlClipboardGateway
-    from dictation_sounds import play_dictation_cue
+    from dictation_sounds import DictationCuePlayer
 
 
 class QtRuntimeError(RuntimeError):
@@ -600,12 +600,31 @@ class QtRecorder:
             ready = active and (
                 capture.ready.is_set() or self._has_pcm_frames(capture.path)
             )
+            # A device can exit while the readiness reader holds the WAV.
+            ready = ready and process.poll() is None
             with self._lock:
                 if self._capture is capture and not capture.stopped.is_set():
                     if ready:
                         capture.ready.set()
                     else:
                         capture.ready.clear()
+            if ready:
+                # PCM from the authoritative capture, rather than command
+                # acceptance or the optional level meter, confirms recording.
+                with self._cue_lock:
+                    live = process.poll() is None
+                    with self._lock:
+                        announce = (
+                            live
+                            and self._capture is capture
+                            and not capture.stopped.is_set()
+                            and not capture.cancel_event.is_set()
+                            and not capture.cue_started
+                        )
+                        if announce:
+                            capture.cue_started = True
+                    if announce:
+                        self._play_cue(True)
             capture.stopped.wait(0.016)
 
     def _microphone_input_name(self, system: str, capture: _RecorderCapture) -> str:
@@ -923,15 +942,6 @@ class QtRecorder:
         if system == "Windows":
             kwargs["creationflags"] = 0x08000000
             kwargs["cwd"] = str(Path(self.sox).parent)
-        # Complete the cue before SoX opens the input. Streaming ASR and saved
-        # audio must receive speech only. These calls run off the UI thread.
-        with self._cue_lock:
-            if capture.cancel_event.is_set() or capture.stopped.is_set():
-                raise RuntimeError("Recording cancelled before startup")
-            capture.cue_started = self._cue_player is not None
-            self._play_cue(True)
-        if capture.cancel_event.is_set() or capture.stopped.is_set():
-            raise RuntimeError("Recording cancelled before startup")
         # Launch may wait on native Windows audio. Retain local ownership until
         # publication, so stop/restart cannot inherit a late process.
         process = subprocess.Popen(args, **kwargs)
@@ -1770,6 +1780,7 @@ class QtWorkflowRuntime:
         dictionary_service: DictionarySnippetService | None = None,
         account=None,
         practice_workflow=None,
+        cue_player: DictationCuePlayer | None = None,
     ) -> None:
         self.workflow_service = workflow_service
         self.recording_audio = recording_audio
@@ -1782,6 +1793,9 @@ class QtWorkflowRuntime:
         self.dictionary_service = dictionary_service
         self.account = account
         self.practice_workflow = practice_workflow
+        self.cue_player = cue_player
+        if cue_player is not None:
+            scheduler.run_in_background(cue_player.prepare)
         self._shutdown = False
         self.computer = None
         self._history_timer = None
@@ -1865,6 +1879,12 @@ class QtWorkflowRuntime:
         if self._shutdown:
             return
         self._shutdown = True
+        cue_cleanup = None
+        if self.cue_player is not None:
+            cue_cleanup = threading.Thread(
+                target=self.cue_player.close, name="ClarifyCueCleanup", daemon=True
+            )
+            cue_cleanup.start()
         computer_drained = True
         if self.computer is not None:
             computer_drained = self.computer.shutdown() is not False
@@ -1882,6 +1902,8 @@ class QtWorkflowRuntime:
         self.workflow_service.cancel_active()
         self.recording_audio.wait_for_shutdown(max(0.0, deadline - time.monotonic()))
         self.scheduler.wait_for_background(max(0.0, deadline - time.monotonic()))
+        if cue_cleanup is not None:
+            cue_cleanup.join(timeout=max(0.0, deadline - time.monotonic()))
         if computer_drained:
             self.provider_registry.shutdown()
 
@@ -1909,8 +1931,9 @@ def create_real_workflow_runtime(
             ),
         )
     )
+    cue_player = DictationCuePlayer()
     recording_audio = QtRecordingAudioGateway(
-        QtRecorder(config, cue_player=play_dictation_cue), config
+        QtRecorder(config, cue_player=cue_player), config
     )
     clipboard = QtClipboardGateway()
     from chatgpt_auth import get_chatgpt_session
@@ -1966,6 +1989,7 @@ def create_real_workflow_runtime(
         dictionary_service=dictionary_service,
         account=account,
         practice_workflow=practice_workflow,
+        cue_player=cue_player,
         provider_registry=provider.registry,
     )
 

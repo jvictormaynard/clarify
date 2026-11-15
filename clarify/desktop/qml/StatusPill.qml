@@ -136,6 +136,7 @@ Window {
 
         Rectangle {
             objectName: "statusCapsule"
+            opacity: pill.starting ? 0.45 : 1.0
             anchors.fill: parent
             anchors.margins: 1
             radius: height / 2
