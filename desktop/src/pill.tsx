@@ -211,7 +211,7 @@ export function Pill() {
   const width = state.feedbackVisible ? feedbackWidth : done ? doneWidth : state.recording ? (state.showRecordingStop ? (starting ? 112 : 128) : starting ? (state.targetIcon ? 96 : 72) : state.targetIcon ? 104 : 72) : state.targetIcon ? 96 : 72;
   const collapsed = !dock.expanded && !capture && !result && !translation && !menu && !languageMenu && !error;
   return <main className="pill-stage" onPointerDownCapture={dock.press} onPointerUpCapture={dock.release} onPointerCancelCapture={dock.release}>
-    <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')}
+    <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
       style={capture && !result && !translation ? {width} : undefined}
       tabIndex={!capture && !result && !translation ? 0 : undefined}
       onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave}

@@ -78,7 +78,7 @@ class QtRecordingSessionTests(unittest.TestCase):
                 worker.is_alive(), "readiness reader retained a stopped WAV"
             )
 
-    def test_dictation_cues_surround_capture_and_stop_once(self):
+    def test_dictation_cues_follow_pcm_readiness_and_stop_once(self):
         from clarify.desktop import qml_runtime
 
         for cancel, cue_fails in ((False, False), (True, False), (False, True)):
@@ -87,14 +87,23 @@ class QtRecordingSessionTests(unittest.TestCase):
                 TemporaryDirectory() as directory,
             ):
                 events = []
+                inspected, release, sounded = (threading.Event() for _ in range(3))
                 process = Mock()
                 process.poll.return_value = None
                 process.terminate.side_effect = lambda: events.append("closed")
 
                 def cue(starting):
                     events.append("start" if starting else "stop")
+                    if starting:
+                        sounded.set()
                     if cue_fails:
                         raise OSError("Output device unavailable")
+
+                def pcm(_path):
+                    inspected.set()
+                    if not release.wait(2):
+                        raise TimeoutError("PCM readiness not released")
+                    return True
 
                 def launch(*args, **kwargs):
                     events.append("capture")
@@ -102,23 +111,68 @@ class QtRecordingSessionTests(unittest.TestCase):
 
                 recorder = QtRecorder(cue_player=cue)
                 recorder.sox = "sox"
-                with patch.object(qml_runtime.subprocess, "Popen", side_effect=launch):
-                    recorder.start(Path(directory) / "recording.wav", threading.Event())
-                    (recorder.cancel if cancel else recorder.stop)()
-                    recorder.cancel()
-                    self._drain_readiness(recorder)
-                self.assertEqual(events, ["start", "capture", "closed", "stop"])
+                with (
+                    patch.object(qml_runtime.subprocess, "Popen", side_effect=launch),
+                    patch.object(recorder, "_has_pcm_frames", side_effect=pcm),
+                ):
+                    try:
+                        recorder.start(
+                            Path(directory) / "recording.wav", threading.Event()
+                        )
+                        self.assertTrue(inspected.wait(1))
+                        self.assertEqual(events, ["capture"])
+                        release.set()
+                        self.assertTrue(sounded.wait(1))
+                        self.assertTrue(recorder.capture_active)
+                        (recorder.cancel if cancel else recorder.stop)()
+                        recorder.cancel()
+                    finally:
+                        release.set()
+                        recorder.cancel()
+                        self._drain_readiness(recorder)
+                self.assertEqual(events, ["capture", "start", "closed", "stop"])
 
-    def test_cancel_during_start_cue_does_not_open_microphone(self):
+    def test_cancel_or_exit_before_pcm_readiness_does_not_play_cues(self):
         from clarify.desktop import qml_runtime
 
-        cancelled = threading.Event()
-        recorder = QtRecorder(cue_player=lambda _starting: cancelled.set())
-        recorder.sox = "sox"
-        with patch.object(qml_runtime.subprocess, "Popen") as launch:
-            with self.assertRaisesRegex(RuntimeError, "cancelled"):
-                recorder.start(Path("unused.wav"), cancelled)
-        launch.assert_not_called()
+        for outcome in ("cancel", "exit"):
+            with self.subTest(outcome=outcome):
+                inspected, release, exited = (threading.Event() for _ in range(3))
+                cue = Mock()
+                recorder = QtRecorder(cue_player=cue)
+                recorder.sox = "sox"
+                process = Mock()
+                process.poll.return_value = None
+
+                def pcm(_path):
+                    inspected.set()
+                    if not release.wait(2):
+                        raise TimeoutError("PCM readiness not released")
+                    return True
+
+                def poll():
+                    exited.set()
+                    return 1
+
+                with (
+                    patch.object(qml_runtime.subprocess, "Popen", return_value=process),
+                    patch.object(recorder, "_has_pcm_frames", side_effect=pcm),
+                ):
+                    try:
+                        recorder.start(Path("unused.wav"), threading.Event())
+                        self.assertTrue(inspected.wait(1))
+                        if outcome == "cancel":
+                            recorder.cancel()
+                        else:
+                            process.poll.side_effect = poll
+                        release.set()
+                        if outcome == "exit":
+                            self.assertTrue(exited.wait(1))
+                    finally:
+                        release.set()
+                        recorder.cancel()
+                        self._drain_readiness(recorder)
+                cue.assert_not_called()
 
     def test_cancel_cleans_wav_with_readiness_read_in_progress(self):
         from clarify.desktop import qml_runtime
@@ -2315,7 +2369,7 @@ class QmlRuntimeFactoryTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             with patch.dict(os.environ, {"CLARIFY_DATA_DIR": directory}):
-                runtime = create_real_workflow_runtime(object())
+                runtime = create_real_workflow_runtime(Mock())
             registry = runtime.workflow_service._provider.registry
             self.assertIs(
                 registry.adapter("chatgpt").session,
@@ -2334,7 +2388,7 @@ class QmlRuntimeFactoryTests(unittest.TestCase):
         legacy_app_before = sys.modules.get("app", missing)
         with TemporaryDirectory() as directory:
             with patch.dict(os.environ, {"CLARIFY_DATA_DIR": directory}):
-                runtime = create_real_workflow_runtime(object())
+                runtime = create_real_workflow_runtime(Mock())
 
         self.assertIsInstance(runtime.workflow_service, WorkflowService)
         self.assertIs(runtime.repositories, runtime.history_recorder.repositories)
@@ -2343,7 +2397,7 @@ class QmlRuntimeFactoryTests(unittest.TestCase):
     def test_factory_constructs_opt_in_history_recorder(self):
         with TemporaryDirectory() as directory:
             with patch.dict(os.environ, {"CLARIFY_DATA_DIR": directory}):
-                runtime = create_real_workflow_runtime(object())
+                runtime = create_real_workflow_runtime(Mock())
 
         self.assertIsInstance(runtime.history_recorder, QtHistoryRecorder)
         self.assertFalse(runtime.history_recorder.store.enabled)
