@@ -533,3 +533,12 @@
 .about-page img { width: 48px; height: 48px; }
 .about-page h3 { margin: 0; font-size: 24px; font-weight: 500; }
 .about-page p { margin: 0; color: var(--muted-foreground); }
+
+.history-with-audio .history-entry-content { grid-template-columns: 98px minmax(0, 1fr) auto; align-items: center; }
+.history-with-audio .history-row-tools { position: static; opacity: 1; padding: 8px 12px 8px 0; align-self: center; }
+.history-with-audio .history-summary { padding: 16px; align-self: center; }
+.history-audio-actions { display: flex; align-items: center; gap: 4px; }
+.history-audio-summary { color: var(--muted-foreground); }
+.history-retry-action { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; min-height: 30px; padding: 4px 8px; }
+.history-audio-error { color: var(--destructive); font-size: 12px; max-width: 220px; }
+@media (max-width: 767px) { .history-with-audio .history-entry-content { grid-template-columns: 84px minmax(0, 1fr) auto; } .history-with-audio .history-meta { min-width: 84px; } .history-with-audio .history-summary { padding-inline: 8px; } }

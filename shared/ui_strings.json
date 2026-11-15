@@ -8658,5 +8658,210 @@
     "pt": "Selecione de uma a cinco palavras, com até 256 caracteres.",
     "en": "Select one to five words, up to 256 characters.",
     "es": "Selecciona entre una y cinco palabras, hasta 256 caracteres."
+  },
+  "Gravações neste computador": {
+    "pt": "Gravações neste computador",
+    "en": "Recordings on this computer",
+    "es": "Grabaciones en este equipo"
+  },
+  "O áudio completo fica neste computador até você excluir. Reprocessar usa a conta e as configurações atuais.": {
+    "pt": "O áudio completo fica neste computador até você excluir. Reprocessar usa a conta e as configurações atuais.",
+    "en": "Full audio stays on this computer until you delete it. Reprocess uses the current account and settings.",
+    "es": "El audio completo permanece en este equipo hasta que lo elimines. Reprocesar usa la cuenta y la configuración actuales."
+  },
+  "Atualizar gravações": {
+    "pt": "Atualizar gravações",
+    "en": "Refresh recordings",
+    "es": "Actualizar grabaciones"
+  },
+  "Reprocessar": {
+    "pt": "Reprocessar",
+    "en": "Reprocess",
+    "es": "Reprocesar"
+  },
+  "Excluir gravação": {
+    "pt": "Excluir gravação",
+    "en": "Delete recording",
+    "es": "Eliminar grabación"
+  },
+  "Esta ação remove o áudio completo deste computador.": {
+    "pt": "Esta ação remove o áudio completo deste computador.",
+    "en": "This removes the full audio from this computer.",
+    "es": "Esta acción elimina el audio completo de este equipo."
+  },
+  "Reprocessamento iniciado. O resultado será exibido no aplicativo.": {
+    "pt": "Reprocessamento iniciado. O resultado será exibido no aplicativo.",
+    "en": "Reprocessing started. The result will appear in the app.",
+    "es": "Se inició el reprocesamiento. El resultado aparecerá en la aplicación."
+  },
+  "Não foi possível acessar a gravação. Aguarde o processamento atual e tente novamente.": {
+    "pt": "Não foi possível acessar a gravação. Aguarde o processamento atual e tente novamente.",
+    "en": "Could not access the recording. Wait for current processing to finish, then try again.",
+    "es": "No se pudo acceder a la grabación. Espera a que termine el procesamiento actual e inténtalo de nuevo."
+  },
+  "Limpar histórico remove as transcrições. Exclua os áudios separadamente em Gravações neste computador, no Histórico.": {
+    "pt": "Limpar histórico remove as transcrições. Exclua os áudios separadamente em Gravações neste computador, no Histórico.",
+    "en": "Clear history removes transcriptions. Delete audio separately under Recordings on this computer in History.",
+    "es": "Limpiar historial elimina las transcripciones. Elimina el audio por separado en Grabaciones en este equipo, en Historial."
+  },
+  "Gravações neste iPhone": {
+    "pt": "Gravações neste iPhone",
+    "en": "Recordings on this iPhone",
+    "es": "Grabaciones en este iPhone"
+  },
+  "O áudio completo fica salvo neste dispositivo, mesmo se o processamento falhar. Reprocessar usa sua conta e as configurações atuais.": {
+    "pt": "O áudio completo fica salvo neste dispositivo, mesmo se o processamento falhar. Reprocessar usa sua conta e as configurações atuais.",
+    "en": "Full audio stays saved on this device, even if processing fails. Reprocess uses your current account and settings.",
+    "es": "El audio completo queda guardado en este dispositivo, aunque falle el procesamiento. Reprocesar usa tu cuenta y configuración actuales."
+  },
+  "Áudio completo salvo neste dispositivo": {
+    "pt": "Áudio completo salvo neste dispositivo",
+    "en": "Full audio saved on this device",
+    "es": "Audio completo guardado en este dispositivo"
+  },
+  "Reprocessar áudio": {
+    "pt": "Reprocessar áudio",
+    "en": "Reprocess audio",
+    "es": "Reprocesar audio"
+  },
+  "Não foi possível transcrever": {
+    "pt": "Não foi possível transcrever",
+    "en": "Could not transcribe",
+    "es": "No se pudo transcribir"
+  },
+  "Áudio salvo": {
+    "pt": "Áudio salvo",
+    "en": "Audio saved",
+    "es": "Audio guardado"
+  },
+  "Transcrição concluída": {
+    "pt": "Transcrição concluída",
+    "en": "Transcription complete",
+    "es": "Transcripción completada"
+  },
+  "Processando áudio…": {
+    "pt": "Processando áudio…",
+    "en": "Processing audio…",
+    "es": "Procesando audio…"
+  },
+  "Aguarde o processamento atual.": {
+    "pt": "Aguarde o processamento atual.",
+    "en": "Wait for current processing to finish.",
+    "es": "Espera a que termine el procesamiento actual."
+  },
+  "Esta ação remove o áudio completo deste iPhone. A transcrição será mantida.": {
+    "pt": "Esta ação remove o áudio completo deste iPhone. A transcrição será mantida.",
+    "en": "This removes the full audio from this iPhone. The transcription will stay saved.",
+    "es": "Esta acción elimina el audio completo de este iPhone. La transcripción se conservará."
+  },
+  "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Exclua os áudios separadamente em Gravações neste iPhone.": {
+    "pt": "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Exclua os áudios separadamente em Gravações neste iPhone.",
+    "en": "Full audio stays on this iPhone until you delete it. Clear history removes text. Delete audio separately under Recordings on this iPhone.",
+    "es": "El audio completo permanece en este iPhone hasta que lo elimines. Borrar el historial elimina los textos. Elimina el audio por separado en Grabaciones en este iPhone."
+  },
+  "O histórico desta conexão fica neste iPhone.": {
+    "pt": "O histórico desta conexão fica neste iPhone.",
+    "en": "History for this connection stays on this iPhone.",
+    "es": "El historial de esta conexión permanece en este iPhone."
+  },
+  "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone.": {
+    "pt": "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone.",
+    "en": "New account dictations sync across your devices. Older records and dictations without an account stay on this iPhone.",
+    "es": "Los nuevos dictados de la cuenta se sincronizan entre tus dispositivos. Los registros antiguos y los dictados sin cuenta permanecen en este iPhone."
+  },
+  "Gravação recuperada. O áudio pode estar incompleto.": {
+    "pt": "Gravação recuperada. O áudio pode estar incompleto.",
+    "en": "Recording recovered. The audio may be incomplete.",
+    "es": "Grabación recuperada. El audio puede estar incompleto."
+  },
+  "Tentar transcrição novamente": {
+    "pt": "Tentar transcrição novamente",
+    "en": "Retry transcription",
+    "es": "Intentar transcribir de nuevo"
+  },
+  "Desfazer edição de IA": {
+    "pt": "Desfazer edição de IA",
+    "en": "Undo AI edit",
+    "es": "Deshacer edición de IA"
+  },
+  "Extrair áudio": {
+    "pt": "Extrair áudio",
+    "en": "Export audio",
+    "es": "Extraer audio"
+  },
+  "Reproduzir áudio": {
+    "pt": "Reproduzir áudio",
+    "en": "Play audio",
+    "es": "Reproducir audio"
+  },
+  "Pausar áudio": {
+    "pt": "Pausar áudio",
+    "en": "Pause audio",
+    "es": "Pausar audio"
+  },
+  "Áudio não processado": {
+    "pt": "Áudio não processado",
+    "en": "Audio not processed",
+    "es": "Audio sin procesar"
+  },
+  "Não foi possível abrir o áudio. Tente novamente.": {
+    "pt": "Não foi possível abrir o áudio. Tente novamente.",
+    "en": "Could not open the audio. Try again.",
+    "es": "No se pudo abrir el audio. Inténtalo de nuevo."
+  },
+  "Não foi possível extrair o áudio.": {
+    "pt": "Não foi possível extrair o áudio.",
+    "en": "Could not export the audio.",
+    "es": "No se pudo extraer el audio."
+  },
+  "Mostra a transcrição original neste dispositivo.": {
+    "pt": "Mostra a transcrição original neste dispositivo.",
+    "en": "Shows the original transcription on this device.",
+    "es": "Muestra la transcripción original en este dispositivo."
+  },
+  "Esta ação remove o áudio salvo deste computador.": {
+    "pt": "Esta ação remove o áudio salvo deste computador.",
+    "en": "This removes the saved audio from this computer.",
+    "es": "Esta acción elimina el audio guardado en este equipo."
+  },
+  "Esta ação remove o áudio salvo deste iPhone.": {
+    "pt": "Esta ação remove o áudio salvo deste iPhone.",
+    "en": "This removes the saved audio from this iPhone.",
+    "es": "Esta acción elimina el audio guardado en este iPhone."
+  },
+  "O áudio salvo neste dispositivo também será excluído.": {
+    "pt": "O áudio salvo neste dispositivo também será excluído.",
+    "en": "The audio saved on this device will also be deleted.",
+    "es": "También se eliminará el audio guardado en este dispositivo."
+  },
+  "Limpar histórico remove os textos. Os áudios restantes continuam como itens no histórico até você excluir.": {
+    "pt": "Limpar histórico remove os textos. Os áudios restantes continuam como itens no histórico até você excluir.",
+    "en": "Clear history removes text. Remaining audio stays as history items until you delete it.",
+    "es": "Limpiar historial elimina los textos. El audio restante permanece como elementos del historial hasta que lo elimines."
+  },
+  "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Os áudios restantes continuam como itens no histórico.": {
+    "pt": "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Os áudios restantes continuam como itens no histórico.",
+    "en": "Full audio stays on this iPhone until you delete it. Clear history removes text. Remaining audio stays as history items.",
+    "es": "El audio completo permanece en este iPhone hasta que lo elimines. Borrar el historial elimina los textos. El audio restante permanece como elementos del historial."
+  },
+  "Tentar transcrever áudio de {duration}.": {
+    "pt": "Tentar transcrever áudio de {duration}.",
+    "en": "Retry your {duration} transcript.",
+    "es": "Intentar transcribir de nuevo el audio de {duration}."
+  },
+  "Não foi possível iniciar a interface do Clarify.": {
+    "pt": "Não foi possível iniciar a interface do Clarify.",
+    "en": "The Clarify interface could not be started.",
+    "es": "No se pudo iniciar la interfaz de Clarify."
+  },
+  "Tente abrir a interface novamente ou feche o Clarify. Os áudios salvos continuam no histórico.": {
+    "pt": "Tente abrir a interface novamente ou feche o Clarify. Os áudios salvos continuam no histórico.",
+    "en": "Retry the interface or close Clarify. Saved audio remains in history.",
+    "es": "Intenta abrir la interfaz de nuevo o cierra Clarify. El audio guardado permanece en el historial."
+  },
+  "A interface do Clarify não foi encontrada. Reinstale o aplicativo.": {
+    "pt": "A interface do Clarify não foi encontrada. Reinstale o aplicativo.",
+    "en": "The Clarify interface is missing. Reinstall the app.",
+    "es": "No se encontró la interfaz de Clarify. Reinstala la aplicación."
   }
 }

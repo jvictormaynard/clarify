@@ -4,14 +4,38 @@ import { t, uiLanguage } from "../i18n";
 import { calendarDay, historyDayTitle } from "../../../shared/history";
 import { Collapsible, CollapsibleTrigger } from "../components/primitives/collapsible";
 import { Button, Confirm } from "../components/ui";
+import { HistoryAudioActions } from "../components/history-audio-actions";
 import { HistoryComparison, HistoryDetailsPanel, HistoryEntryActions, type HistoryEntryExtension } from "../components/history-entry";
 import { PageSearch } from "../components/page-search";
 import { HistoryCorrectionAction } from "../components/history-correction-dialog";
-import { getHistoryPage, type HistoryEntry } from "../settings/bridge";
+import { recordingRecovery, type RecoveryRecording, getHistoryPage, type HistoryEntry } from "../settings/bridge";
 import type { SettingsPageProps } from "../settings/use-settings";
 
 export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps & { renderEntryAction?: HistoryEntryExtension }) {
   const { state, run } = controller;
+  const [recordings, setRecordings] = useState<RecoveryRecording[]>([]);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [deletingRecording, setDeletingRecording] = useState<string | null>(null);
+  const recoveryPending = useRef(false);
+  const recover = async (action: "list" | "delete" | "reprocess" | "undo", token = "") => {
+    if (action !== "list" && recoveryPending.current) return;
+    if (action !== "list") { recoveryPending.current = true; setRecoveryBusy(true); }
+    setRecoveryError("");
+    setRecoveryMessage("");
+    try {
+      const result = await recordingRecovery(action, token);
+      if (result.entries) setRecordings(result.entries);
+      if (result.started) setRecoveryMessage(t("Reprocessamento iniciado. O resultado será exibido no aplicativo."));
+      if (action === "delete") setDeletingRecording(null);
+    } catch {
+      setRecoveryError(t("Não foi possível acessar a gravação. Aguarde o processamento atual e tente novamente."));
+    } finally {
+      if (action !== "list") { recoveryPending.current = false; setRecoveryBusy(false); }
+    }
+  };
+  useEffect(() => { void recover("list"); }, [state.recordingRevision, state.historyState?.context, state.historyState?.revision]);
   const headingId = useId();
   const searchScope = useRef<HTMLDivElement>(null);
   const context = state.historyState?.context || "";
@@ -83,13 +107,17 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
       setDeleting(false);
     }
   };
-  const days = new Map<string, { label: string; entries: HistoryEntry[] }>();
-  for (const entry of entries) {
-    const date = new Date(entry.timestamp * 1000);
+  type Item = { kind: "text"; entry: HistoryEntry; timestamp: number } | { kind: "audio"; recording: RecoveryRecording; timestamp: number };
+  const items: Item[] = [...entries.map(entry => ({ kind: "text" as const, entry, timestamp: entry.timestamp })),
+    ...(!query ? recordings.map(recording => ({ kind: "audio" as const, recording, timestamp: recording.timestamp })) : [])];
+  items.sort((a, b) => b.timestamp - a.timestamp);
+  const days = new Map<string, { label: string; items: Item[] }>();
+  for (const item of items) {
+    const date = new Date(item.timestamp * 1000);
     const key = calendarDay(date);
     const group = days.get(key);
-    if (group) group.entries.push(entry);
-    else days.set(key, { label: historyDayTitle(date, today, uiLanguage, t("Hoje")), entries: [entry] });
+    if (group) group.items.push(item);
+    else days.set(key, { label: historyDayTitle(date, today, uiLanguage, t("Hoje")), items: [item] });
   }
   const firstDay = days.values().next().value;
   return <div className="history-page" ref={searchScope}>
@@ -97,18 +125,33 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
       <h3 className="history-date" id={headingId}>{firstDay?.label || t("Histórico")}</h3>
       <PageSearch label={t("Buscar no histórico")} query={draft} onQueryChange={changeSearch} maxLength={200} interactionBoundary={searchScope} />
     </div>
+    {recoveryError && <p role="alert" className="error">{recoveryError}</p>}
+    {recoveryMessage && <p role="status" className="hint">{recoveryMessage}</p>}
     {error && <p role="alert" className="error">{t(error)}</p>}
-    {entries.length ? <>
+    {items.length ? <>
       <div className="history-days" role="group" aria-label={t("Histórico")}>
         {[...days].map(([day, group], index) => <section className="history-day" key={day} aria-labelledby={index === 0 ? headingId : undefined}>
           {index > 0 && <h3 className="history-date">{group.label}</h3>}
           <div className="history-list" role="list" aria-label={group.label}>
-            {group.entries.map(entry => {
+            {group.items.map(item => {
+              if (item.kind === "audio") {
+                const recording = item.recording;
+                return <div role="listitem" key={`audio:${recording.id}`}>
+                  <article className="history-row history-with-audio">
+                    <div className="history-entry-content">
+                      <div className="history-meta"><time dateTime={new Date(recording.timestamp * 1000).toISOString()}>{new Intl.DateTimeFormat(uiLanguage, { timeStyle: "short" }).format(recording.timestamp * 1000)}</time><span className="history-device"><Monitor size={12} aria-hidden="true" /> Desktop</span></div>
+                      <div className="history-summary"><span className="history-text history-audio-summary">{t(recording.status === "processing" ? "Processando áudio…" : recording.status === "complete" ? "Áudio salvo" : "Áudio não processado")}</span></div>
+                      <div className="history-row-tools"><HistoryAudioActions recording={recording} busy={recoveryBusy} onRetry={() => void recover("reprocess", recording.id)} onUndo={() => {}} onDelete={() => setDeletingRecording(recording.id)} /></div>
+                    </div>
+                  </article>
+                </div>;
+              }
+              const entry = item.entry;
               const Device = entry.sourceDevice === "mobile" ? Smartphone : Monitor;
               const request = generation.current, scope = Object.freeze({ context, revision }), expected = current.current;
               const isCurrent = () => active(request, expected);
               return <div role="listitem" key={`${context}:${revision}:${query}:${entry.id}`}>
-                <Collapsible className="history-row" render={<article />} open={expanded === entry.id} onOpenChange={open => setExpanded(open ? entry.id : null)}>
+                <Collapsible className={entry.recording ? "history-row history-with-audio" : "history-row"} render={<article />} open={expanded === entry.id} onOpenChange={open => setExpanded(open ? entry.id : null)}>
                   <div className="history-entry-content">
                     <div className="history-meta">
                       <time dateTime={new Date(entry.timestamp * 1000).toISOString()}>
@@ -117,7 +160,7 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
                       <span className="history-device"><Device size={12} aria-hidden="true" /> {entry.sourceDevice === "mobile" ? "Mobile" : "Desktop"}</span>
                     </div>
                     <CollapsibleTrigger className="history-summary" aria-describedby={`history-preview-${entry.id}`} aria-label={t(expanded === entry.id ? "Fechar textos" : "Abrir textos")}><span id={`history-preview-${entry.id}`} className="history-text">{entry.text || t("Sem texto")}</span></CollapsibleTrigger>
-                    <HistoryEntryActions entry={entry} scope={scope} isCurrent={isCurrent} onDelete={() => setDeletion({ id: entry.id, context })} />
+                    <HistoryEntryActions entry={entry} scope={scope} isCurrent={isCurrent} onDelete={() => setDeletion({ id: entry.id, context })} busy={recoveryBusy} onRetry={() => { if (entry.recording) void recover("reprocess", entry.recording.id); }} onUndo={() => { if (entry.recording) void recover("undo", entry.recording.id); }} />
                     <HistoryDetailsPanel>
                       <HistoryComparison entry={entry} scope={scope} isCurrent={isCurrent} />
                       <div className="history-detail-footer">{renderEntryAction ? renderEntryAction(entry, scope) : <HistoryCorrectionAction entry={entry} scope={scope} controller={controller} />}</div>
@@ -137,9 +180,13 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
       title={t("Excluir transcrição")}
       description={t(state.accountState?.signedIn
         ? "A exclusão das transcrições da conta será sincronizada nos seus dispositivos. Os registros locais serão removidos apenas deste computador."
-        : "Esta ação remove os registros deste computador.")}>
+        : "Esta ação remove os registros deste computador.") + (entries.find(entry => entry.id === deletion?.id)?.recording ? " " + t("O áudio salvo neste dispositivo também será excluído.") : "")}>
       <Button autoFocus disabled={deleting} onClick={() => setDeletion(null)}>{t("Cancelar")}</Button>
       <Button className="destructive" disabled={deleting || deletion?.context !== context} onClick={() => void confirm()}>{t("Excluir")}</Button>
+    </Confirm>
+    <Confirm open={deletingRecording !== null} onOpenChange={open => { if (!open && !recoveryBusy) setDeletingRecording(null); }} title={t("Excluir gravação")} description={t("Esta ação remove o áudio salvo deste computador.")}>
+      <Button disabled={recoveryBusy} onClick={() => setDeletingRecording(null)}>{t("Cancelar")}</Button>
+      <Button className="destructive" disabled={recoveryBusy} onClick={() => { if (deletingRecording) void recover("delete", deletingRecording); }}>{t("Excluir")}</Button>
     </Confirm>
   </div>;
 }

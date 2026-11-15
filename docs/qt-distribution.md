@@ -27,7 +27,7 @@ your changes to those libraries. The LGPL and GPL texts are included in the
 source and notices files. This document does not add a license restriction.
 
 1. Download the Clarify source for the same release tag and the Qt source ZIP.
-2. Read `CONTRIBUTING.md` for the Windows Python, Node, Rust and MSVC build tools.
+2. Read `CONTRIBUTING.md` for the Windows Python, Node and MSVC build tools.
 3. Extract the Qt archives into a separate development directory. Build Qt Base,
    then Shader Tools, Declarative, SVG and any required tools against that Qt
    installation. Keep the Qt libraries shared rather than static.

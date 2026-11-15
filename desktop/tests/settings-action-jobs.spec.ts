@@ -11,15 +11,20 @@ function jobs(method = "saveTextAction", key = "textActionMutation") {
   let entered!: () => void;
   const polled = new Promise<void>(resolve => { entered = resolve; });
   const calls: string[] = [];
-  const context = createContext({ t: (value: string) => value, electron: () => undefined,
-    setTimeout: (callback: () => void) => { queueMicrotask(callback); return 0; },
-    tauriInvoke: async (_command: string, request: { method: string }) => {
-      calls.push(request.method);
-      if (request.method === method) return { [key]: { ...next }, textActions: [] };
-      if (request.method === "poll") { entered(); await held; return { [key]: { ...next }, textActions: [{ id: "saved" }] }; }
-      return { selectedScope: "transcription" };
+  const listeners = new Set<(message: unknown) => void>();
+  const bridge = {
+    subscribe: (listener: (message: unknown) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+    call: async (_channel: string, name: string) => {
+      calls.push(name);
+      if (name === method) {
+        entered();
+        void held.then(() => listeners.forEach(listener => listener({event:'settings',state:{[key]:{...next},textActions:[{id:'saved'}]}})));
+        return {[key]:{...next},textActions:[]};
+      }
+      return {selectedScope:'transcription'};
     },
-  });
+  };
+  const context = createContext({ t: (value: string) => value, electron: () => bridge, setTimeout, clearTimeout });
   const source = readFileSync("src/settings/bridge.ts", "utf8").replace(/^import\b[\s\S]*?;\s*/gm, "").replace(/^export /gm, "");
   runInContext(stripTypeScriptTypes(source), context);
   return { calls, release, polled,

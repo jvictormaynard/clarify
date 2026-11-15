@@ -124,6 +124,31 @@ Linux and macOS use owner-restricted credential files and are experimental.
 
 ## Retention and deletion
 
+Desktop stopped recordings keep a full local audio copy in the profile's
+`recording-recovery` folder, including failed processing attempts. History lists
+these recordings even when text history is disabled. They remain until you delete
+the corresponding History item. They do not synchronize with account history. Retry sends
+the selected audio through the current account and provider settings as a new
+request. Cancelled recordings are not added. A crash during capture, before the
+local copy is saved, can leave only the working file. History can also find
+remaining working files after processing ends or the app restarts. A full disk
+can prevent either copy from being saved.
+
+iPhone stopped recordings remain in the app's private Application Support
+storage until explicit deletion from a History item in Dictation. Audio is excluded from device
+backup and is not synchronized with account history or shared with the keyboard.
+Reprocess uses the current account or paired computer as a new request. Clearing
+text history does not delete recordings. An interrupted capture or a failed
+storage move can leave a working clip in temporary storage; recovery can list
+that clip while it remains available. iOS can remove temporary storage, and a
+forced termination during capture can leave an incomplete recording.
+
+Playback and audio export read the local recording. Undo AI edit changes the
+text shown on this device to the original transcription; it leaves the account's
+stored text unchanged. Deleting an item removes its local audio and deletes its
+text under the existing local or account history policy. Clearing text history
+leaves local audio as items that can still be played, exported or retried.
+
 Desktop maintainer experiments can explicitly enable local benchmark audio
 collection. It is disabled by default and separate from account history. When
 enabled, normal stopped recordings retain a local WAV copy, limited to 64 MiB

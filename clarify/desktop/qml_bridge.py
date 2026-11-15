@@ -383,6 +383,14 @@ class QmlWorkflowBridge(QObject):
         return True
 
     @Property(bool, notify=surfaceChanged)
+    def recoveryResultVisible(self) -> bool:
+        return (
+            self._state.phase is WorkflowPhase.COMPLETED
+            and self._state.status_key == "dictation_recovered"
+            and bool(self._state.result_text)
+        )
+
+    @Property(bool, notify=surfaceChanged)
     def feedbackVisible(self) -> bool:
         return (
             not self._settings_visible
@@ -393,6 +401,7 @@ class QmlWorkflowBridge(QObject):
             and (
                 self._state.phase in self._ERROR_PHASES
                 or self.refinementFailed
+                or self.recoveryResultVisible
                 or self.cancellationVisible
                 or bool(self._quick_feedback)
             )
@@ -412,12 +421,19 @@ class QmlWorkflowBridge(QObject):
 
     @Property(str, notify=statusChanged)
     def feedbackTitle(self) -> str:
+        if self.recoveryResultVisible:
+            return (
+                "Texto recuperado" if self._language == "pt" else "Recovered text ready"
+            )
         if self.refinementFailed:
             return self.status
         return self._quick_feedback or self.status.partition(". ")[0].rstrip(".")
 
     @Slot(int)
     def dismissFeedback(self, operation_id: int) -> None:
+        if operation_id == self._state.operation_id and self.recoveryResultVisible:
+            self.finish()
+            return
         if operation_id == self._state.operation_id and self.refinementFailed:
             self.finish()
             return

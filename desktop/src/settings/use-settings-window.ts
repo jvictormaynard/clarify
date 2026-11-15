@@ -1,7 +1,5 @@
 import { electron, nativeWindow, windowAction } from "../platform";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 
 /** Own native close intent; persistence and draft ownership stay in the controller. */
 export function useSettingsWindow(
@@ -14,7 +12,6 @@ export function useSettingsWindow(
   const closeRequest = useRef<number | null>(null);
   const hasUnsavedChanges = dirty.current;
   const generation = useRef(0);
-  const allowClose = useRef(false);
   const activeAttempt = useRef<{ request: number; promise: Promise<void> } | null>(null);
   const setClosing = useCallback((value: boolean) => {
     if (value && blockClose?.()) return;
@@ -35,12 +32,10 @@ export function useSettingsWindow(
         if (blockClose?.()) { setClosing(false); return; }
         if (!canClose()) return;
         if (nativeWindow()) {
-          allowClose.current = true;
           await windowAction("closeAccepted");
         }
         setClosing(false);
       } catch (error) {
-        allowClose.current = false;
         if (closeRequest.current === expected) setClosing(false);
         onError(String(error));
       }
@@ -52,24 +47,9 @@ export function useSettingsWindow(
 
   useEffect(() => {
     if (electron()) return electron()!.onWindow(event => {
-      if (event === "reopen") { allowClose.current = false; setClosing(false); }
+      if (event === "reopen") setClosing(false);
       if (event === "close") setClosing(true);
     });
-    if (!isTauri()) return;
-    let live = true;
-    const listener = getCurrentWindow().onCloseRequested((event) => {
-      if (allowClose.current) return;
-      event.preventDefault();
-      setClosing(true);
-    });
-    void listener.catch((error) => {
-      if (live) onError(String(error));
-    });
-    return () => {
-      live = false;
-      closeRequest.current = null;
-      void listener.then((unlisten) => unlisten()).catch(() => {});
-    };
   }, [onError, setClosing]);
 
   useEffect(() => {

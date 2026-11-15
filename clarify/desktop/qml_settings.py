@@ -15,6 +15,8 @@ import platform
 import subprocess
 import sys
 import threading
+import time
+import uuid
 import weakref
 from collections.abc import Callable
 from dataclasses import replace
@@ -25,6 +27,7 @@ from PySide6.QtCore import Property, QObject, Qt, QTimer, Signal, Slot
 from clarify_account import AccountService
 from account_history import AccountHistory
 from history_store import HistoryStore
+from recording_recovery import RecordingRecovery
 from clarify.desktop.history_view import HistoryView
 from cloud_defaults import DEFAULT_CLOUD_URL
 from dictionary_snippets import (
@@ -479,6 +482,7 @@ def _merge_library_draft(before, draft, persisted, key):
 
 
 class QmlSettingsController(QObject):
+    _playbackStopRequested = Signal()
     textActionsChanged = Signal()
     textActionPreviewChanged = Signal()
     chatgptStateChanged = Signal()
@@ -537,6 +541,7 @@ class QmlSettingsController(QObject):
         text_action_service=None,
         text_action_provider=None,
         text_action_runner=None,
+        recording_reprocessor=None,
     ) -> None:
         super().__init__(parent)
         self._background_mailbox = _SettingsMailbox()
@@ -548,6 +553,17 @@ class QmlSettingsController(QObject):
         self._practice_unsubscribe = None
         self._computer = None
         self.repositories = repositories
+        self._recording_reprocessor = recording_reprocessor
+        self._playback_lock = threading.Lock()
+        self._playback_lease = None
+        self._playback_stop_request = ""
+        self._playback_waiter = None
+        self._playbackStopRequested.connect(
+            self._publishPlaybackStop, Qt.ConnectionType.QueuedConnection
+        )
+        self._recording_recovery = RecordingRecovery(
+            Path(repositories.config.path).parent
+        )
         self._account = account_service or AccountService(
             Path(repositories.config.path).parent,
             default_endpoint=os.environ.get("CLARIFY_CLOUD_URL", DEFAULT_CLOUD_URL),
@@ -563,7 +579,9 @@ class QmlSettingsController(QObject):
             )
             self._account.history = self._history
         self._history_view = (
-            HistoryView(self._history) if self._history is not None else None
+            HistoryView(self._history, self._recording_recovery)
+            if self._history is not None
+            else None
         )
         self._account_busy = False
         self._account_error = ""
@@ -3884,6 +3902,101 @@ class QmlSettingsController(QObject):
             if self._history_view is not None
             else {"context": "", "revision": ""}
         )
+
+    @Slot()
+    def _publishPlaybackStop(self):
+        self.accountStateChanged.emit()
+
+    @Property(str, notify=accountStateChanged)
+    def audioPlaybackStopRequest(self):
+        with self._playback_lock:
+            return self._playback_stop_request
+
+    def beginRecordingPlayback(self, token):
+        self._recording_recovery.path(token)
+        if not self._processing_allowed():
+            raise ValueError("Recording is busy")
+        with self._playback_lock:
+            if self._playback_lease is not None:
+                raise ValueError("Playback is busy")
+            self._playback_lease = uuid.uuid4().hex
+            return self._playback_lease
+
+    def endRecordingPlayback(self, lease):
+        with self._playback_lock:
+            if lease != self._playback_lease:
+                return False
+            self._playback_lease = None
+            self._playback_stop_request = ""
+            if self._playback_waiter is not None:
+                self._playback_waiter.set()
+        self.accountStateChanged.emit()
+        return True
+
+    @Slot()
+    def releaseRecordingPlayback(self):
+        # A dead frontend cannot keep producing sound or retain an audio lease.
+        with self._playback_lock:
+            lease = self._playback_lease
+        if lease is not None:
+            self.endRecordingPlayback(lease)
+
+    def stopPlaybackBeforeRecording(self, cancel_event):
+        with self._playback_lock:
+            if self._playback_lease is None:
+                return
+            self._playback_stop_request = self._playback_lease
+            waiter = threading.Event()
+            self._playback_waiter = waiter
+        self._playbackStopRequested.emit()
+        deadline = time.monotonic() + 3
+        try:
+            while not waiter.wait(0.05):
+                if cancel_event.is_set():
+                    raise RuntimeError("Recording cancelled")
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Audio playback did not stop")
+        finally:
+            with self._playback_lock:
+                if self._playback_waiter is waiter:
+                    self._playback_waiter = None
+
+    @Property(str, notify=accountStateChanged)
+    def recordingRevision(self):
+        return self._recording_recovery.revision()
+
+    def recordingRecoveryAudio(self, token, offset):
+        return self._recording_recovery.audio_chunk(token, offset)
+
+    def recordingRecovery(self, action, token=""):
+        if action == "list":
+            visible = (
+                {record.id for _, record in self._history.list_items(display=True)}
+                if self._history is not None
+                else set()
+            )
+            return {
+                "entries": [
+                    row
+                    for row in self._recording_recovery.entries()
+                    if row.get("history_id") not in visible
+                ]
+            }
+        if action == "undo":
+            self._recording_recovery.update(token, use_original=True)
+            self.accountStateChanged.emit()
+            return {"updated": True}
+        if action == "delete":
+            self._recording_recovery.delete(token)
+            return self.recordingRecovery("list")
+        if action == "reprocess":
+            if not self._processing_allowed() or self._recording_reprocessor is None:
+                raise ValueError("Processing unavailable")
+            path = self._recording_recovery.path(token)
+            if not self._recording_reprocessor(path):
+                raise ValueError("Processing unavailable")
+            return {"started": True}
+        raise ValueError("Invalid recovery action")
 
     def getHistoryPage(self, context, cursor, query=""):
         if self._history_view is None and context == "" and cursor == "":

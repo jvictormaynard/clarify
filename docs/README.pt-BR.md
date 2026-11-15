@@ -23,7 +23,7 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
-- Área de trabalho em React/Tauri: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
+- Área de trabalho em React/Electron: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
 - Diálogo de Configurações com Geral, Dispositivos, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
 - Ações de texto com nome, instruções próprias, atalhos opcionais e prévia
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
@@ -170,15 +170,15 @@ Para executar o código-fonte com as novas Configurações:
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\scripts\build-settings.ps1
-$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify Desktop.exe").Path
 .\start.bat
 ```
 
 É necessário ter Windows 10 ou 11, Python 3.11 ou mais recente e um microfone.
-O build das Configurações exige Node.js 22, Rust MSVC, Visual Studio C++ Build
-Tools e Windows SDK. A janela usa o Microsoft Edge WebView2. O usuário do
-executável pronto não precisa de Python, Node.js ou Rust.
+O build do desktop exige Node.js 22, Visual Studio C++ Build Tools e Windows
+SDK. A interface usa Electron. O usuário do executável pronto não precisa de
+Python ou Node.js.
 Na primeira execução, o script cria um ambiente virtual e instala as
 dependências automaticamente.
 

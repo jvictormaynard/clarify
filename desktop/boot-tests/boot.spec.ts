@@ -47,7 +47,13 @@ test.beforeEach(async ({ page, baseURL }) => {
     });
   });
   await page.addInitScript(() => {
-    (window as any).__TAURI_INTERNALS__ = { invoke: (_command: string, request: unknown) => (window as any).__bootSettingsCall(request) };
+    const listeners = new Set<(message:any) => void>();
+    (window as any).clarifyDesktop = {
+      call: (_channel:string,method:string,args:unknown[]) => (window as any).__bootSettingsCall({method,args}),
+      subscribe: (callback:(message:any)=>void) => {listeners.add(callback);return ()=>listeners.delete(callback);},
+      onWindow:()=>()=>{},ready:async()=>{},window:async()=>{},
+    };
+    setInterval(()=>{if(listeners.size)void (window as any).__bootSettingsCall({method:'poll',args:[]}).then((state:any)=>listeners.forEach(callback=>callback({event:'settings',state}))).catch(()=>{});},150);
   });
   await page.route("**/*", route => new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort("blockedbyclient"));
 });

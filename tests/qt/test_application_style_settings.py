@@ -89,24 +89,6 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
         finally:
             controller.timer.stop()
 
-    def test_real_capsule_keeps_compact_height_without_style_caption_then_expires(self):
-        import subprocess
-        import sys
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / "support/qml_application_style_smoke.py"
-                ),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

@@ -5,7 +5,7 @@ import {
   type KeyboardEvent, type MouseEvent,
 } from "react";
 import {
-  call, pollSettings, preferenceMethods, settingsTransaction, historyCorrection, SettingsOperationError,
+  call, preferenceMethods, settingsTransaction, historyCorrection, SettingsOperationError,
   type DictionaryEntry, type Snippet, type Settings, type SettingsArguments,
   type SettingsMethod, type SettingsCall, type PreferenceMethod,
 } from "./bridge";
@@ -425,16 +425,13 @@ export function useSettings() {
             const snapshot = await call("snapshot");
             if (live) acceptState(snapshot);
             needsSnapshot = false;
-          } else if (!electron()) {
-            const delta = await pollSettings();
-            if (live) acceptState(delta);
           }
         } catch (e) {
           needsSnapshot = true;
           if (live) setError(String(e));
         } finally { pending.current -= 1; }
       }
-      if (live && (!electron() || needsSnapshot || !current.current)) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
+      if (live && (needsSnapshot || !current.current)) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
     };
     const visibility = () => {
       if (document.hidden && current.current?.hotkeyCaptureAction && !actionsCaptureRef.current) void run("cancelHotkeyCapture");

@@ -18,7 +18,7 @@ try {
     if (existsSync(output) && lstatSync(output).isSymbolicLink()) throw new Error("Settings dist must not be a symbolic link.");
     mkdirSync(output, { recursive: true });
     const expected = new Set(readdirSync(generated, { recursive: true }));
-    // Remove obsolete outputs, but keep identical files and their timestamps for Cargo.
+    // Remove obsolete outputs, but keep identical files and their timestamps for incremental packaging.
     for (const entry of readdirSync(output, { recursive: true, withFileTypes: true })) {
       const destination = join(entry.parentPath, entry.name);
       const source = join(generated, relative(output, destination));

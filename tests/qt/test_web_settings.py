@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
@@ -39,6 +40,81 @@ class WebSettingsTests(unittest.TestCase):
         if method == "setSnippets" and len(args) == 1:
             args = (*args, self.settings.snippetContext)
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
+
+    def test_microphone_start_waits_until_the_frontend_acknowledges_audio_stop(self):
+        import threading
+        from clarify.desktop.qml_runtime import QtRecordingSession
+        from tests.support.audio_history import wav_bytes
+        from PySide6.QtCore import Qt
+
+        token = self.settings._recording_recovery.save(wav_bytes())
+        lease = self.request("beginRecordingPlayback", token)["result"]
+        announced = threading.Event()
+        self.settings._playbackStopRequested.connect(
+            announced.set, Qt.ConnectionType.DirectConnection
+        )
+        recorder = Mock(config=None)
+        with patch(
+            "clarify.desktop.qml_runtime._data_directory",
+            return_value=Path(self.directory.name),
+        ):
+            session = QtRecordingSession(recorder)
+        session.before_recording = self.settings.stopPlaybackBeforeRecording
+        failures = []
+
+        def start():
+            try:
+                session.start()
+            except Exception as error:
+                failures.append(error)
+
+        worker = threading.Thread(target=start)
+        worker.start()
+        try:
+            self.assertTrue(announced.wait(1))
+            recorder.start.assert_not_called()
+            self.assertEqual(self.settings.audioPlaybackStopRequest, lease)
+            self.assertFalse(
+                self.request("endRecordingPlayback", "former-lease")["result"]
+            )
+            recorder.start.assert_not_called()
+            self.assertTrue(self.request("endRecordingPlayback", lease)["result"])
+            worker.join(1)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(failures, [])
+            recorder.start.assert_called_once()
+        finally:
+            self.settings.releaseRecordingPlayback()
+            worker.join(1)
+            session.cancel()
+
+    def test_audio_links_to_one_history_item_and_original_override_stays_local(self):
+        from history_store import HistoryRecord
+        from tests.support.audio_history import wav_bytes
+
+        store = self.settings._recording_recovery
+        token = store.save(wav_bytes())
+        history = self.settings._history.local
+        history.enabled = True
+        record = HistoryRecord(
+            raw_text="Texto original.", refined_text="Texto editado."
+        )
+        history.append(record)
+        store.update(token, history_id=record.id, status="complete")
+        context = self.settings.historyState["context"]
+        page = self.request("getHistoryPage", context, "")["result"]
+        row = next(row for row in page["entries"] if row["text"] == "Texto editado.")
+        self.assertEqual(row["recording"]["id"], token)
+        self.assertEqual(
+            self.request("recordingRecovery", "list", "")["result"]["entries"], []
+        )
+        self.assertIn("result", self.request("recordingRecovery", "undo", token))
+        page = self.request("getHistoryPage", context, "")["result"]
+        row = next(row for row in page["entries"] if row["text"] == "Texto original.")
+        self.assertFalse(row["originalDiffers"])
+        self.assertEqual(history.list_records()[0].refined_text, "Texto editado.")
+        self.assertIn("result", self.request("deleteHistoryEntry", row["id"], context))
+        self.assertEqual(store.entries(), [])
 
     def test_preference_rpc_persists_controls_without_a_global_save(self):
         from dataclasses import replace
@@ -718,7 +794,7 @@ class WebSettingsTests(unittest.TestCase):
         self,
     ):
         from types import SimpleNamespace
-        from clarify.desktop.qml_web_settings import WebSettingsProcess
+        from clarify.desktop.qml_electron import ElectronDesktopProcess
 
         entries = [
             {"trigger": f"phrase {index}", "replacement": "é" * 4096}
@@ -739,17 +815,21 @@ class WebSettingsTests(unittest.TestCase):
             process=process,
             startup_timer=Mock(),
             protocol=self.protocol,
+            _failed=Mock(),
+            _receive=lambda request: process.write(
+                json.dumps(self.protocol.dispatch(request)).encode()
+            ),
         )
-        WebSettingsProcess._read(host)
+        ElectronDesktopProcess._read(host)
         process.kill.assert_not_called()
         reply = json.loads(process.write.call_args.args[0])
         self.assertEqual(len(reply["result"]["snippets"]), 256)
         self.assertEqual(reply["result"]["snippets"][255]["replacement"], "é" * 4096)
         process.reset_mock()
         process.readAllStandardOutput.return_value = b"x" * 1025
-        with patch("clarify.desktop.qml_web_settings.MAX_SETTINGS_MESSAGE_BYTES", 1024):
-            WebSettingsProcess._read(host)
-        process.kill.assert_called_once()
+        with patch("clarify.desktop.qml_electron.MAX_SETTINGS_MESSAGE_BYTES", 1024):
+            ElectronDesktopProcess._read(host)
+        host._failed.assert_called_once()
         process.write.assert_not_called()
 
     def account_library(self):
@@ -1933,28 +2013,9 @@ class WebSettingsTests(unittest.TestCase):
 
     def test_window_close_does_not_open_legacy_settings(self):
         from types import SimpleNamespace
-        from clarify.desktop.qml_web_settings import WebSettingsProcess
 
-        bridge = SimpleNamespace(surface="settings", closeSettings=Mock())
-        fallback = Mock()
-        host = WebSettingsProcess(self.settings, bridge, fallback)
-        capture_changed = Mock()
-        self.settings._hotkey_capture_changed = capture_changed
-        self.request("beginHotkeyCapture", "recording_hotkey")
-        host._finished(0, None)
-        self.assertEqual(self.settings.hotkeyCaptureAction, "")
-        self.assertEqual(capture_changed.call_args_list, [((True,),), ((False,),)])
-        fallback.assert_not_called()
-        self.assertIn("error", self.request("openLegacy"))
-        bridge.closeSettings.assert_called_once()
-        host._failed(None)
-        self.assertTrue(host.failed)
-        self.assertFalse(host.show())
-
-    def test_settings_request_only_activates_on_explicit_open(self):
-        from types import SimpleNamespace
-        from workflows import WorkflowState
         from clarify.desktop.qml_bridge import QmlWorkflowBridge
+        from workflows import WorkflowState
 
         bridge = QmlWorkflowBridge(
             SimpleNamespace(state=WorkflowState(), subscribe=lambda cb: None)

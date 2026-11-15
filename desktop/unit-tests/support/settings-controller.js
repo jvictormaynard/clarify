@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { vi } from 'vitest';
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { pollSettings } from '../../src/settings/bridge';
+import { invoke as transport, windowCall, onWindow } from './transport';
+import { call } from '../../src/settings/bridge';
 import { mountHook } from './react-fixture';
 
 const clone=x=>structuredClone(x);
@@ -18,7 +17,7 @@ export async function setup() {
   const records=[];
   let nativeCloses=0, closeListener;
   let gate=null; let failure=null;let afterPreference=null;
-  const invoke=async(_,request)=>{
+  const invoke=async(request)=>{
     const {method,args}=request;records.push(clone(request));
     if(gate?.method===method){const local=gate;gate=null;local.started();await local.wait;}
     if(failure?.method===method){const error=failure.error;failure=null;throw error;}
@@ -55,11 +54,9 @@ export async function setup() {
     }
     return snapshot();
   };
-  vi.mocked(tauriInvoke).mockImplementation(invoke);
-  vi.mocked(getCurrentWindow).mockReturnValue({
-    close:async()=>{nativeCloses++;},
-    onCloseRequested:async fn=>{closeListener=fn;return ()=>{closeListener=undefined;};},
-  });
+  vi.mocked(transport).mockImplementation(invoke);
+  vi.mocked(windowCall).mockImplementation(async method => { if (method === 'closeAccepted') nativeCloses++; });
+  vi.mocked(onWindow).mockImplementation(fn => { closeListener=() => fn('close'); return () => { closeListener=undefined; }; });
   const { useSettings } = await import('../../src/settings/use-settings');
   const hook = await mountHook(useSettings);
   await vi.waitFor(() => assert.ok(hook.render().state, 'initial Settings snapshot'));
@@ -67,7 +64,7 @@ export async function setup() {
     setAccountState(value){accountState={...accountState,...value};},
     replaceLibrary(library,entries){const key=library==='dictionary'?'dictionaryEntries':'snippets';persisted[key]=clone(entries);staged[key]=clone(entries);},
     syncAfterPreference(library,entries){afterPreference=()=>{const key=library==='dictionary'?'dictionaryEntries':'snippets';persisted[key]=clone(entries);staged[key]=clone(entries);};},
-    close(){let prevented=false;closeListener({preventDefault(){prevented=true;}});return prevented;}, changeContext(value){snippetContext=value;}, poll(){return pollSettings();},
+    close(){closeListener();return true;}, changeContext(value){snippetContext=value;}, snapshot(){return call("snapshot");},
     pause(method){let release,started;const wait=new Promise(r=>release=r);const beginning=new Promise(r=>started=r);gate={method,wait,started};return {release,started:beginning};},
     fail(method,error){failure={method,error};},
   };

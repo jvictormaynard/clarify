@@ -89,7 +89,7 @@ registration is deferred until a business account is available.
 - Gemini, OpenAI, Groq, Local Whisper, and compatible custom endpoints
 - Native Windows hotkeys and system tray integration
 - Portuguese, English and Spanish interfaces, independently of dictation language
-- A React/Tauri workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
+- A React/Electron workspace with Dictation, Style, Text actions, Dictionary, Snippets and History
 - A Settings dialog for General, Devices, Models and services, Shortcuts, Privacy and Clarify account
 - Named text actions with custom instructions, optional shortcuts and previews
 - Toggle or hold-to-record keyboard activation; the microphone button uses toggle
@@ -192,16 +192,16 @@ update path remain disabled until the signed rollout gates are complete.
 ### Run from source on Windows
 
 Requirements: Windows 10 or 11, [Python 3.11 or newer](https://www.python.org/downloads/windows/),
-and a working microphone. Building the new Settings also requires Node.js 22,
-Rust MSVC, Visual Studio C++ Build Tools, and the Windows SDK. Running Settings
-requires Microsoft Edge WebView2. See [Development](docs/development.md).
+and a working microphone. Building the desktop also requires Node.js 22,
+Visual Studio C++ Build Tools, and the Windows SDK. The desktop includes its
+pinned Electron runtime. See [Development](docs/development.md).
 
 ```powershell
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\scripts\build-settings.ps1
-$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify Desktop.exe").Path
 .\start.bat
 ```
 
@@ -402,9 +402,9 @@ MSIs must come from the protected signing workflow.
 
 ```text
 desktop/src/                  React/TypeScript Settings and shared controls
-desktop/src-tauri/             Tauri window and private process bridge
-clarify/desktop/qml_app.py      Production Qt Quick/QML entrypoint
-clarify/desktop/qml/            Production QML surfaces and theme
+desktop/electron/              Electron windows and private process bridge
+clarify/desktop/qml_app.py      Engine and Electron composition root
+clarify/desktop/qml/            Native audio-file import panel and controls
 clarify/desktop/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
 clarify/desktop/qml_bridge.py   QML-facing workflow state and commands
 provider_types.py              Typed provider requests, results, and capabilities
@@ -433,16 +433,16 @@ docs/                          Architecture and development documentation
 .agents/skills/                Repository-specific maintainer workflows
 ```
 
-The application uses Python/PySide6/Qt Quick for the pill and desktop engine,
-and React/TypeScript in a Tauri WebView2 window for Settings. It is not Electron.
-`start.bat`, the
-portable build, and the release workflow all use the QML entrypoint; the old
-CustomTkinter entrypoint is not part of the runtime or package. The Electron
-prototype was removed from the checkout and remains available in Git history. See
-[Architecture](docs/architecture.md) before making structural changes.
+React/Electron owns the desktop interface. Python/PySide6 owns the engine and
+native input contracts. Only audio-file import retains a QML panel.
+`start.bat`, packaging and releases use `clarify/desktop/qml_app.py` to compose
+these owners. The interface is required; a failure triggers bounded renderer
+recovery, never a switch to another interface.
+See [Architecture](docs/architecture.md) before making structural changes.
 Production Qt code lives in `clarify/desktop/`; `spikes/` contains only historical comparison tools.
 `app.py` is a legacy frontend retained for compatibility tests, not the shipping
-entrypoint. New UI work belongs in `desktop/` or the QML pill, not `app.py`.
+entrypoint. New desktop UI work belongs in `desktop/`; native file-import maintenance stays
+in its QML view. Do not add product UI to `app.py`.
 
 Local Whisper is an explicit provider in the current product runtime. The
 portable executable includes the pinned Local ASR manifest and license notices,

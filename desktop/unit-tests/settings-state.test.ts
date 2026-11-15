@@ -1,14 +1,14 @@
 import { test, expect, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
-import { call, pollSettings, settingsTransaction } from "../src/settings/bridge";
+import { invoke } from "./support/transport";
+import { call, settingsTransaction } from "../src/settings/bridge";
 import { mergeSettings } from "../src/settings/state";
 import type { Settings } from "../src/settings/bridge";
 
-test("a complete settings transaction excludes polls and other mutations", async () => {
+test("a complete settings transaction excludes snapshot reads and other mutations", async () => {
   const methods: string[] = [];
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  vi.mocked(invoke).mockImplementation(async (_command, request) => {
+  vi.mocked(invoke).mockImplementation(async (request) => {
     const { method } = request as { method: string };
     methods.push(method);
     if (method === "setRoutePrompt") await gate;
@@ -18,18 +18,18 @@ test("a complete settings transaction excludes polls and other mutations", async
     await perform("setRoutePrompt", "draft");
     return perform("save");
   });
-  const poll = pollSettings();
+  const read = call("snapshot");
   const preference = call("savePreference", "setAutostart", [true]);
   await Promise.resolve();
   expect(methods).toEqual(["setRoutePrompt"]);
   release();
-  await Promise.all([transaction, poll, preference]);
-  expect(methods).toEqual(["setRoutePrompt", "save", "poll", "savePreference"]);
+  await Promise.all([transaction, read, preference]);
+  expect(methods).toEqual(["setRoutePrompt", "save", "snapshot", "savePreference"]);
 });
 
 test("a failed transaction releases the settings connection for later requests", async () => {
   const methods: string[] = [];
-  vi.mocked(invoke).mockImplementation(async (_command, request) => {
+  vi.mocked(invoke).mockImplementation(async (request) => {
     const { method } = request as { method: string };
     methods.push(method);
     if (method === "save") throw new Error("Isolated storage failure");
@@ -38,8 +38,8 @@ test("a failed transaction releases the settings connection for later requests",
   const failure = await settingsTransaction(perform => perform("save"))
     .then(() => "unexpected success", error => String(error));
   expect(failure).toContain("Isolated storage failure");
-  expect(await pollSettings()).toEqual({ autostart: true });
-  expect(methods).toEqual(["save", "poll"]);
+  expect(await call("snapshot")).toEqual({ autostart: true });
+  expect(methods).toEqual(["save", "snapshot"]);
 });
 
 test("telemetry deltas preserve unrelated settings and unchanged library references", () => {

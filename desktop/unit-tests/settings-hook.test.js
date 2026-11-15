@@ -136,16 +136,16 @@ test('account submission is guarded while its own queued operation is pending', 
 });
 
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
-test('clean close waits for a preference accepted behind a poll', async () => {
- const h=await setup();let c=h.render();const gate=h.pause('poll');const poll=h.poll();await gate.started;
+test('clean close waits for a preference accepted behind a snapshot read', async () => {
+ const h=await setup();let c=h.render();const gate=h.pause('snapshot');const read=h.snapshot();await gate.started;
  const writing=c.run('setLanguage','pt');assert.equal(h.close(),true);c=h.render();await flush();assert.equal(h.nativeCloses,0);
- gate.release();await Promise.all([poll,writing]);await flush();assert.equal(h.persisted.language,'pt');assert.equal(h.nativeCloses,1);
+ gate.release();await Promise.all([read,writing]);await flush();assert.equal(h.persisted.language,'pt');assert.equal(h.nativeCloses,1);
 });
 
-for (const action of ['confirm','undo']) test(`clean close waits for history correction ${action} accepted behind a poll`, async () => {
- const h=await setup();let c=h.render();const gate=h.pause('poll');const poll=h.poll();await gate.started;
+for (const action of ['confirm','undo']) test(`clean close waits for history correction ${action} accepted behind a snapshot read`, async () => {
+ const h=await setup();let c=h.render();const gate=h.pause('snapshot');const read=h.snapshot();await gate.started;
  const writing=c.runHistoryCorrection(action,{token:'isolated-token'});assert.equal(h.close(),true);c=h.render();await flush();assert.equal(h.nativeCloses,0);
- gate.release();await Promise.all([poll,writing]);await flush();assert.equal(h.records.filter(x=>x.method==='historyCorrection').length,1);assert.equal(h.nativeCloses,1);
+ gate.release();await Promise.all([read,writing]);await flush();assert.equal(h.records.filter(x=>x.method==='historyCorrection').length,1);assert.equal(h.nativeCloses,1);
 });
 
 test('failed accepted preference keeps close open until acknowledged', async () => {

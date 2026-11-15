@@ -29,6 +29,7 @@ export function PrivacyPage({ controller }: SettingsPageProps) {
         hint={t("Em dias. Deixe vazio para não definir um prazo.")} type="number" min="0" max="3650"
         value={retention} onChange={event => setRetention(event.target.value)} />}
     </>}
+    <p className="hint">{t("Limpar histórico remove os textos. Os áudios restantes continuam como itens no histórico até você excluir.")}</p>
     <div className="privacy-history-actions"><Button className="destructive" disabled={!context || deleting} onClick={() => setConfirmation(context)}>{t("Limpar histórico")}</Button></div>
     <Confirm open={confirmation !== null && confirmation === context} onOpenChange={open => { if (!open && !pending.current) setConfirmation(null); }}
       title={t("Limpar histórico")} description={t(managed

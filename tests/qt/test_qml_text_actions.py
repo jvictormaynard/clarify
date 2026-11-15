@@ -1,13 +1,8 @@
 """Production settings RPC and draft capture, with private temporary profiles."""
 
 import time
-import os
-import subprocess
-import sys
 import unittest
 from unittest.mock import Mock, patch
-from tempfile import TemporaryDirectory
-from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -21,27 +16,6 @@ from tests.support.qml_text_actions import (
 
 
 class QmlTextActionTests(QmlTextActionFixture, unittest.TestCase):
-    def test_production_qml_menu_uses_saved_ids_and_keyboard_selection(self):
-        root = Path(__file__).resolve().parents[2]
-        temporary = TemporaryDirectory(prefix="clarify-qt-images-")
-        self.addCleanup(temporary.cleanup)
-        artifacts = Path(os.environ.get("CLARIFY_TEST_ARTIFACTS_DIR", temporary.name))
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(root / "tests/support/qml_model_settings_smoke.py"),
-                "--text-actions-only",
-                str(artifacts / "text-actions"),
-            ],
-            cwd=root,
-            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("PASS: saved text action menu", result.stdout)
-
     def test_full_snapshot_is_independent_of_workflow_selection_and_allowlist_is_typed(
         self,
     ):

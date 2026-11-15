@@ -1,7 +1,8 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { electron } from "../platform";
-function invoke<T>(command: string, request: {method: string; args: unknown[]}): Promise<T> {
-  return electron() ? electron()!.call<T>("settings", request.method, request.args) : tauriInvoke<T>(command, request);
+function invoke<T>(request: {method: string; args: unknown[]}): Promise<T> {
+  const desktop = electron();
+  if (!desktop) return Promise.reject(new Error("The Clarify desktop connection is unavailable"));
+  return desktop.call<T>("settings", request.method, request.args);
 }
 import { t } from "../i18n";
 import type { RecordingControls } from "./recording";
@@ -41,7 +42,7 @@ export type DictionaryEntry = {
   aliases: string[];
   enabled: boolean;
 };
-export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; hasOriginal: boolean; originalDiffers: boolean; owner: "local" | "account"; sourceDevice: "desktop" | "mobile" };
+export type HistoryEntry = { id: string; timestamp: number; text: string; truncated: boolean; hasOriginal: boolean; originalDiffers: boolean; owner: "local" | "account"; sourceDevice: "desktop" | "mobile"; recording?: RecoveryRecording };
 export type HistoryScope = Readonly<{ context: string; revision: string }>;
 export type HistoryTextField = "text" | "transcript";
 type HistoryPageResult = { context: string; revision: string; entries: HistoryEntry[]; cursor: string; hasMore: boolean };
@@ -79,6 +80,8 @@ export interface Settings {
   snippets: Snippet[];
   snippetContext: string;
   historyState?: { context: string; revision: string };
+  recordingRevision?: string;
+  audioPlaybackStopRequest?: string;
   uiLanguage?: string;
   onboardingRequired: boolean;
   practiceState?: {
@@ -270,22 +273,17 @@ async function invokeSettings<M extends SettingsMethod>(method: M, args: Setting
   });
   let snapshot: Settings | undefined;
   try {
-    snapshot = await invoke<Settings>("settings_call", { method, args });
+    snapshot = await invoke<Settings>({ method, args });
     const key = method === "refreshTextActions" ? "textActionRefresh" : textActionWrites.has(method) ? "textActionMutation" : null;
     if (!key || !snapshot[key]) return snapshot;
     const generation = snapshot[key].generation;
     while (snapshot[key]?.busy) {
       let delta: Partial<Settings>;
-      if (electron()) {
-        if (!patches.length) await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => { wake = undefined; reject(new Error("Clarify did not respond")); }, 15000);
-          wake = () => { clearTimeout(timer); wake = undefined; resolve(); };
-        });
-        delta = Object.assign({}, ...patches.splice(0));
-      } else {
-        await new Promise<void>(resolve => setTimeout(resolve, 100));
-        delta = await invoke<Partial<Settings>>("settings_call", { method: "poll", args: [] });
-      }
+      if (!patches.length) await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { wake = undefined; reject(new Error("Clarify did not respond")); }, 15000);
+        wake = () => { clearTimeout(timer); wake = undefined; resolve(); };
+      });
+      delta = Object.assign({}, ...patches.splice(0));
       snapshot = { ...snapshot, ...delta };
       if (snapshot[key]?.generation !== generation) throw new Error(t("A operação de ações mudou. Atualize e tente novamente."));
     }
@@ -304,7 +302,7 @@ function enqueue<T>(operation: () => Promise<T>): Promise<T> {
   return next;
 }
 function queuedCall<T>(method: string, args: unknown[]): Promise<T> {
-  return enqueue(() => invoke<T>("settings_call", { method, args }));
+  return enqueue(() => invoke<T>({ method, args }));
 }
 // Reserve the connection for the complete operation. A poll or another action
 // cannot change workflow/account scope between staging and persistence.
@@ -319,19 +317,18 @@ export type HistoryCorrectionReply = {
 };
 export const historyCorrection = (action: "preview" | "confirm" | "undo" | "status" | "cancel", payload: Record<string, string>, isCurrent: () => boolean = () => true) => enqueue(async () => {
   if (!isCurrent()) return null;
-  return invoke<HistoryCorrectionReply>("settings_call", { method: "historyCorrection", args: [action, payload] });
+  return invoke<HistoryCorrectionReply>({ method: "historyCorrection", args: [action, payload] });
 });
 export const copyHistoryText = (scope: HistoryScope, id: string, field: HistoryTextField, isCurrent: () => boolean) => enqueue(async () => {
   // Navigation/search cancellation can happen while waiting for the pipe.
   if (!isCurrent()) return null;
-  return invoke<HistoryScope & { id: string }>("settings_call", { method: "copyHistoryText", args: [scope.context, id, field, scope.revision] });
+  return invoke<HistoryScope & { id: string }>({ method: "copyHistoryText", args: [scope.context, id, field, scope.revision] });
 });
 export const copyTextActionPreview = (context: string, generation: number, isCurrent: () => boolean) => enqueue(async () => {
   if (!isCurrent()) return null;
-  return invoke<Settings>("settings_call", { method: "copyTextActionPreview", args: [context, generation] });
+  return invoke<Settings>({ method: "copyTextActionPreview", args: [context, generation] });
 });
-// Only periodic polls advance the Python baseline. Commands still return full state.
-export const pollSettings = () => queuedCall<Partial<Settings>>("poll", []);
+
 // Pairing images contain a bootstrap credential. Keep them out of Settings state.
 export const getComputerPairing = () => queuedCall<{ image?: string; expiresAt?: number }>("getComputerPairing", []);
 export function call<M extends SettingsMethod>(
@@ -340,3 +337,27 @@ export function call<M extends SettingsMethod>(
 ): Promise<Settings> {
   return enqueue(() => invokeSettings(method, args));
 }
+
+export type RecoveryRecording = { id: string; timestamp: number; bytes: number; duration?: number; status?: "saved" | "processing" | "failed" | "complete"; history_id?: string; use_original?: boolean };
+export const recordingRecovery = (action: "list" | "delete" | "reprocess" | "undo", token = "") =>
+  queuedCall<{ entries?: RecoveryRecording[]; started?: boolean }>("recordingRecovery", [action, token]);
+
+export async function getRecordingAudio(id: string, signal: AbortSignal): Promise<Blob> {
+  const parts: Uint8Array<ArrayBuffer>[] = [];
+  let offset = 0, signature = "", total = -1;
+  do {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    const chunk = await queuedCall<{ data: string; offset: number; total: number; signature: string }>("recordingRecoveryAudio", [id, offset]);
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    if (offset !== chunk.offset || (signature && signature !== chunk.signature) || (total >= 0 && total !== chunk.total)) throw new Error("Recording changed");
+    signature = chunk.signature; total = chunk.total;
+    const binary = atob(chunk.data);
+    if (!binary.length && offset < total) throw new Error("Recording unavailable");
+    parts.push(Uint8Array.from(binary, character => character.charCodeAt(0)));
+    offset += binary.length;
+  } while (offset < total);
+  return new Blob(parts, { type: "audio/wav" });
+}
+
+export const beginRecordingPlayback = (id: string) => queuedCall<string>("beginRecordingPlayback", [id]);
+export const endRecordingPlayback = (lease: string) => queuedCall<boolean>("endRecordingPlayback", [lease]);

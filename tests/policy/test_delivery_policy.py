@@ -55,13 +55,7 @@ class DeliveryPolicyTests(unittest.TestCase):
                 "ios",
             },
             "distribution/portable-update-policy.json": {"python", "qt", "package"},
-            "desktop/src-tauri/src/main.rs": {
-                "package",
-                "python",
-                "qt",
-                "settings_unit",
-                "settings_browser",
-            },
+            "desktop/electron/main.cjs": {"desktop_shell"},
             "workflow_provider.py": {
                 "python",
                 "qt",

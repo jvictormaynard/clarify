@@ -63,7 +63,7 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .workflow-pill { flex-shrink: 0; }
 .pill-menu button { justify-content: flex-start; padding: 6px 10px; font-size: 14px; }
 .pill-error { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; border-radius: 12px; padding: 8px; max-width: 90%; font-size: 12px; color: var(--destructive); }
-html:has(.titlebar) .titlebar, html:has(.titlebar) [data-tauri-drag-region] { -webkit-app-region: drag; }
+html:has(.titlebar) .titlebar, html:has(.titlebar) [data-desktop-drag-region] { -webkit-app-region: drag; }
 .titlebar .window-controls, .titlebar button { -webkit-app-region: no-drag; }
 @keyframes pill-spin { to { transform: rotate(360deg); } }
 @keyframes pill-type { 0%, 60%, 100% { opacity: .35; translate: 0 0; } 30% { opacity: 1; translate: 0 -3px; } }
@@ -104,3 +104,8 @@ html:has(.titlebar) .titlebar, html:has(.titlebar) [data-tauri-drag-region] { -w
 .workflow-pill[data-recording="true"]:not(:has(.pill-stop)) .pill-motion-layer:has(.pill-meter) { left: 0; width: 100%; }
 .workflow-pill[data-target="true"]:not(:has(.pill-stop)) .pill-motion-layer:has(.pill-spinner),
 .workflow-pill[data-recording="true"][data-target="true"]:not(:has(.pill-stop)) .pill-motion-layer:has(.pill-meter) { left: 38px; width: calc(100% - 38px); }
+
+/* A failed workflow takes the source application's icon slot. */
+.pill-stage .pill-problem-icon { position: absolute; left: 10px; top: 6px; width: 22px; height: 22px; color: var(--destructive); }
+.workflow-pill[data-feedback-problem="true"] .pill-feedback-layer { padding-left: 40px; }
+.workflow-pill[data-feedback-problem="true"] .pill-feedback-label { color: var(--destructive); }
