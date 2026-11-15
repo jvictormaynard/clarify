@@ -2027,6 +2027,20 @@ class QmlSettingsController(QObject):
 
         return __version__
 
+    @Slot(result=str)
+    def getDiagnostics(self) -> str:
+        """Generate a requested local report without exposing profile files."""
+        from tempfile import TemporaryDirectory
+        from provider_http import export_diagnostics
+
+        with TemporaryDirectory(prefix="clarify-diagnostics-") as directory:
+            report = export_diagnostics(
+                Path(directory) / "diagnostics.json",
+                log_directory=Path(self.repositories.config.path).parent / "logs",
+                application_version=self.applicationVersion,
+            )
+            return report.read_text(encoding="utf-8")
+
     @Property(bool, notify=updatesChanged)
     def updateAvailable(self) -> bool:
         return self._updates is not None and self._updates.available

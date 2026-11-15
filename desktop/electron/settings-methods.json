@@ -20,6 +20,7 @@
   "deleteHistoryEntry",
   "clearHistory",
   "snapshot",
+  "getDiagnostics",
   "setLanguage",
   "setSnippets",
   "setDictionaryEntries",

@@ -1,4 +1,34 @@
 {
+  "Diagnóstico": {
+    "pt": "Diagnóstico",
+    "en": "Diagnostics",
+    "es": "Diagnóstico"
+  },
+  "Gerar diagnóstico": {
+    "pt": "Gerar diagnóstico",
+    "en": "Generate diagnostics",
+    "es": "Generar diagnóstico"
+  },
+  "Conteúdo do diagnóstico": {
+    "pt": "Conteúdo do diagnóstico",
+    "en": "Diagnostic contents",
+    "es": "Contenido del diagnóstico"
+  },
+  "Salvar diagnóstico": {
+    "pt": "Salvar diagnóstico",
+    "en": "Save diagnostics",
+    "es": "Guardar diagnóstico"
+  },
+  "Não foi possível gerar o diagnóstico. Tente novamente.": {
+    "pt": "Não foi possível gerar o diagnóstico. Tente novamente.",
+    "en": "Could not generate diagnostics. Try again.",
+    "es": "No se pudo generar el diagnóstico. Inténtalo de nuevo."
+  },
+  "Gere um arquivo com versão, ambiente e erros técnicos. Revise antes de compartilhar. Nada é enviado automaticamente.": {
+    "pt": "Gere um arquivo com versão, ambiente e erros técnicos. Revise antes de compartilhar. Nada é enviado automaticamente.",
+    "en": "Generate a file with version, environment and technical errors. Review it before sharing. Nothing is sent automatically.",
+    "es": "Genera un archivo con la versión, el entorno y los errores técnicos. Revísalo antes de compartirlo. Nada se envía automáticamente."
+  },
   "Usar o servidor de produção?": {
     "pt": "Usar o servidor de produção?",
     "en": "Use the production server?",
