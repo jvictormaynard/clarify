@@ -8,6 +8,21 @@ on:
 permissions:
   contents: read
 jobs:
+  windows-dependencies:
+    name: Windows hashed dependency resolution
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Check out the caller's source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: "3.12"
+      - name: Resolve the full server lock without installing or starting services
+        run: python -m pip install --dry-run --ignore-installed --require-hashes -r server/requirements.txt
   server:
     name: Server tests and container
     runs-on: ${{ inputs.linux-runner || 'ubuntu-24.04' }}
