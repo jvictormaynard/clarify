@@ -189,10 +189,12 @@ class DeploymentProfileBackupTests(unittest.TestCase):
         (self.profile / "data").write_bytes(b"synthetic")
         attempt = self.create()
         script = """
-$acl = Get-Acl -LiteralPath $env:CLARIFY_BACKUP_ACL_TEST
+$ErrorActionPreference = 'Stop'
+# Read native ACL properties without Get-Acl module loading or type extensions.
+$acl = [System.IO.Directory]::GetAccessControl($env:CLARIFY_BACKUP_ACL_TEST)
 [pscustomobject]@{
     Protected = $acl.AreAccessRulesProtected
-    Rules = @($acl.Access | ForEach-Object {
+    Rules = @($acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) | ForEach-Object {
         [pscustomobject]@{
             Sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
             Rights = [int]$_.FileSystemRights
@@ -205,11 +207,12 @@ $acl = Get-Acl -LiteralPath $env:CLARIFY_BACKUP_ACL_TEST
         result = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
             env=dict(os.environ, CLARIFY_BACKUP_ACL_TEST=str(attempt)),
-            check=True,
+            check=False,
             capture_output=True,
             text=True,
             timeout=30,
         )
+        self.assertEqual(result.returncode, 0, result.stderr)
         acl = json.loads(result.stdout)
         self.assertTrue(acl["Protected"])
         self.assertEqual(
