@@ -37,7 +37,12 @@ final class AppFlowUITests: XCTestCase {
       let center = CGPoint(x: frame.midX, y: frame.midY)
       let fits = frame.width <= viewport.width && frame.height <= viewport.height
       let visible = fits ? viewport.contains(frame) : viewport.contains(center)
-      if located && element.isHittable && visible { return true }
+      if located && element.isHittable && visible {
+        if identifier == "actions.cancel" {
+          print("APP_UI_REVEALED \(identifier) attempt=\(attempt) frame=\(frame) viewport=\(viewport)")
+        }
+        return true
+      }
       if attempt == 12 { break }
       if page.exists && page.frame.height > 0 && !viewport.isEmpty {
         // Clipped React Native elements can have an infinite AX frame. Search
@@ -132,7 +137,16 @@ final class AppFlowUITests: XCTestCase {
     }
     let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
     XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed, "Reach \(identifier) with the keyboard open")
-    XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Scrolling must keep the keyboard open")
+    let keyboardExists = keyboard.exists
+    let keyboardHittable = keyboardExists && keyboard.isHittable
+    if !keyboardHittable {
+      print("APP_UI_KEYBOARD_AFTER_SCROLL \(identifier) originalExists=\(keyboardExists) originalHittable=\(keyboardHittable)")
+      let currentKeyboard = app.keyboards.firstMatch
+      let currentExists = currentKeyboard.exists
+      print("APP_UI_KEYBOARD_FRESH \(identifier) exists=\(currentExists) hittable=\(currentExists && currentKeyboard.isHittable)")
+      diagnose("keyboard-after-scroll-\(identifier)")
+    }
+    XCTAssertTrue(keyboardHittable, "Scrolling must keep the keyboard open")
     XCTAssertTrue(field.isHittable, "Keep the input visible beside its action")
     XCTAssertEqual(field.value as? String, value, "Scrolling must retain the complete input")
     capture("keyboard-action-ready-\(identifier)")
