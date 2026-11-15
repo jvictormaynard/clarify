@@ -252,8 +252,9 @@ or:
 The build first packages `dist\desktop-shell`, then embeds the complete shell
 into `dist\Clarify.exe`. Pass `-DesktopShellDirectory` to reuse a shell from the
 same source revision. Its manifest binds every renderer and native runtime file;
-missing or different files fail verification. SBOM and license notices are
-produced by `scripts/settings_inventory.py`.
+missing or different files fail verification. Keep the generated
+`Clarify-settings.sbom.json` and `Clarify-settings-NOTICES.txt` in the parent
+output directory. Both are produced by `scripts/settings_inventory.py`.
 Local `.env`
 files are deliberately excluded from every build.
 
@@ -310,8 +311,8 @@ It refuses to replace an app with an active SoX recording and launches through
 Explorer so the app does not inherit an MSIX development host's virtual profile.
 Check configuration and model discovery after launch, not just the process ID.
 
-For a WSL checkout, run Windows Node/Playwright checks from the native staging
-desktop worktree directory, not directly from a UNC path. Keep
+For a WSL checkout, use a native Windows checkout for Windows Node/Playwright
+checks. Keep
 `CLARIFY_TEST_FIXTURE` pointed at the repository fixture and use the Windows
 Python interpreter. Do not share a Linux `node_modules` install with Windows.
 If mypy reports a locked SQLite cache over UNC, use `--cache-dir` with a fresh

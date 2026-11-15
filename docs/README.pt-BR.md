@@ -42,9 +42,9 @@ Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de tod
 as páginas.
 
 Use **Estilo** para revisar o ditado, escolher uma ação após o ditado e definir
-estilos por aplicativo. **Ações de texto** começa com Reescrita e Tradução;
+um estilo geral de escrita. **Ações de texto** começa com Reescrita e Tradução;
 crie outra ação para usar suas próprias instruções. Os diálogos de ação, perfil
-de processamento e estilo por aplicativo mantêm rascunhos até **Salvar**.
+de processamento mantêm rascunhos até **Salvar**.
 **Cancelar** descarta as alterações daquele diálogo. A prévia usa texto de
 exemplo e não cola em outro aplicativo. Local Whisper continua restrito à
 transcrição de áudio.
@@ -131,7 +131,7 @@ e a cada seis horas enquanto estiver aberto. A instalação automática vem
 desativada. Uma bolinha vermelha no botão de Settings do home pill indica uma
 nova versão. Abra o menu e selecione **Install update** para baixar e instalar.
 
-Para ativar a instalação automática, abra **Settings → Geral → Atualizações** e
+Para ativar a instalação automática, abra **Settings → Sistema → Atualizações** e
 ative **Atualização automática**. Essa opção é salva automaticamente. O Clarify
 baixa a versão em segundo plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
 a atualização. Configurações, chaves, modelos e atalhos são preservados. Se a

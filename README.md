@@ -108,9 +108,9 @@ chave** (Validate and save key). Validate or discard those edits before saving
 other drafts. Closing Settings can save or discard drafts from all pages.
 
 Use **Style** for dictation cleanup, an optional action after dictation and
-application writing styles. **Text actions** starts with Rewrite and Translation;
-create another action to use your own instructions. Action, processing-profile
-and application-style dialogs keep edits as drafts until **Save**. **Cancel**
+one general writing style. **Text actions** starts with Rewrite and Translation;
+create another action to use your own instructions. Action and processing-profile
+dialogs keep edits as drafts until **Save**. **Cancel**
 discards that dialog's edits. Previews use sample text and do not paste into
 another application. Local Whisper remains an audio transcription provider.
 
@@ -154,7 +154,7 @@ hours while running. Automatic installation is off by default. A red dot on
 the home pill's Settings button marks an available update. Open its menu and
 select **Install update** to download and install it.
 
-To enable automatic installation, open **Settings → Geral → Atualizações** and
+To enable automatic installation, open **Settings → Sistema → Atualizações** and
 enable **Atualização automática**. This preference saves automatically. Clarify
 downloads in the background, waits until active work is complete and Settings are closed,
 then restarts to apply the update. Settings, keys, models, and shortcuts stay
@@ -186,8 +186,9 @@ do not need Python, Node.js, or SoX.
    endpoint, enablement, and optional prompt independently.
 
 Community portable executables are not code-signed. Verify the SHA-256 file
-published with the release before running the download. The MSI and in-app
-update path remain disabled until the signed rollout gates are complete.
+published with the release before running the download. Portable updates use
+authenticated Ed25519 metadata. The MSI and its separate Authenticode update
+channel remain disabled until their rollout gates are complete.
 
 ### Run from source on Windows
 
