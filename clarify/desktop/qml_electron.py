@@ -506,6 +506,16 @@ class ElectronQtShell(QtShell):
             self._create_tray()
             self._install_window_close_filter()
 
+    def activate_existing_window(self):
+        if not self.desktop.failed and self.desktop.bridge.surface in {
+            "idle",
+            "success",
+            "settings",
+        }:
+            self.desktop.bridge.openSettings()
+        else:
+            self.show_window()
+
     def show_window(self):
         if self.desktop.failed or self.desktop.bridge.surface == "files":
             super().show_window()

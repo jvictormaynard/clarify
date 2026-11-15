@@ -30,6 +30,7 @@
   "setAutostart",
   "setAutomaticUpdates",
   "checkForUpdates",
+  "installUpdate",
   "setHistoryEnabled",
   "setHistoryRetentionDays",
   "selectMicrophone",
