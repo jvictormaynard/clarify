@@ -30,6 +30,20 @@ server/.venv/bin/pip install --require-hashes -r server/requirements.txt
 CLARIFY_DEVELOPMENT=1 server/.venv/bin/python server/manage.py test cloud.service.tests
 ```
 
+On Windows, use the same hashed lock in PowerShell:
+
+```powershell
+py -3.12 -m venv server/.venv
+server/.venv/Scripts/python.exe -m pip install --require-hashes -r server/requirements.txt
+$env:CLARIFY_DEVELOPMENT = "1"
+# Set DATABASE_URL to an isolated test database before running the suite.
+server/.venv/Scripts/python.exe server/manage.py test cloud.service.tests --noinput
+```
+
+The Windows dependency check in CI resolves this lock without starting services.
+It does not replace the PostgreSQL tests or Linux container acceptance. The
+production `server/start.py` entry point uses Gunicorn and runs on Linux.
+
 SQLite is available for development only. Concurrency tests require PostgreSQL.
 Tests use fake provider responses, synthetic silent audio and in-memory email.
 No provider key, real recording or real profile is required.
