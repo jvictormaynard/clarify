@@ -4,6 +4,7 @@ import UIKit
 final class KeyPreview: UIView {
   private let shape = CAShapeLayer()
   private let label = UILabel()
+  private var keyColor = UIColor.white
   override init(frame: CGRect) {
     super.init(frame: frame)
     isUserInteractionEnabled = false; isAccessibilityElement = false
@@ -13,9 +14,21 @@ final class KeyPreview: UIView {
     layer.shadowRadius = 3; layer.shadowOffset = CGSize(width: 0, height: 1)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+  override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
+    if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) { updateFillColor() }
+  }
+  private func updateFillColor() {
+    // A CGColor does not follow the view's dynamic appearance traits.
+    let fill = traitCollection.userInterfaceStyle == .dark ? UIColor(white: 0.33, alpha: 1) : keyColor.withAlphaComponent(1)
+    shape.fillColor = fill.resolvedColor(with: traitCollection).cgColor
+  }
   func show(_ text: String, key: CGRect, in container: UIView, color: UIColor) {
     let width = max(54, key.width + 22), cap: CGFloat = 54
-    let x = min(max(2, key.midX - width / 2), container.bounds.width - width - 2)
+    let centeredX = key.midX - width / 2
+    var leadingInset: CGFloat = 2
+    if #available(iOS 26.0, *), centeredX < leadingInset { leadingInset = key.minX }
+    let x = min(max(leadingInset, centeredX), container.bounds.width - width - 2)
     let top = max(0, key.minY - cap - 9)
     frame = CGRect(x: x, y: top, width: width, height: key.maxY - top)
     let stemLeft = key.minX - x, stemRight = key.maxX - x
@@ -35,11 +48,12 @@ final class KeyPreview: UIView {
       controlPoint1: CGPoint(x: stemLeft, y: cap + 1), controlPoint2: CGPoint(x: 0, y: cap + 2))
     path.addLine(to: CGPoint(x: 0, y: 12))
     path.addQuadCurve(to: CGPoint(x: 12, y: 0), controlPoint: .zero); path.close()
-    let fill = container.traitCollection.userInterfaceStyle == .dark ? UIColor(white: 0.33, alpha: 1) : color.withAlphaComponent(1)
-    shape.path = path.cgPath; shape.fillColor = fill.resolvedColor(with: container.traitCollection).cgColor
+    keyColor = color; shape.path = path.cgPath
     layer.shadowPath = path.cgPath
     label.text = text; label.textColor = .label
-    label.frame = CGRect(x: 0, y: 0, width: width, height: cap)
-    container.addSubview(self)
+    var titleOffset: CGFloat = 0
+    if #available(iOS 26.0, *) { titleOffset = 13.0 / 3.0 }
+    label.frame = CGRect(x: 0, y: titleOffset, width: width, height: cap)
+    container.addSubview(self); updateFillColor()
   }
 }
