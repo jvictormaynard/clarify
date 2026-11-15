@@ -1186,12 +1186,12 @@ final class KeyboardUITests: XCTestCase {
     await MainActor.run {
       let keyboard = KeyboardViewController()
       XCTAssertFalse(keyboard.isViewLoaded)
-      XCTAssertEqual(keyboard.preferredContentSize.height, 278,
+      XCTAssertEqual(keyboard.preferredContentSize.height, keyboard.keySizing.contentHeight,
         "The host needs the final height before it measures the unloaded extension")
       keyboard.loadViewIfNeeded()
       for proposedHeight in [CGFloat(0), 278, 540, 956] {
         keyboard.view.bounds.size = CGSize(width: 393, height: proposedHeight)
-        XCTAssertEqual(keyboard.view.sizeThatFits(CGSize(width: 393, height: proposedHeight)).height, 278,
+        XCTAssertEqual(keyboard.view.sizeThatFits(CGSize(width: 393, height: proposedHeight)).height, keyboard.keySizing.contentHeight,
           "A temporary host frame must not become the requested keyboard height")
       }
     }
@@ -1232,7 +1232,7 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertTrue(field.becomeFirstResponder(), "The fixture must reach the real input host")
       await fulfillment(of: [shown], timeout: 5)
       NotificationCenter.default.removeObserver(observer)
-      XCTAssertEqual(field.keyboard.view.bounds.height, 278, accuracy: 0.5)
+      XCTAssertEqual(field.keyboard.view.bounds.height, field.keyboard.keySizing.contentHeight, accuracy: 0.5)
       let hidden = expectation(description: "System keyboard finished dismissing")
       var didHide = false
       let hideObserver = NotificationCenter.default.addObserver(forName: UIResponder.keyboardDidHideNotification,
@@ -1256,8 +1256,8 @@ final class KeyboardUITests: XCTestCase {
     await MainActor.run {
       let keyboard = KeyboardViewController()
       keyboard.loadViewIfNeeded()
-      XCTAssertEqual(keyboard.preferredContentSize.height, 278)
-      XCTAssertEqual(keyboard.inputView?.bounds.height, 278)
+      XCTAssertEqual(keyboard.preferredContentSize.height, keyboard.keySizing.contentHeight)
+      XCTAssertEqual(keyboard.inputView?.bounds.height, keyboard.keySizing.contentHeight)
       XCTAssertFalse(keyboard.view.autoresizingMask.contains(.flexibleHeight))
       let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
       let host = UIViewController(); window.rootViewController = host
@@ -1272,7 +1272,7 @@ final class KeyboardUITests: XCTestCase {
       for height in [CGFloat(852), 393, 956, 852] {
         host.view.frame.size.height = height
         host.view.setNeedsLayout(); host.view.layoutIfNeeded()
-        XCTAssertEqual(keyboard.view.bounds.height, 278, accuracy: 0.5)
+        XCTAssertEqual(keyboard.view.bounds.height, keyboard.keySizing.contentHeight, accuracy: 0.5)
         XCTAssertEqual(keyboard.view.frame.maxY, host.view.bounds.maxY, accuracy: 0.5)
       }
       window.isHidden = true
@@ -1334,21 +1334,45 @@ final class KeyboardUITests: XCTestCase {
   }
   func testKeysDoNotStretchDuringTheInitialHostHeightTransition() async {
     await MainActor.run {
-      let keyboard = KeyboardViewController(); keyboard.loadViewIfNeeded()
-      XCTAssertTrue((keyboard.view as? UIInputView)?.allowsSelfSizing == true)
-      XCTAssertTrue((keyboard.view as? UIInputViewAudioFeedback)?.enableInputClicksWhenVisible == true)
-      for height in [CGFloat(0), 278, 540, 956] {
-        XCTAssertEqual(keyboard.view.systemLayoutSizeFitting(CGSize(width: 393, height: height)).height, 278)
-        XCTAssertEqual(keyboard.view.systemLayoutSizeFitting(CGSize(width: 393, height: height),
-          withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height, 278)
+      final class ProfileKeyboard: KeyboardViewController {
+        var fixtureSizing = KeyboardKeySizing.standard
+        override var keySizing: KeyboardKeySizing { fixtureSizing }
       }
-      keyboard.view.frame = CGRect(x: 0, y: 0, width: 393, height: 540)
-      keyboard.view.layoutIfNeeded()
-      func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
-      let grid = descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first!
-      XCTAssertEqual(grid.bounds.height, 220, accuracy: 0.5)
-      let buttons = descendants(grid).compactMap { $0 as? UIButton }
-      XCTAssertTrue(buttons.allSatisfy { $0.bounds.height < 50 })
+      var widths: [CGFloat] = [393, 402]
+      if #available(iOS 26.0, *) { widths += [430] }
+      for width in widths {
+        let keyboard = ProfileKeyboard()
+        keyboard.fixtureSizing = KeyboardKeySizing.portrait(width: width)
+        let expectedHeight: CGFloat = width == 430 ? 288 : 278
+        XCTAssertFalse(keyboard.isViewLoaded)
+        XCTAssertEqual(keyboard.preferredContentSize.height, expectedHeight,
+          "The selected profile must be published before the view loads")
+        keyboard.loadViewIfNeeded()
+        XCTAssertTrue((keyboard.view as? UIInputView)?.allowsSelfSizing == true)
+        XCTAssertTrue((keyboard.view as? UIInputViewAudioFeedback)?.enableInputClicksWhenVisible == true)
+        for height in [CGFloat(0), expectedHeight, 540, 956] {
+          XCTAssertEqual(keyboard.view.systemLayoutSizeFitting(CGSize(width: width, height: height)).height, expectedHeight)
+          XCTAssertEqual(keyboard.view.systemLayoutSizeFitting(CGSize(width: width, height: height),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height, expectedHeight)
+        }
+        keyboard.view.frame = CGRect(x: 0, y: 0, width: width, height: 540)
+        keyboard.view.layoutIfNeeded()
+        func descendants(_ view: UIView) -> [UIView] { view.subviews.flatMap { [$0] + descendants($0) } }
+        let grid = descendants(keyboard.view).compactMap { $0 as? KeyGridView }.first!
+        XCTAssertEqual(grid.bounds.height, width == 430 ? 230 : 220, accuracy: 0.5)
+        let buttons = descendants(grid).compactMap { $0 as? UIButton }
+        XCTAssertFalse(buttons.isEmpty)
+        XCTAssertTrue(buttons.allSatisfy { $0.bounds.height < 50 })
+        if #available(iOS 26.0, *) {
+          let q = buttons.first { $0.currentTitle?.lowercased() == "q" }!
+          let a = buttons.first { $0.currentTitle?.lowercased() == "a" }!
+          XCTAssertEqual(q.bounds.height, width == 430 ? 45 : 43, accuracy: 0.01)
+          let qFrame = q.convert(q.bounds, to: grid), aFrame = a.convert(a.bounds, to: grid)
+          XCTAssertEqual(aFrame.minY - qFrame.minY, width == 430 ? 56 : 54, accuracy: 0.01)
+          XCTAssertEqual(qFrame.minX, 6.5, accuracy: 0.01)
+          XCTAssertEqual(qFrame.width, (width - 13 - 54) / 10, accuracy: 0.01)
+        }
+      }
     }
   }
   func testRecordingWaveformFollowsTheDesktopAttackReleaseAndIndependentBars() async {
@@ -1426,7 +1450,7 @@ final class KeyboardUITests: XCTestCase {
       try store.publishAudioMeter(AudioMeterReading(operationID: command.operationID, measuredAt: Date().timeIntervalSince1970, level: 0))
       keyboard.refreshFromStore(); keyboard.view.layoutIfNeeded()
       XCTAssertTrue(finish.isEnabled); XCTAssertEqual(label.text, L("Ouvindo…"))
-      XCTAssertEqual(keyboard.view.bounds.height, 278)
+      XCTAssertEqual(keyboard.view.bounds.height, keyboard.keySizing.contentHeight)
       XCTAssertTrue(try XCTUnwrap(views.compactMap { $0 as? KeyGridView }.first).isHidden)
       for appearance in [UIUserInterfaceStyle.light, .dark] {
         keyboard.view.overrideUserInterfaceStyle = appearance
@@ -2047,7 +2071,7 @@ final class KeyboardUITests: XCTestCase {
               }
               XCTAssertEqual(capsule.accessibilityLabel, L("Saída do ditado") + ": Русский, " + OutputStyle.very_casual.title)
               XCTAssertTrue(keyboard.view.bounds.contains(capsule.frame)); XCTAssertGreaterThanOrEqual(capsule.bounds.height, 44)
-              XCTAssertEqual(keyboard.view.bounds.height, 278); XCTAssertFalse(capsule.hasAmbiguousLayout)
+              XCTAssertEqual(keyboard.view.bounds.height, keyboard.keySizing.contentHeight); XCTAssertFalse(capsule.hasAmbiguousLayout)
               let title = try XCTUnwrap(capsule.titleLabel)
               let titleRect = title.textRect(forBounds: CGRect(x: 0, y: 0, width: title.bounds.width,
                 height: .greatestFiniteMagnitude), limitedToNumberOfLines: 0)
@@ -2277,7 +2301,7 @@ final class KeyboardUITests: XCTestCase {
       XCTAssertEqual(keyboard.field.selectedText, "Clarify"); XCTAssertTrue(store.commands().isEmpty)
       for width in [CGFloat(320), 393, 852] {
         keyboard.view.frame.size.width = width; keyboard.view.layoutIfNeeded()
-        XCTAssertTrue(keyboard.view.bounds.contains(button.frame)); XCTAssertEqual(keyboard.view.bounds.height, 278)
+        XCTAssertTrue(keyboard.view.bounds.contains(button.frame)); XCTAssertEqual(keyboard.view.bounds.height, keyboard.keySizing.contentHeight)
       }
       keyboard.field.isSecureTextEntry = true; keyboard.selectionDidChange(nil)
       XCTAssertFalse(button.isHidden); XCTAssertNil(button.configuration?.image)

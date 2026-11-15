@@ -37,6 +37,27 @@ private final class KeyButton: UIButton {
   }
 }
 
+// One profile is selected before the host measures or attaches the keyboard.
+@MainActor
+struct KeyboardKeySizing {
+  let gridHeight: CGFloat
+  let bottomInset: CGFloat
+  var contentHeight: CGFloat { 58 + gridHeight }
+  static let standard = KeyboardKeySizing(gridHeight: 220, bottomInset: 3)
+  static func portrait(width: CGFloat) -> KeyboardKeySizing {
+    // The measured 430-point portrait viewport uses 45-point keys, rather
+    // than the 43-point keys of the existing smaller-phone reference.
+    abs(width - 430) < 0.5 ? KeyboardKeySizing(gridHeight: 230, bottomInset: 5) : .standard
+  }
+  static let current: KeyboardKeySizing = {
+    if #available(iOS 26.0, *) {
+      let size = UIScreen.main.bounds.size
+      if size.height > size.width { return portrait(width: size.width) }
+    }
+    return .standard
+  }()
+}
+
 // UIKit keys styled like the system keyboard. No private Apple keyboard engine.
 final class KeyGridView: UIView {
   var onInsert: ((String) -> Void)?
@@ -252,17 +273,19 @@ final class KeyGridView: UIView {
     return nearestKey(at: point) ?? hit
   }
 
-  override init(frame: CGRect) {
+  override convenience init(frame: CGRect) {
+    self.init(frame: frame, sizing: .standard)
+  }
+  init(frame: CGRect, sizing: KeyboardKeySizing) {
     super.init(frame: frame)
     isMultipleTouchEnabled = true
     let modern = usesModernKeyAppearance
-    // The iOS 26 portrait reference has 43-point keys on a 54-point row pitch.
-    // Keep the existing input-view height and the toolbar's interaction area.
+    // Keep the row gap and toolbar area while using the selected key height.
     stack.axis = .vertical; stack.spacing = modern ? 11 : 10; stack.distribution = .fillEqually
     addSubview(stack); stack.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
       stack.topAnchor.constraint(equalTo: topAnchor, constant: modern ? 12 : 4),
-      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: modern ? -3 : -6),
+      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: modern ? -sizing.bottomInset : -6),
       stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: modern ? 6.5 : 6),
       stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: modern ? -6.5 : -6)
     ])
