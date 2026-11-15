@@ -204,11 +204,15 @@ try {
   await pill.getByRole('button', {name:'Start recording',exact:true}).click();
   await expect.poll(() => messages.some(message => message.method === 'startRecordingFromButton')).toBe(true);
   await state('starting', {surface:'recording',recording:true,recordingReady:false,showRecordingStop:true,transitionPending:true});
+  await expect(pill.locator('.workflow-pill')).toHaveAttribute('aria-busy','true');
+  await expect(pill.locator('.pill-content')).toHaveCSS('opacity','0.45');
   const spinner = await pill.locator('.pill-motion-layer:has(.pill-spinner)').boundingBox();
   const stop = await pill.getByRole('button', {name:'Stop recording',exact:true}).boundingBox();
   expect(spinner.x + spinner.width).toBeLessThan(stop.x);
   await expect(pill.getByRole('button', {name:'Stop recording',exact:true})).toBeDisabled();
   await state('recording', {surface:'recording',recording:true, recordingReady:true,showRecordingStop:true,level:.35, status:'Listening to your microphone'});
+  await expect(pill.locator('.workflow-pill')).toHaveAttribute('aria-busy','false');
+  await expect(pill.locator('.pill-content')).toHaveCSS('opacity','1');
   const recordingBounds = await pill.locator('.workflow-pill').boundingBox();
   expect(recordingBounds.height).toBe(idleBounds.height);
   expect(recordingBounds.y).toBe(idleBounds.y);

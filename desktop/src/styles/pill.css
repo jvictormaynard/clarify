@@ -10,10 +10,12 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .workflow-pill button { -webkit-app-region: no-drag; }
 .pill-idle { width: 112px; }
 .pill-capture { padding: 0; display: block; overflow: hidden; }
-.pill-capture[data-surface="recording"] { border-color: #666; }
+.pill-capture[data-surface="recording"]:not([data-starting="true"]) { border-color: #666; }
+.workflow-pill[data-starting="true"] { cursor: progress; }
+.workflow-pill[data-starting="true"] .pill-content { opacity: .45; }
 .pill-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pill-stage button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 28px; min-height: 28px; padding: 4px; border-radius: 13px; background: transparent; color: inherit; cursor: pointer; }
-.pill-stage button:hover { background: var(--accent); }
+.pill-stage button:hover:not(:disabled) { background: var(--accent); }
 .pill-stage button:disabled { opacity: .4; cursor: default; }
 .pill-stage button:focus-visible { outline: 2px solid var(--ring); }
 .pill-stage svg { width: 18px; height: 18px; flex-shrink: 0; }
