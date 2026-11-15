@@ -23,7 +23,7 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Tradução de texto selecionado
 - Integração nativa com atalhos e bandeja do Windows
 - Interface em português, inglês e espanhol, independente do idioma do ditado
-- Área de trabalho em React/Tauri: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
+- Área de trabalho em React/Electron: Ditado, Estilo, Ações de texto, Dicionário, Snippets e Histórico
 - Diálogo de Configurações com Geral, Dispositivos, Modelos e serviços, Atalhos, Privacidade e Conta Clarify
 - Ações de texto com nome, instruções próprias, atalhos opcionais e prévia
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
@@ -42,9 +42,9 @@ Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de tod
 as páginas.
 
 Use **Estilo** para revisar o ditado, escolher uma ação após o ditado e definir
-estilos por aplicativo. **Ações de texto** começa com Reescrita e Tradução;
+um estilo geral de escrita. **Ações de texto** começa com Reescrita e Tradução;
 crie outra ação para usar suas próprias instruções. Os diálogos de ação, perfil
-de processamento e estilo por aplicativo mantêm rascunhos até **Salvar**.
+de processamento mantêm rascunhos até **Salvar**.
 **Cancelar** descarta as alterações daquele diálogo. A prévia usa texto de
 exemplo e não cola em outro aplicativo. Local Whisper continua restrito à
 transcrição de áudio.
@@ -131,7 +131,7 @@ e a cada seis horas enquanto estiver aberto. A instalação automática vem
 desativada. Uma bolinha vermelha no botão de Settings do home pill indica uma
 nova versão. Abra o menu e selecione **Install update** para baixar e instalar.
 
-Para ativar a instalação automática, abra **Settings → Geral → Atualizações** e
+Para ativar a instalação automática, abra **Settings → Sistema → Atualizações** e
 ative **Atualização automática**. Essa opção é salva automaticamente. O Clarify
 baixa a versão em segundo plano, espera concluir as tarefas e fechar os Settings, e reinicia para aplicar
 a atualização. Configurações, chaves, modelos e atalhos são preservados. Se a
@@ -170,15 +170,15 @@ Para executar o código-fonte com as novas Configurações:
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
-.\scripts\build-settings.ps1
-$env:CLARIFY_SETTINGS_EXECUTABLE = (Resolve-Path .\dist\clarify-settings.exe).Path
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
 .\start.bat
 ```
 
 É necessário ter Windows 10 ou 11, Python 3.11 ou mais recente e um microfone.
-O build das Configurações exige Node.js 22, Rust MSVC, Visual Studio C++ Build
-Tools e Windows SDK. A janela usa o Microsoft Edge WebView2. O usuário do
-executável pronto não precisa de Python, Node.js ou Rust.
+O build da interface desktop exige Node.js 22. A interface padrão usa Electron
+e não exige Rust nem WebView2. Esses componentes pertencem à alternativa Tauri
+legada. O usuário do executável pronto não precisa das ferramentas de build.
 Na primeira execução, o script cria um ambiente virtual e instala as
 dependências automaticamente.
 
