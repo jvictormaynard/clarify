@@ -29,6 +29,26 @@ class RecordingArchiveTests(unittest.TestCase):
         session.start()
         return session
 
+    def test_recovery_revision_ignores_config_writes_and_tracks_stopped_audio(self):
+        from recording_recovery import RecordingRecovery
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            store = RecordingRecovery(root)
+            before = store.revision()
+            (root / "config.json").write_text('{"dictionary": ["word"]}')
+            self.assertEqual(store.revision(), before)
+            working = root / "clarify-recording-abcdefgh.wav"
+            working.write_bytes(wav_bytes())
+            stopped = store.revision()
+            self.assertNotEqual(stopped, before)
+            working.unlink()
+            self.assertNotEqual(store.revision(), stopped)
+            token = store.save(wav_bytes())
+            archived = store.revision()
+            store.update(token, status="failed")
+            self.assertNotEqual(store.revision(), archived)
+
     def test_enabled_normal_stop_archives_once_and_original_is_cleaned(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

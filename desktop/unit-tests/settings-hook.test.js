@@ -459,3 +459,13 @@ test('dictionary flag queued during Save follows a casefold-equivalent server sp
  assert.equal(c.error,'');assert.equal(h.persisted.dictionaryEntries[0].enabled,false);
  assert.equal(h.persisted.dictionaryEntries[0].term,'STRASSE');
 });
+
+for (const library of ['dictionary','snippets']) test(`${library} Save keeps its captured draft when staged state is pushed`, async () => {
+ const h=await setup();let c=h.render();await c.navigate(library);c=h.render();
+ if(library==='dictionary')c.setDictionary([...c.state.dictionaryEntries,{term:'new term',pronunciation:'',aliases:[],enabled:true}]);
+ else c.setSnippets([...c.state.snippets,{trigger:'new phrase',replacement:'new replacement',enabled:true,case_sensitive:false}]);
+ c=h.render();const gate=h.pause('save');const saving=c.save();await gate.started;
+ h.publish();c=h.render();gate.release();assert.equal(await saving,true);c=h.render();
+ assert.equal(c.error,'');assert.equal(c.dirty,false);assert.equal(c.pageDirty,false);
+ assert.equal(h.persisted[library==='dictionary'?'dictionaryEntries':'snippets'].length,2);
+});

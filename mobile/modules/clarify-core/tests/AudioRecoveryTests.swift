@@ -14,6 +14,7 @@ final class AudioRecoveryTests: XCTestCase {
     try audio.write(to: source)
     let store = AudioRecoveryStore(root: root, temporary: temporary)
     XCTAssertTrue(store.recordings(excluding: source).isEmpty)
+    XCTAssertTrue(store.recordings(excluding: URL(fileURLWithPath: source.path)).isEmpty)
     let retained = try store.retain(source, createdAt: 100, duration: 181)
     XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
     store.mark(id, status: .failed)

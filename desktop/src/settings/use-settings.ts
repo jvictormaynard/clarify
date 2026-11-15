@@ -259,8 +259,15 @@ export function useSettings() {
   const pendingOperations = useRef(0);
   const needsDraftRecovery = useRef(false);
   const lifetime = useRef(0);
-  const acceptState = useCallback((update: Partial<Settings>) => {
+  const acceptState = useCallback((update: Partial<Settings>, fromPush = false) => {
     const previous = current.current;
+    if (fromPush && savingRef.current && (!update.snippetContext || update.snippetContext === previous?.snippetContext)) {
+      // Setters can publish staged lists before Save commits. The reserved
+      // transaction owns their terminal snapshot and any edits made meanwhile.
+      update = { ...update };
+      delete update.dictionaryEntries;
+      delete update.snippets;
+    }
     const next = previous ? mergeSettings(previous, update) : update as Settings;
     if (next === previous) return;
     if (previous?.chatgptState && next.chatgptState &&
@@ -438,7 +445,7 @@ export function useSettings() {
       if (document.hidden && current.current?.microphoneTestBusy) void run("stopMicrophoneTest");
     };
     const unsubscribe = electron()?.subscribe(message => {
-      if (live && current.current && message.event === "settings") acceptState(message.state as Partial<Settings>);
+      if (live && current.current && message.event === "settings") acceptState(message.state as Partial<Settings>, true);
     });
     void electron()?.ready();
     document.addEventListener("visibilitychange", visibility);

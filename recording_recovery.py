@@ -74,13 +74,25 @@ class RecordingRecovery:
             temporary.unlink(missing_ok=True)
 
     def revision(self) -> str:
-        stamps = []
-        for path in (self.directory, self.directory.parent):
-            try:
-                stamps.append(path.stat().st_mtime_ns)
-            except OSError:
-                stamps.append(0)
-        return str((*stamps, _GENERATION))
+        try:
+            archived = self.directory.stat().st_mtime_ns
+        except OSError:
+            archived = 0
+        # Profile changes include unrelated settings saves. Only stranded
+        # recording files can change the recovery list outside its archive.
+        remaining = []
+        try:
+            for path in self.directory.parent.glob("clarify-recording-*.wav"):
+                if not _WORKING_NAME.fullmatch(path.name):
+                    continue
+                try:
+                    stamp = path.lstat()
+                    remaining.append((path.name, stamp.st_mtime_ns, stamp.st_size))
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return str((archived, sorted(remaining), _GENERATION))
 
     def metadata(self, token: str) -> dict:
         path = self.path(token).with_suffix(".json")

@@ -43,25 +43,33 @@ export function HistoryItem({ entry, first, last, onOpen, onDelete }: {
       { text: t('Excluir'), style: 'destructive', onPress: () => { void perform('delete', () => Core.deleteRecoveryRecording(recording.id)); } },
     ]);
   };
-  const actions: (MenuAction & { run: () => void })[] = [
-    ...(!entry.audioOnly ? [{ id: 'copy', title: t('Copiar texto'), systemImage: 'doc.on.doc', disabled: !!action, run: () => { void perform('copy', () => Core.copyText(entry.text)); } }] : []),
+  const actions: MenuAction[] = [
+    ...(!entry.audioOnly ? [{ id: 'copy', title: t('Copiar texto'), systemImage: 'doc.on.doc', disabled: !!action }] : []),
     ...(recording ? [
-      { id: 'play', title: t(playing ? 'Pausar áudio' : 'Reproduzir áudio'), systemImage: playing ? 'pause' : 'play', disabled: !!action || ['recording', 'locked'].includes(state.phase), run: () => { void perform('play', () => Core.playRecoveryRecording(recording.id)); } },
-      { id: 'retry', title: t('Tentar transcrição novamente'), systemImage: 'arrow.clockwise', disabled: busy || !state.configured, run: retry },
-      { id: 'undo', title: t('Desfazer edição de IA'), systemImage: 'arrow.uturn.backward', disabled: busy || !entry.rewritten || entry.text === entry.transcript, run: () => { void perform('undo', () => Core.undoRecoveryEdit(recording.id, entry.context)); } },
-      { id: 'export', title: t('Extrair áudio'), systemImage: 'square.and.arrow.up', disabled: !!action, run: () => { void perform('export', () => Core.exportRecoveryRecording(recording.id)); } },
+      { id: 'play', title: t(playing ? 'Pausar áudio' : 'Reproduzir áudio'), systemImage: playing ? 'pause' : 'play', disabled: !!action || ['recording', 'locked'].includes(state.phase) },
+      { id: 'retry', title: t('Tentar transcrição novamente'), systemImage: 'arrow.clockwise', disabled: busy || !state.configured },
+      { id: 'undo', title: t('Desfazer edição de IA'), systemImage: 'arrow.uturn.backward', disabled: busy || !entry.rewritten || entry.text === entry.transcript },
+      { id: 'export', title: t('Extrair áudio'), systemImage: 'square.and.arrow.up', disabled: !!action },
     ] : []),
-    { id: 'delete', title: t('Excluir transcrição'), systemImage: 'trash', disabled: busy, destructive: true, run: remove },
+    { id: 'delete', title: t('Excluir transcrição'), systemImage: 'trash', disabled: busy, destructive: true },
   ];
   function choose(id: string) {
     const selected = actions.find(item => item.id === id);
-    if (selected && !selected.disabled && entry.context === (account?.historyContext ?? '')) selected.run();
+    if (!selected || selected.disabled || entry.context !== (account?.historyContext ?? '')) return;
+    switch (id) {
+      case 'copy': void perform('copy', () => Core.copyText(entry.text)); break;
+      case 'retry': retry(); break;
+      case 'delete': remove(); break;
+      case 'play': if (recording) void perform('play', () => Core.playRecoveryRecording(recording.id)); break;
+      case 'undo': if (recording) void perform('undo', () => Core.undoRecoveryEdit(recording.id, entry.context)); break;
+      case 'export': if (recording) void perform('export', () => Core.exportRecoveryRecording(recording.id)); break;
+    }
   }
   const duration = Math.max(0, Math.floor(recording?.duration ?? 0));
   const time = `${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, '0')}`;
   const source = entry.sourceDevice === 'desktop' ? 'Desktop' : 'Mobile';
   const text = failed ? t('Tentar transcrever áudio de {duration}.', { duration: time }) : entry.text;
-  return <ContextMenu style={{ width: '100%' }} menuID={menuID} actions={actions.map(({ run: _run, ...item }) => item)}
+  return <ContextMenu style={{ width: '100%' }} menuID={menuID} actions={actions}
     onAction={event => { if (event.nativeEvent.menuID === menuID) choose(event.nativeEvent.id); }}>
     <TableRow first={first} last={last}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>

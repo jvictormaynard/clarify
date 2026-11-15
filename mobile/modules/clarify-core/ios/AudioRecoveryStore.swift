@@ -81,9 +81,10 @@ final class AudioRecoveryStore {
     else { archived = (try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] }
     let remaining = ((try? files.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)) ?? [])
       .filter { $0.lastPathComponent.hasPrefix("clarify-") }
+    let excludedID = excluding.flatMap { identifier($0) }
     var seen = Set<String>()
     return (archived + remaining).compactMap { url -> RecoveryRecording? in
-      guard url != excluding, let id = identifier(url), regular(url), seen.insert(id).inserted else { return nil }
+      guard let id = identifier(url), id != excludedID, regular(url), seen.insert(id).inserted else { return nil }
       if !redirected, let data = try? Data(contentsOf: metadata(id)), let row = try? JSONDecoder().decode(RecoveryRecording.self, from: data),
          row.id == id, row.createdAt.isFinite, row.duration.isFinite, row.duration >= 0 { return row }
       let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()

@@ -5,3 +5,5 @@ export const invoke = vi.fn<(request: { method: string; args: unknown[] }) => Pr
 );
 export const windowCall = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
 export const onWindow = vi.fn<(listener: (event: string) => void) => () => void>(() => () => {});
+
+export const subscribe = vi.fn<(listener: (message: { event: string; state: unknown }) => void) => () => void>(() => () => {});
