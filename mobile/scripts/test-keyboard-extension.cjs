@@ -52,11 +52,20 @@ try {
   // URL delivery has its own UI test. A routing failure must not prevent the
   // independent keyboard acceptance test from collecting its display frames.
   const resultPath = path.join(results, 'KeyboardExtension.xcresult');
+  const testStartedAt = new Date().toISOString(), testStarted = process.hrtime.bigint();
   const result = spawnSync('xcodebuild', ['test', '-project', path.join(fixture, 'KeyboardExtension.xcodeproj'),
     '-scheme', 'KeyboardExtension', '-configuration', 'Release', '-destination', `platform=iOS Simulator,id=${device.udid}`, '-derivedDataPath', derived,
     '-parallel-testing-enabled', 'NO', '-collect-test-diagnostics', 'never',
     '-test-timeouts-enabled', 'YES', '-maximum-test-execution-time-allowance', '300',
     '-resultBundlePath', resultPath, 'CODE_SIGNING_ALLOWED=NO'], { stdio: 'inherit', timeout: 600000, killSignal: 'SIGINT' });
+  const elapsedMs = Number(process.hrtime.bigint() - testStarted) / 1e6;
+  fs.writeFileSync(path.join(results, 'xcodebuild-test-process.json'), JSON.stringify({
+    startedAt: testStartedAt, completedAt: new Date().toISOString(), elapsedMs,
+    status: result.status ?? null, signal: result.signal ?? null,
+    error: result.error ? { name: result.error.name, message: result.error.message,
+      code: result.error.code ?? null, errno: result.error.errno ?? null, syscall: result.error.syscall ?? null } : null,
+    timeoutMs: 600000, killSignal: 'SIGINT',
+  }, null, 2));
   exitCode = result.status ?? 1;
   if (fs.existsSync(resultPath)) run('xcrun', ['xcresulttool', 'export', 'attachments', '--path', resultPath, '--output-path', path.join(results, 'captures')]);
 } catch (error) {
