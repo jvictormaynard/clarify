@@ -8,6 +8,7 @@ or an application lock. Files are copied as opaque bytes, never parsed or logged
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import ctypes
 import hashlib
@@ -55,19 +56,29 @@ def _identity(value: os.stat_result) -> tuple[int, ...]:
     )
 
 
-def _digest(path: Path) -> str:
-    before = _plain_stat(path)
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
-    with os.fdopen(descriptor, "rb") as stream:
-        if _identity(os.fstat(stream.fileno())) != _identity(before):
-            raise BackupError("Profile changed during backup.")
-        digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        if _identity(os.fstat(stream.fileno())) != _identity(before):
-            raise BackupError("Profile changed during backup.")
-    if _identity(_plain_stat(path)) != _identity(before):
+@contextmanager
+def _read_checked(path: Path, expected: tuple[int, ...]):
+    if _identity(_plain_stat(path)) != expected:
         raise BackupError("Profile changed during backup.")
-    return digest
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    with os.fdopen(os.open(path, flags), "rb") as stream:
+        opened = _identity(os.fstat(stream.fileno()))
+        # Windows lstat/fstat can use different ctime semantics and mode bits.
+        # Bind the same file, size and mtime; compare full metadata within each API.
+        if opened[1:5] != expected[1:5] or stat.S_IFMT(opened[0]) != stat.S_IFMT(
+            expected[0]
+        ):
+            raise BackupError("Profile changed during backup.")
+        yield stream
+        if _identity(os.fstat(stream.fileno())) != opened:
+            raise BackupError("Profile changed during backup.")
+    if _identity(_plain_stat(path)) != expected:
+        raise BackupError("Profile changed during backup.")
+
+
+def _digest(path: Path) -> str:
+    with _read_checked(path, _identity(_plain_stat(path))) as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def _inventory(root: Path) -> dict:
@@ -193,19 +204,8 @@ def create_backup(profile: Path, backup_root: Path, *, exclusive_access: bool) -
                 destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
             )
             with os.fdopen(descriptor, "wb") as output:
-                if _identity(_plain_stat(source)) != identity:
-                    raise BackupError("Profile changed during backup.")
-                flags = (
-                    os.O_RDONLY
-                    | getattr(os, "O_BINARY", 0)
-                    | getattr(os, "O_NOFOLLOW", 0)
-                )
-                with os.fdopen(os.open(source, flags), "rb") as input_file:
-                    if _identity(os.fstat(input_file.fileno())) != identity:
-                        raise BackupError("Profile changed during backup.")
+                with _read_checked(source, identity) as input_file:
                     shutil.copyfileobj(input_file, output)
-                    if _identity(os.fstat(input_file.fileno())) != identity:
-                        raise BackupError("Profile changed during backup.")
                 output.flush()
                 os.fsync(output.fileno())
             os.utime(destination, ns=(identity[4], identity[4]))

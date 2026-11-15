@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 import stat
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -44,7 +45,19 @@ class DeploymentProfileBackupTests(unittest.TestCase):
             os.utime(path, (946684800, 946684800))
         (self.profile / "empty").mkdir()
         first = self.create()
-        second = self.create()
+        fstat = backup.os.fstat
+
+        def handle_metadata(descriptor):
+            value = fstat(descriptor)
+            fields = ("st_mode", "st_dev", "st_ino", "st_size", "st_mtime_ns")
+            return SimpleNamespace(
+                **{name: getattr(value, name) for name in fields},
+                st_ctime_ns=value.st_ctime_ns + 1,
+            )
+
+        # Windows path stat uses creation time; fstat can use metadata-change time.
+        with patch.object(backup.os, "fstat", side_effect=handle_metadata):
+            second = self.create()
         self.assertNotEqual(first, second)
         manifest = json.loads((first / "manifest.json").read_text())
         self.assertTrue(manifest["complete"])
