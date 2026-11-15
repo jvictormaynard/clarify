@@ -729,7 +729,7 @@ class QtShell(QObject):
         self._started = False
         self._hotkeys_connected = False
         self._hotkeys_started = False
-        self.activationRequested.connect(self.show_window)
+        self.activationRequested.connect(self.activate_existing_window)
         self._connect_hotkey_restart()
 
     @property
@@ -781,6 +781,10 @@ class QtShell(QObject):
             self._hotkeys_started = False
             self._instance_guard.release()
             self.stopped.emit()
+
+    @Slot()
+    def activate_existing_window(self) -> None:
+        self.show_window()
 
     @Slot()
     def show_window(self) -> None:

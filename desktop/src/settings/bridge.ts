@@ -108,6 +108,8 @@ export interface Settings {
   updateStatus?: string;
   updateSupported?: boolean;
   updateBusy?: boolean;
+  updateAvailable?: boolean;
+  updateVersion?: string;
   historyEnabled: boolean;
   historyRetentionDays: number | null;
   microphoneDevices: Option[];
@@ -201,6 +203,7 @@ export type SettingsArguments = {
   setAutostart: [value: boolean];
   setAutomaticUpdates: [value: boolean];
   checkForUpdates: [];
+  installUpdate: [];
   setHistoryEnabled: [value: boolean];
   setHistoryRetentionDays: [value: number | null];
   selectMicrophone: [id: string];

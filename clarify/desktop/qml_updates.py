@@ -33,6 +33,7 @@ class QmlUpdateController(QObject):
         automatic=False,
         cache_root=None,
         can_restart=lambda: False,
+        restart_blocker=None,
         restart=lambda: None,
         prepare=None,
         run_worker=None,
@@ -49,7 +50,13 @@ class QmlUpdateController(QObject):
             if cache_root is not None
             else (update_cache_root() if self._supported else None)
         )
-        self._can_restart = can_restart
+        self._restart_blocker = restart_blocker or (
+            lambda: (
+                ""
+                if can_restart()
+                else "Conclua as tarefas em andamento para atualizar."
+            )
+        )
         self._restart = restart
         self._prepare = prepare or prepare_portable_update
         self._run_worker = run_worker or self._thread
@@ -299,17 +306,19 @@ class QmlUpdateController(QObject):
                 "ready",
                 "Atualização pronta. Conclua as tarefas e feche os Settings para reiniciar.",
             )
+            self._poll()
         elif kind == "prepare":
             self._prepared = result
 
     def _poll(self):
         if self._closed:
             return
-        if (
-            self._phase == "ready"
-            and (self._automatic or self._manual)
-            and self._can_restart()
-        ):
+        if self._phase == "ready" and (self._automatic or self._manual):
+            blocker = self._restart_blocker()
+            if blocker:
+                if self._status != blocker:
+                    self._state("ready", blocker)
+                return
             self._prepare_started = time.monotonic()
             self._prepared = None
             self._state("preparing", "Preparando a instalação…")
@@ -321,7 +330,7 @@ class QmlUpdateController(QObject):
             )
         if self._phase != "preparing" or self._prepared is None:
             return
-        if self._prepared.armed() and self._can_restart():
+        if self._prepared.armed() and not self._restart_blocker():
             self._handoff = True
             self._state("restarting", "Reiniciando para aplicar a atualização…")
             self._stop_timers()
