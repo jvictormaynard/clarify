@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "component": "mobile",
-  "version": "0.16.0",
-  "base_sha": "5fd4242bdc62d72eeaca8ff5a96f288e189cbf86",
-  "notes": "Prepare internal TestFlight 0.16.0 (89) from main after PR313. Include the five-tab workspace, workspace account/settings menu, separate dictation and selected-text keyboard menus, short-phrase dictionary entry, output-language handling and compatibility for existing automatic translation choices. Include PR313 sign-in catalog and editor-layout repairs. Preserve the onboarding and sounds already delivered in build88. Verify the source contains merge5fd4242 before signing. Current main UI failures require diagnosis and successful candidate validation; no assertion or release gate is waived. Require exact-source canonical main CI and installed-keyboard proof, immutable signed candidate evidence, confirmed upload and Apple internal-group availability. Internal testing is authorized; no App Store submission.",
+  "version": "0.17.0",
+  "base_sha": "4ef2e4bb833f49e5071744febfb01ecd22f743fc",
+  "notes": "Internal TestFlight 0.17.0 (90) for user physical-device testing of the keyboard parity changes merged in PR326, including Portuguese (Brazil), English (US), accent menus, hold and slide gestures, bounded horizontal Space-drag caret movement, key accessibility metadata and sounds. Include the reviewed main integrations through PR320. The five installed tests and all actions/assertions remain; the approved per-test allowance is 600 seconds and the whole suite limit is 1800000 milliseconds. Require exact canonical main CI, reviewed metadata, immutable tag, signed IPA verification, confirmed upload, VALID processing and availability in Clarify Interno. Simulator evidence does not establish full physical-device parity, VoiceOver, exact animation timing, sound/haptic matching, older iOS or wrapped-line vertical caret movement. Physical testing is the purpose of this TestFlight. Existing internal-testing scope and standing keyboard release decision apply. No App Store submission.",
   "evidence": {
-    "build": "89",
-    "highest_build": "88",
+    "build": "90",
+    "highest_build": "89",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-14T20:23:17Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/issues/316"
+    "checked_at": "2026-11-15T19:17:08Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/43751520495"
   }
 }
