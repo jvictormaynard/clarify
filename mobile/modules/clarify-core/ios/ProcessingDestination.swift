@@ -33,6 +33,12 @@ final class ProcessingDestination {
   private let defaults: UserDefaults
   private let computer: ComputerConnection
   private let account: CloudAccount
+  // Main-actor ownership is narrower than ComputerConnection.busy: only the
+  // timer may delay an explicit account command; manual computer work rejects it.
+  @MainActor private var automaticRefreshInProgress = false
+  @MainActor private var automaticComputerRefresh = false
+  @MainActor private var explicitAccountAction: String?
+  @MainActor private var explicitSocialCancelled = false
   private var revision = UUID().uuidString
   private(set) var computerMode: Bool
   init(defaults: UserDefaults = .standard, computer: ComputerConnection = .shared, account: CloudAccount = .shared) {
@@ -75,20 +81,47 @@ final class ProcessingDestination {
     return result
   }
   @MainActor func automaticRefresh(_ library: LocalLibrary) async throws -> Bool {
+    guard explicitAccountAction == nil, !automaticRefreshInProgress else { return false }
+    automaticRefreshInProgress = true
+    defer { automaticRefreshInProgress = false }
     let changed = (try? await account.command("auto", value: "", library: library)) ?? false
-    if computer.configured, !computer.busy { try await computer.refresh() }
+    try Task.checkCancellation()
+    // An explicit command can reserve the destination during account auto.
+    guard explicitAccountAction == nil else { return changed }
+    if computer.configured, !computer.busy {
+      automaticComputerRefresh = true
+      defer { automaticComputerRefresh = false }
+      try await computer.refresh()
+    }
     return changed
   }
   @MainActor func authorizeComputerConnection(_ action: String, value: String, library: LocalLibrary) async throws {
-    guard computerMode, !computer.busy else { throw ComputerFailure.busy }
+    guard computerMode, !computer.busy || automaticComputerRefresh else { throw ComputerFailure.busy }
+    if action == "cancel-social", explicitAccountAction == "social" {
+      explicitSocialCancelled = true
+      _ = try await account.command(action, value: value, library: library, connectionOnly: true)
+      return
+    }
+    guard explicitAccountAction == nil else { throw ComputerFailure.busy }
+    let capture = captureHistory(), identity = account.captureTextIdentity()
+    explicitAccountAction = action
+    defer { explicitAccountAction = nil; explicitSocialCancelled = false }
+    // The timer retains its request and cleanup. Cancelling this waiter must
+    // neither cancel that request nor release its busy state.
+    while automaticRefreshInProgress && !explicitSocialCancelled {
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    try Task.checkCancellation()
+    guard !explicitSocialCancelled, computerMode, capture == captureHistory(),
+      identity == account.captureTextIdentity() else { throw CancellationError() }
+    guard !computer.busy else { throw ComputerFailure.busy }
     if action == "connect" {
       guard account.configured else { throw ComputerFailure.authentication }
       try await computer.resumeRemoteRegistration(); return
     }
-    let capture = captureHistory()
     _ = try await account.command(action, value: value, library: library, connectionOnly: true)
     try Task.checkCancellation()
-    guard computerMode, capture == captureHistory() else { throw CancellationError() }
+    guard !explicitSocialCancelled, computerMode, capture == captureHistory() else { throw CancellationError() }
     if account.configured && ["confirm", "social", "refresh"].contains(action) {
       try await computer.resumeRemoteRegistration()
     }

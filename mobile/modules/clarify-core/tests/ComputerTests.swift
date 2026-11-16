@@ -967,6 +967,128 @@ final class ComputerTests: XCTestCase {
     try library.clearHistory(scope: scope, includeLocal: false)
     XCTAssertEqual(try library.history().entries, [guest])
   }
+  @MainActor func testAccountLoginWaitsOnlyForOwnedAutomaticComputerStatus() async throws {
+    for change in ["none", "offline", "cancel", "social-cancel", "suspend", "account", "manual"] {
+      let defaults = temporaryDefaults()
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let library = try LocalLibrary(root: root), f = Fixture()
+      var state = CloudAccountState(); state.endpoint = "https://account.example.com"
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+      var requests: [URLRequest] = [], token: String?
+      let account = CloudAccount(defaults: defaults, transport: { request in
+        requests.append(request)
+        return (Data("{}".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+      }, readCredential: { token }, saveCredential: { token = $0 })
+      let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+      let owner = destination.captureHistory()
+      f.pauseStatus = true
+      let status = expectation(description: "status held")
+      f.onStatus = { status.fulfill() }
+      let automatic = Task { @MainActor in
+        if change == "manual" { try await f.connection.refresh() }
+        else { _ = try await destination.automaticRefresh(library) }
+      }
+      await fulfillment(of: [status], timeout: 2)
+      let started = expectation(description: "login entered")
+      var finished = false
+      let login = Task { @MainActor in
+        started.fulfill()
+        defer { finished = true }
+        try await destination.authorizeComputerConnection(change == "social-cancel" ? "social" : "login",
+          value: change == "social-cancel" ? "google" : "fixture@example.com", library: library)
+      }
+      await fulfillment(of: [started], timeout: 2)
+      XCTAssertTrue(requests.isEmpty)
+      if change == "manual" {
+        do { try await login.value; XCTFail("Manual busy accepted") }
+        catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+      } else {
+        XCTAssertFalse(finished, "Login must wait for the owned status response")
+        do {
+          try await destination.authorizeComputerConnection("login", value: "duplicate@example.com", library: library)
+          XCTFail("Duplicate login accepted")
+        } catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+      }
+      switch change {
+      case "offline": f.failureAfterStatusPause = ComputerFailure.offline
+      case "cancel":
+        login.cancel()
+        do { try await login.value; XCTFail("Cancelled waiter submitted login") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      case "social-cancel":
+        try await destination.authorizeComputerConnection("cancel-social", value: "", library: library)
+        do { try await login.value; XCTFail("Social cancellation waited for the unrelated status response") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      case "suspend": f.connection.suspend()
+      case "account": token = "another-session"
+      default: break
+      }
+      XCTAssertTrue(f.connection.busy, "Waiting login must not take status cleanup ownership")
+      f.resume()
+      _ = try? await automatic.value
+      if ["none", "offline"].contains(change) {
+        try await login.value
+        XCTAssertEqual(requests.map { $0.url!.path }, ["/_allauth/app/v1/auth/continue"])
+        XCTAssertEqual(destination.captureHistory(), owner)
+        XCTAssertTrue(f.connection.configured)
+      } else if change != "manual" {
+        do { try await login.value; XCTFail("Stale or cancelled login submitted") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertTrue(requests.isEmpty)
+      }
+      XCTAssertFalse(f.connection.busy)
+    }
+  }
+
+  @MainActor func testAccountConfirmationExcludesAutomaticRefreshThroughRemoteRegistration() async throws {
+    guard #available(iOS 17.0, macOS 14.0, *) else { throw XCTSkip("HPKE unavailable") }
+    let defaults = temporaryDefaults()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try LocalLibrary(root: root), f = Fixture()
+    f.cloudflare = Self.cloudflare; f.statusRemoteRegistration = Self.registration
+    try await f.connection.refresh()
+    XCTAssertEqual(f.connection.remoteStatus, "authorization_required")
+    let owner = f.connection.generation
+    var state = CloudAccountState(); state.endpoint = "https://account.example.com"; state.pending = "login"
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    let user = UUID().uuidString
+    var token: String? = "pending-fixture", requests: [String] = []
+    var confirmation: CheckedContinuation<Void, Never>?
+    let confirming = expectation(description: "confirmation held")
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      let path = request.url!.path; requests.append(path)
+      let json: [String: Any]
+      if path == "/_allauth/app/v1/auth/code/confirm" {
+        await withCheckedContinuation { confirmation = $0; confirming.fulfill() }
+        json = ["meta": ["is_authenticated": true, "session_token": "authenticated-fixture"]]
+      } else {
+        XCTAssertEqual(path, "/v1/account")
+        json = ["id": user, "email": "fixture@example.com"]
+      }
+      return (try JSONSerialization.data(withJSONObject: json),
+        HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }, readCredential: { token }, saveCredential: { token = $0 })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    let command = Task { try await destination.authorizeComputerConnection("confirm", value: "123456", library: library) }
+    await fulfillment(of: [confirming], timeout: 2)
+    _ = try await destination.automaticRefresh(library)
+    XCTAssertEqual(f.requests.count, 1, "Timer cannot start status during confirmation")
+    let registering = expectation(description: "remote grant held after account confirmation")
+    f.pauseGrant = true; f.onRemote = { registering.fulfill() }
+    confirmation?.resume(); confirmation = nil
+    await fulfillment(of: [registering], timeout: 2)
+    XCTAssertFalse(account.isBusy)
+    _ = try await destination.automaticRefresh(library)
+    XCTAssertEqual(requests, ["/_allauth/app/v1/auth/code/confirm", "/v1/account"])
+    f.resume(); try await command.value
+    XCTAssertEqual(f.connection.remoteStatus, "registered"); XCTAssertEqual(f.grantsRequested, 1)
+    XCTAssertEqual(f.connection.generation, owner)
+    XCTAssertEqual(f.requests.map { $0.url!.path }, ["/v1/computer/status", "/v1/computer/status", "/v1/computer/remote"])
+    XCTAssertEqual(f.saved?.deviceID, Self.device); XCTAssertEqual(f.saved?.sessionToken, Self.token)
+  }
+
   @MainActor func testComputerKeyboardActivationAllowsTextWithoutEnablingDictation() async throws {
     let defaults = temporaryDefaults()
     let f = Fixture(); f.dictationReady = false
