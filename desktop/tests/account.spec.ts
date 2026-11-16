@@ -26,6 +26,7 @@ settingsScenario({ signedIn: true, initialPage: "style" }, () => {
     await level.click();
     await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
     await expect(level).toContainText("Manter minhas palavras");
+    await expect(page.getByRole("combobox", { name: "Tom", exact: true })).toHaveCount(0);
     await page.reload(); await navigate(page, "Estilo");
     await expect(level).toContainText("Manter minhas palavras");
   });

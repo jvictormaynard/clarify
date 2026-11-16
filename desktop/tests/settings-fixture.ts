@@ -11,7 +11,6 @@ export type SettingsScenario = {
   personalCatalogError?: boolean;
   signedIn?: boolean;
   account?: boolean;
-  quota?: boolean;
   usage?: "error" | "legacy" | "malformed" | "waiting" | "unfunded" | "inactive" | "paused" | "exhausted" | "reserved";
   practice?: "account-error" | "auth-error" | "provider-quota" | "missing-model";
   socialWait?: boolean;
@@ -47,7 +46,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     if (scenario.personalMissing) args.push("--personal-missing");
     if (scenario.practice) args.push(`--practice-${scenario.practice}`);
     if (scenario.onboarding) args.push("--onboarding");
-    if (scenario.signedIn || scenario.account || scenario.quota) args.push("--signed-in");
+    if (scenario.signedIn || scenario.account) args.push("--signed-in");
     if (scenario.socialWait) args.push("--social-wait");
     if (scenario.librarySync) args.push("--library-sync");
     if (scenario.history) args.push("--history");
@@ -62,10 +61,6 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
       await page.route("**/__test_rpc", route => {
         const work = (async () => {
           const request = route.request().postDataJSON();
-          // Quota tests release the initial snapshot through an explicit refresh.
-          if (scenario.quota && request.method === "accountCommand" && request.args[0] === "auto") {
-            request.method = "snapshot"; request.args = [];
-          }
           const reply = await controller.request(request);
           const usage = reply.result?.accountState?.usage;
           if (usage && scenario.usage === "reserved") {
