@@ -50,7 +50,7 @@ class PracticePackagingTests(unittest.TestCase):
                 "from clarify.desktop import dictation_practice, practice_local_model, computer_webrtc; "
                 "import computer_live, local_asr_live, local_asr_live_assets; "
                 "import opencode_provider, opencode_acp, opencode_runtime; "
-                "assert all(Path(m.__file__).is_relative_to(Path(sys.argv[1])) "
+                "assert all(Path(m.__file__).resolve().is_relative_to(Path(sys.argv[1]).resolve()) "
                 "for m in (dictation_practice, practice_local_model, computer_webrtc, "
                 "computer_live, local_asr_live, local_asr_live_assets, "
                 "opencode_provider, opencode_acp, opencode_runtime))"
