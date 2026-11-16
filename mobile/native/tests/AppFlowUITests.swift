@@ -85,10 +85,20 @@ final class AppFlowUITests: XCTestCase {
     if introduction.exists {
       capture("system-keyboard-introduction")
       let proceed = introduction.buttons["Continue"].firstMatch
-      guard proceed.waitForExistence(timeout: 5) && proceed.isHittable else {
-        diagnose("keyboard-introduction-blocked"); XCTFail("Cannot finish the system keyboard introduction"); return
+      let ready = proceed.waitForExistence(timeout: 5)
+      if introduction.exists {
+        // The system can remove this overlay between AX queries. Do not ask
+        // XCTest for a hit point on a stale Continue element.
+        let frame = ready ? (try? proceed.snapshot())?.frame : nil
+        if introduction.exists {
+          guard let frame, !frame.isNull, !frame.isInfinite,
+                frame.width > 0, frame.height > 0, app.frame.contains(frame) else {
+            diagnose("keyboard-introduction-blocked"); XCTFail("Cannot finish the system keyboard introduction"); return
+          }
+          app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: frame.midX - app.frame.minX, dy: frame.midY - app.frame.minY)).tap()
+        }
       }
-      proceed.tap()
       let closed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: introduction)
       guard XCTWaiter.wait(for: [closed], timeout: 5) == .completed else {
         diagnose("keyboard-introduction-remains"); XCTFail("System keyboard introduction is still visible"); return
