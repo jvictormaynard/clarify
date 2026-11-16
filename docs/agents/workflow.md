@@ -251,11 +251,9 @@ pending state and the monitoring limit.
 Finish the requested level: local work needs a reviewable diff and terminal local
 results; PR work needs the exact source and accurate description; merge needs
 required checks/reviews for the actual candidate and verified merge state.
-Report the outcome, relevant evidence, and material open gates. Never call a
-running check, pending CI, or unverified deployment complete.
-
 Report the exact candidate, new results, blocker, owner and next action or event.
-Do not schedule repeated checks solely to restate an unchanged block.
+Never call a running check, pending CI, or unverified deployment complete. Do not
+schedule repeated checks solely to restate an unchanged block.
 
 ## Publication
 

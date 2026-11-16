@@ -318,7 +318,25 @@ class ReleaseDeliveryTests(unittest.TestCase):
 
     def test_status_pins_source_and_never_writes(self):
         api = report_status.ReadOnlyGitHub("fake", self.api.base.split("/repos/")[0])
-        result = report_status.report(api, "desktop", SOURCE)
+        with (
+            patch.dict(os.environ, {"GH_TOKEN": "fake"}, clear=True),
+            patch(
+                "sys.argv",
+                [
+                    "release_delivery.py",
+                    "status",
+                    "--component",
+                    "desktop",
+                    "--source-sha",
+                    SOURCE,
+                    "--json",
+                ],
+            ),
+            patch.object(report_status, "ReadOnlyGitHub", return_value=api),
+            patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            self.assertEqual(delivery.main(), 0)
+        result = json.loads(output.getvalue())
         self.assertEqual(result["source_sha"], SOURCE)
         self.assertEqual(result["tag"], "v1.2.4")
         self.assertEqual(result["ci"]["coverage"], "verified")
@@ -349,13 +367,7 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 result = report_status.report(self.api, "desktop", SOURCE)
                 self.assertEqual(result["ci"]["coverage"], "unverified")
                 self.assertIn("CI coverage", result["next_action"])
-        with patch.object(self.api, "pages", wraps=self.api.pages) as pages:
-            # The workflow list can contain no evidence at all.
-            pages.side_effect = lambda path, key=None: (
-                []
-                if "ci.yml/runs" in path
-                else delivery.GitHub.pages(self.api, path, key)
-            )
+        with patch.object(self.api, "pages", return_value=[]):
             result = report_status.report(self.api, "desktop", SOURCE)
             self.assertEqual(result["ci"]["state"], "missing")
 
@@ -366,42 +378,10 @@ class ReleaseDeliveryTests(unittest.TestCase):
         self.assertEqual(result["publication"]["state"], "unknown")
         self.assertEqual(result["acceptance"]["state"], "unknown")
 
-    def test_status_cli_works_locally_with_token_and_json_without_workflow_outputs(
-        self,
-    ):
-        api = report_status.ReadOnlyGitHub("fake", self.api.base.split("/repos/")[0])
-        with (
-            patch.dict(os.environ, {"GH_TOKEN": "fake"}, clear=True),
-            patch(
-                "sys.argv",
-                [
-                    "release_delivery.py",
-                    "status",
-                    "--component",
-                    "desktop",
-                    "--source-sha",
-                    SOURCE,
-                    "--json",
-                ],
-            ),
-            patch.object(report_status, "ReadOnlyGitHub", return_value=api),
-            patch("sys.stdout", new_callable=io.StringIO) as output,
-        ):
-            self.assertEqual(delivery.main(), 0)
-        self.assertEqual(json.loads(output.getvalue())["source_sha"], SOURCE)
-        self.assertTrue(all(method == "GET" for method, _, _ in self.calls))
-
     def test_status_candidate_existence_and_success_do_not_prove_acceptance(self):
         # A successful run and artifact listing do not authenticate a producer.
         self.publication_runs = [
-            {
-                "id": 55,
-                "run_attempt": 2,
-                "head_sha": SOURCE,
-                "head_branch": "v1.2.4",
-                "conclusion": "success",
-                "status": "completed",
-            }
+            {**self.run, "id": 55, "run_attempt": 2, "head_branch": "v1.2.4"}
         ]
         self.routes["/actions/runs/55"] = self.publication_runs[0]
         self.routes["/actions/runs/55/artifacts"] = {
