@@ -5,23 +5,28 @@ import KeyboardHostSupport
 #endif
 
 final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
-  static let contentHeight: CGFloat = 278
+  static var contentHeight: CGFloat { KeyboardKeySizing.current.contentHeight }
+  private let layoutHeight: CGFloat
   var enableInputClicksWhenVisible: Bool { true }
-  override init(frame: CGRect, inputViewStyle: UIInputView.Style) {
+  override convenience init(frame: CGRect, inputViewStyle: UIInputView.Style) {
+    self.init(frame: frame, inputViewStyle: inputViewStyle, layoutHeight: Self.contentHeight)
+  }
+  init(frame: CGRect, inputViewStyle: UIInputView.Style, layoutHeight: CGFloat) {
+    self.layoutHeight = layoutHeight
     super.init(frame: frame, inputViewStyle: inputViewStyle)
     // Publish one height before UIKit attaches and animates this input view.
     // The host can resize its width without changing the keyboard's height.
     autoresizingMask = [.flexibleWidth]
     allowsSelfSizing = true
-    heightAnchor.constraint(equalToConstant: Self.contentHeight).isActive = true
+    heightAnchor.constraint(equalToConstant: layoutHeight).isActive = true
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-  override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.contentHeight) }
+  override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: layoutHeight) }
   override func sizeThatFits(_ size: CGSize) -> CGSize {
-    CGSize(width: size.width, height: Self.contentHeight)
+    CGSize(width: size.width, height: layoutHeight)
   }
   override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize {
-    CGSize(width: targetSize.width, height: Self.contentHeight)
+    CGSize(width: targetSize.width, height: layoutHeight)
   }
   override func systemLayoutSizeFitting(_ targetSize: CGSize, withHorizontalFittingPriority horizontal: UILayoutPriority,
                                       verticalFittingPriority vertical: UILayoutPriority) -> CGSize {
@@ -191,7 +196,8 @@ class KeyboardViewController: UIInputViewController {
   private var recordingRequest = RecordingRequest()
   private var recordingPanelVisible = false
   private var recordingError: String?
-  private let keys = KeyGridView()
+  var keySizing: KeyboardKeySizing { .current }
+  private lazy var keys = KeyGridView(frame: .zero, sizing: keySizing)
   private var requestedNumbersAndPunctuation = false
   private let typing = TypingAssistant(autocorrectionEnabled: false)
   private var typingVocabularyRevision = -1
@@ -244,12 +250,12 @@ class KeyboardViewController: UIInputViewController {
   // The remote input host can ask before loadView, and can propose another size
   // during presentation. Both measurement paths must advertise the same height.
   override var preferredContentSize: CGSize {
-    get { CGSize(width: super.preferredContentSize.width, height: KeyboardInputView.contentHeight) }
-    set { super.preferredContentSize = CGSize(width: newValue.width, height: KeyboardInputView.contentHeight) }
+    get { CGSize(width: super.preferredContentSize.width, height: keySizing.contentHeight) }
+    set { super.preferredContentSize = CGSize(width: newValue.width, height: keySizing.contentHeight) }
   }
 
   override func loadView() {
-    let input = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 0, height: KeyboardInputView.contentHeight), inputViewStyle: .keyboard)
+    let input = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 0, height: keySizing.contentHeight), inputViewStyle: .keyboard, layoutHeight: keySizing.contentHeight)
     inputView = input
     // Let the system keyboard material remain visible behind the extension.
     view.backgroundColor = .clear
@@ -345,7 +351,7 @@ class KeyboardViewController: UIInputViewController {
       detail.heightAnchor.constraint(lessThanOrEqualToConstant: 44),
       insert.centerYAnchor.constraint(equalTo: mic.centerYAnchor), insert.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -4),
       insert.widthAnchor.constraint(equalToConstant: 48),
-      keys.topAnchor.constraint(equalTo: view.topAnchor, constant: 58), keys.heightAnchor.constraint(equalToConstant: 220),
+      keys.topAnchor.constraint(equalTo: view.topAnchor, constant: 58), keys.heightAnchor.constraint(equalToConstant: keySizing.gridHeight),
       keys.leadingAnchor.constraint(equalTo: view.leadingAnchor), keys.trailingAnchor.constraint(equalTo: view.trailingAnchor),
       suggestions.leadingAnchor.constraint(equalTo: addToDictionary.trailingAnchor, constant: 4),
       suggestions.trailingAnchor.constraint(equalTo: mic.leadingAnchor, constant: -8),
@@ -588,7 +594,7 @@ class KeyboardViewController: UIInputViewController {
     errorStatusTop = recordingStatus.topAnchor.constraint(equalTo: recordingPanel.topAnchor, constant: 76)
     NSLayoutConstraint.activate([
       recordingPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor), recordingPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-      recordingPanel.topAnchor.constraint(equalTo: view.topAnchor), recordingPanel.bottomAnchor.constraint(equalTo: view.topAnchor, constant: KeyboardInputView.contentHeight),
+      recordingPanel.topAnchor.constraint(equalTo: view.topAnchor), recordingPanel.bottomAnchor.constraint(equalTo: view.topAnchor, constant: keySizing.contentHeight),
       cancel.leadingAnchor.constraint(equalTo: recordingPanel.leadingAnchor, constant: 10), cancel.topAnchor.constraint(equalTo: recordingPanel.topAnchor, constant: 7),
       cancel.widthAnchor.constraint(equalToConstant: 44), cancel.heightAnchor.constraint(equalToConstant: 44),
       finishRecordingButton.trailingAnchor.constraint(equalTo: recordingPanel.trailingAnchor, constant: -10), finishRecordingButton.topAnchor.constraint(equalTo: cancel.topAnchor),
