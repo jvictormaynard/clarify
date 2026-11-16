@@ -72,7 +72,13 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
             account.signed_in = signed_in
             self.service.rewrite("Source")
             self.service.translate("Source", "es")
-            self.service.transcribe(self.audio, "prompt", "pt")
+            result = self.service.transcribe(
+                self.audio, "prompt", "pt", writing_style="natural"
+            )
+            self.assertEqual(result.writing_style_applied, "natural")
+            self.assertIn(
+                "natural", self.registry.rewrite.call_args.args[1].instruction.lower()
+            )
             selection = FileTranscriptionSelection(
                 "groq",
                 "whisper-large-v3",

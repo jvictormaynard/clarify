@@ -116,7 +116,9 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
     def test_retired_account_methods_never_read_audio_or_send_requests(self):
         with patch.object(self.account, "_request") as request:
             for call in (
-                lambda: self.account.transcribe(object(), "auto", object()),
+                lambda: self.account.transcribe(
+                    object(), "auto", object(), writing_style="natural"
+                ),
                 lambda: self.account.transform_text("Source", "rewrite"),
                 lambda: self.account.execute_text_action(object(), "Source"),
             ):
