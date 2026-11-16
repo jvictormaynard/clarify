@@ -448,10 +448,12 @@ test("after dictation: translation keeps its selected revision and cancels when 
   const before = await settingsFixture.rpc("snapshot");
   const { revision: _revision, ...translation } = before.textActions!.find(action => action.id === "translation")!;
   await settingsFixture.rpc("saveTextAction", { ...translation, prompt: "New saved translation instructions." }, before.textActionContext, before.textActionsRevision);
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionMutation?.status).toBe("succeeded");
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionsRevision).not.toBe(before.textActionsRevision);
   await dialog.getByRole("combobox", { name: "Idioma de destino", exact: true }).click();
   await page.getByRole("option", { name: "Inglês", exact: true }).click();
   await dialog.getByRole("button", { name: "Aplicar", exact: true }).click();
-  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).lastError).not.toBe("");
+  await expect(dialog.getByRole("alert")).toHaveText("As ações ou a conta mudaram. Atualize e tente novamente.");
   await expect(dialog.getByRole("alert")).toBeVisible();
   await expect(dialog).toBeVisible();
   expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("");
