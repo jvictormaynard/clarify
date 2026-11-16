@@ -320,6 +320,21 @@ proof that a submission or public release has occurred.
 
 ## Reference and local checks
 
+Inspect a fixed source without preparing, building or publishing it:
+
+```sh
+python scripts/release_delivery.py status --component desktop --source-sha <40-character-SHA>
+python scripts/release_delivery.py status --component mobile --source-sha <40-character-SHA> --json
+```
+
+Use local `GH_TOKEN` and the candidate's exact source. This GET-only report
+reuses preparation/CI/producer checks and lists candidate identities. The commit
+range starts at the highest earlier stable GitHub release for that component;
+`--previous-tag` selects another earlier published tag. It includes all repository
+commits, not a curated client feature list. No mobile GitHub release means the
+baseline is unknown. Payload verification, native acceptance and Apple availability
+still require the existing platform verifiers. Suggested actions grant no authority.
+
 The architecture uses T3 Code's pinned
 [tested-source/shared-bundle release reference](https://github.com/pingdotgg/t3code/tree/d2d1e4f50ef856f940d91858915368500657b0b7/.github/workflows).
 Clarify keeps reviewed preparation, exact canonical CI, native acceptance,

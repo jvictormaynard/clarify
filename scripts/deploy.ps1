@@ -2,33 +2,30 @@
 param(
     [string]$InstallPath = $env:CLARIFY_INSTALL_PATH,
     [string]$DesktopShellDirectory,
+    # Use the physical profile of the installed app, not the build host's AppData.
+    [string]$ProfilePath,
+    [string]$ProfileBackupRoot,
+    # Confirms no other installation/source run writes this profile and no writer
+    # will start until deployment finishes. This script cannot enforce that lock.
+    [switch]$ExclusiveProfileAccess,
     [switch]$BuildOnly
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $BuildOnly) {
+    if (-not $ProfilePath -or -not $ProfileBackupRoot -or -not $ExclusiveProfileAccess) {
+        throw 'Deployment requires -ProfilePath, -ProfileBackupRoot and -ExclusiveProfileAccess. Confirm the physical profile used by the installed app (CLARIFY_DATA_DIR override, otherwise AppData\Clarify), stop all other profile writers, and prevent concurrent launches until deployment finishes. BuildOnly does not need a profile.'
+    }
+    foreach ($profileDirectory in @($ProfilePath, $ProfileBackupRoot)) {
+        if (-not [System.IO.Path]::IsPathRooted($profileDirectory) -or
+            -not (Test-Path -LiteralPath $profileDirectory -PathType Container)) {
+            throw 'Profile and backup root must be explicit existing absolute directories.'
+        }
+    }
+}
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'windows-build-paths.ps1')
 $taskBuildPaths = Get-ClarifyWindowsBuildPaths -RepositoryPath $repoRoot
-if (-not $DesktopShellDirectory) {
-    & (Join-Path $PSScriptRoot 'setup.ps1') -Dev
-    & (Join-Path $PSScriptRoot 'build-desktop.ps1')
-    if ($LASTEXITCODE -ne 0) { throw 'Desktop shell build failed.' }
-    $DesktopShellDirectory = Join-Path $repoRoot 'dist\desktop-shell'
-}
-$DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory).ProviderPath
-if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) { throw 'Desktop shell is missing.' }
-$presentationInput = $DesktopShellDirectory
-$presentationInputs = Split-Path -Parent $presentationInput
-
-    $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory -ErrorAction Stop).ProviderPath
-    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) {
-        throw 'The Electron desktop shell executable is missing.'
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app.asar') -PathType Leaf) -and
-        -not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app\package.json') -PathType Leaf)) {
-        throw 'The Electron desktop shell has no application payload.'
-    }
-
 $repoVersion = Join-Path $repoRoot "version.py"
 $repoExtra = Join-Path $repoRoot "extra"
 $repoAssets = Join-Path $repoRoot "assets"
@@ -137,10 +134,61 @@ function Resolve-Python {
 $targetExe = Resolve-InstallPath $InstallPath
 $python = Resolve-Python
 $targetDir = Split-Path -Parent $targetExe
-$backupExe = "$targetExe.backup"
+# Reject unsafe data paths before setup, staging, build cleanup or process stops.
+if (-not $BuildOnly) {
+    $taskBackupRoot = [System.IO.Path]::GetFullPath($ProfileBackupRoot).TrimEnd('\', '/') + '\'
+    $taskProfileRoot = [System.IO.Path]::GetFullPath($ProfilePath).TrimEnd('\', '/') + '\'
+    $taskProtectedRoots = @($taskProfileRoot, $taskBackupRoot)
+    $taskMutableRoots = @($repoRoot, $targetDir, $buildRoot)
+    if ($DesktopShellDirectory) {
+        $DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory -ErrorAction Stop).ProviderPath
+        # Distribution notices are written beside a supplied shell, not inside it.
+        $taskMutableRoots += @($DesktopShellDirectory, (Split-Path -Parent $DesktopShellDirectory))
+    }
+    foreach ($taskRoot in @($ProfilePath, $ProfileBackupRoot) + $taskMutableRoots) {
+        $taskAncestor = [System.IO.Path]::GetFullPath($taskRoot)
+        while ($taskAncestor) {
+            if (Test-Path -LiteralPath $taskAncestor) {
+                $taskItem = Get-Item -LiteralPath $taskAncestor -Force
+                if ($taskItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                    throw 'Deployment paths cannot traverse links or reparse points.'
+                }
+            }
+            $taskAncestor = [System.IO.Path]::GetDirectoryName($taskAncestor)
+        }
+    }
+    foreach ($taskProtectedRoot in $taskProtectedRoots) {
+        foreach ($taskMutableRoot in $taskMutableRoots) {
+            $taskMutablePrefix = [System.IO.Path]::GetFullPath($taskMutableRoot).TrimEnd('\', '/') + '\'
+            if ($taskProtectedRoot.StartsWith($taskMutablePrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $taskMutablePrefix.StartsWith($taskProtectedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw 'Profile and backup directories must not overlap source, installation or build trees.'
+            }
+        }
+    }
+    if ($taskProfileRoot.StartsWith($taskBackupRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $taskBackupRoot.StartsWith($taskProfileRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Profile and backup directories must be separate trees.'
+    }
+}
 
-    $backupExe = "$targetExe.electron-backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
-
+if (-not $DesktopShellDirectory) {
+    & (Join-Path $PSScriptRoot 'setup.ps1') -Dev
+    & (Join-Path $PSScriptRoot 'build-desktop.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop shell build failed.' }
+    $DesktopShellDirectory = Join-Path $repoRoot 'dist\desktop-shell'
+}
+$DesktopShellDirectory = (Resolve-Path -LiteralPath $DesktopShellDirectory -ErrorAction Stop).ProviderPath
+if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'Clarify Desktop.exe') -PathType Leaf)) {
+    throw 'The Electron desktop shell executable is missing.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app.asar') -PathType Leaf) -and
+    -not (Test-Path -LiteralPath (Join-Path $DesktopShellDirectory 'resources\app\package.json') -PathType Leaf)) {
+    throw 'The Electron desktop shell has no application payload.'
+}
+$presentationInput = $DesktopShellDirectory
+$presentationInputs = Split-Path -Parent $presentationInput
+$backupExe = "$targetExe.electron-backup-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
 
 Write-Host "Building Clarify..."
 New-Item $buildRoot, $requirementsDir -ItemType Directory -Force | Out-Null
@@ -418,12 +466,42 @@ if ($taskChildren | Where-Object { $_.Name -eq 'sox.exe' }) {
 }
 # Force-stopping only the main process leaves local servers running. Stop only
 # children owned by this installed app, never another application's processes.
-$taskChildren | ForEach-Object {
-    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+$taskStopIds = @($taskChildren | Select-Object -ExpandProperty ProcessId) + $taskAppIds
+foreach ($taskStopId in $taskStopIds) {
+    $taskProcess = Get-Process -Id $taskStopId -ErrorAction SilentlyContinue
+    if ($taskProcess) {
+        # Open and retain this process handle before checking its current identity.
+        # Stop-Process then targets that object, not a later reuse of its PID.
+        $null = $taskProcess.Handle
+        if ($taskProcess.HasExited) { continue }
+        $taskExpected = $taskProcessSnapshot | Where-Object { $_.ProcessId -eq $taskStopId }
+        $taskCurrent = Get-CimInstance Win32_Process -Filter "ProcessId = $taskStopId"
+        if (-not $taskCurrent) { continue }
+        if (-not $taskExpected.CreationDate -or -not $taskExpected.ExecutablePath -or
+            $taskCurrent.CreationDate -ne $taskExpected.CreationDate -or
+            $taskCurrent.ExecutablePath -ne $taskExpected.ExecutablePath -or
+            $taskCurrent.ParentProcessId -ne $taskExpected.ParentProcessId) {
+            throw 'A process identity changed. Deployment was cancelled without stopping that process.'
+        }
+        $taskProcess | Stop-Process -Force -ErrorAction Stop
+        if (-not $taskProcess.WaitForExit(10000)) {
+            throw 'A profile writer did not stop. Deployment was cancelled.'
+        }
+    }
 }
-Get-Process -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -and $_.Path -eq $resolvedTargetExe } |
-    Stop-Process -Force
+$taskRemaining = @(Get-CimInstance Win32_Process | Where-Object {
+    $_.ExecutablePath -eq $resolvedTargetExe -or $_.ProcessId -in $taskStopIds
+})
+if ($taskRemaining.Count -gt 0) {
+    throw 'An application process is still running. Deployment was cancelled.'
+}
+# Capture opaque profile bytes after the known writers stop, before replacement
+# or startup can prune experimental-audio. No allowlist or retention changes.
+& $venvPython (Join-Path $PSScriptRoot 'deployment_profile_backup.py') `
+    --profile $ProfilePath --backup-root $ProfileBackupRoot --exclusive-access
+if ($LASTEXITCODE -ne 0) {
+    throw 'The profile backup failed. The installed files were not changed and the app was not restarted.'
+}
 New-Item $targetDir -ItemType Directory -Force | Out-Null
 
 $desktopShellTarget = Join-Path $targetDir 'desktop-shell'

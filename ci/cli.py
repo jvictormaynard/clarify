@@ -270,6 +270,12 @@ def positive_seconds(value):
 def main(arguments=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--inspect-run",
+        type=int,
+        metavar="RUN_ID",
+        help="Read one canonical CI run and its current attempt",
+    )
     mode.add_argument("--github-plan", action="store_true")
     mode.add_argument("--check-results", action="store_true")
     mode.add_argument("--emit-proof", metavar="PATH")
@@ -292,6 +298,11 @@ def main(arguments=None):
     if args.shard and args.task != "python":
         parser.error("--shard requires --task python")
     try:
+        if args.inspect_run is not None:
+            from ci.diagnostics import inspect_run
+
+            print(json.dumps(inspect_run(args.inspect_run), indent=2))
+            return 0
         if args.list_tasks:
             print(json.dumps(["policy", *JOBS]))
             return 0
