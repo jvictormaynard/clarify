@@ -115,7 +115,6 @@ test.beforeEach(async ({ page }, info) => {
   child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", ...fixture,
     "--chatgpt", ...(info.title.includes("permission") ? ["--chatgpt-no-plan"] : []),
     ...(info.title.includes("cancellation") ? ["--chatgpt-wait"] : []),
-    ...(info.title.includes("Clarify account") ? ["--signed-in"] : []),
   ], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: "en" } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
@@ -347,14 +346,6 @@ test("ChatGPT failed reconnection and cancellation preserve the saved account", 
     connected: true, planEnabled: true, busy: false,
     accountId: before.accountId, accounts: before.accounts, planNoticeSeen: true,
   });
-});
-
-test("Clarify account keeps personal provider controls hidden", async ({ page }) => {
-  await navigate(page, "Clarify account");
-  await expect(page.getByRole("button", { name: "Models and services", exact: true })).toHaveCount(0);
-  await navigate(page, "Style");
-  await expect(page.getByRole("combobox", { name: /^(Text editing|Edição do texto)$/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review model and instructions", exact: true })).toHaveCount(0);
 });
 
 test("ChatGPT profile models stay available without changing the Style draft", async ({ page }, info) => {

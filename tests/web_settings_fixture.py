@@ -150,7 +150,7 @@ class OnboardingAccount:
         )
         if "--signed-in" in sys.argv:
             self.state.update(
-                signedIn=True, hosted=True, managed=True, email="test@example.test"
+                signedIn=True, hosted=False, managed=False, email="test@example.test"
             )
 
     def snapshot(self):
@@ -232,7 +232,7 @@ class OnboardingAccount:
         if action == "confirm":
             if value != "123456":
                 raise AccountError("Código inválido. Tente novamente.")
-            self.state.update(signedIn=True, pending="", hosted=True, managed=True)
+            self.state.update(signedIn=True, pending="", hosted=False, managed=False)
             self.state["usage"] = weekly_usage()
         else:
             self.state.update(email=value, pending=action)
@@ -250,8 +250,8 @@ class OnboardingAccount:
         self.state.update(
             signedIn=True,
             pending="",
-            hosted=True,
-            managed=True,
+            hosted=False,
+            managed=False,
             email=f"{provider}@example.test",
         )
 

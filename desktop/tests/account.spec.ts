@@ -283,7 +283,9 @@ settingsScenario({ signedIn: true }, () => {
     await expect(page.locator("aside nav").getByRole("button")).toHaveCount(6);
     await navigate(page, "Estilo");
     const settings = await openSettings(page, "Geral");
-    await expect(settings.getByRole("button", { name: "Modelos e serviços", exact: true })).toHaveCount(1);
+    await settings.getByRole("button", { name: "Modelos e serviços", exact: true }).click();
+    await expect(settings.getByRole("combobox", { name: "Serviço na nuvem", exact: true })).toBeVisible();
+    await openStyleReview(page);
     await navigate(page, "Conta Clarify");
     await expect(page.getByText("Dicionário e snippets", { exact: true })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Uso nesta semana" })).toHaveCount(0);
