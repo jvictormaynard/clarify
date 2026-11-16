@@ -71,6 +71,8 @@ protected signing environment, temporary keychain cleanup and IPA/upload checks.
 The pool needs active Bitrise capacity. The current Build Hub trial ends on
 2026-11-15 and does not renew automatically. No paid plan or RDE beta is enabled
 by this variable. This runner selection does not enable release promotion.
+Verify available capacity before relying on the pool; the configured variable
+alone does not prove that a runner will accept work.
 
 ## Ownership and commands
 
@@ -134,6 +136,17 @@ fixture assertion is a native acceptance failure; runner or tool setup is an
 environment failure. Credential, archive and Apple upload failures require their
 own signing or Apple evidence. Passing one layer does not clear another layer's
 failure. An uncertain upload requires Apple reconciliation before another upload.
+
+For a recurring failure, record its first failed step, evidence, owner and next
+hypothesis in the existing issue. A bounded unchanged-source rerun needs evidence
+for a transient cause. Trace job, process, test and helper budgets together before
+changing a timeout; preserve behavioral assertions.
+
+Use `python scripts/ci.py --inspect-run RUN_ID` with local `GH_TOKEN` to read one
+canonical CI attempt, including fork PR sources. It reports matrix rows, waiting
+and execution times, and first failed steps without fetching logs or running checks.
+Null means unavailable. Waiting includes dependencies/approvals; step labels do
+not establish cause. Exit zero means inspection succeeded, not that CI passed.
 
 Python test modules have explicit suite ownership under `tests/`. Shared fakes
 belong in `tests/support/`. Tests must not import another test-case module as a
@@ -261,6 +274,10 @@ Set `CLARIFY_TEST_DURATIONS_JSON` for Python timings and
 `CLARIFY_TEST_DURATIONS_UNIT=test|file` for granularity. CI retains each lane's
 reports through `CLARIFY_CI_DURATIONS_DIR`. Use measurements to balance shards.
 Caches hold tool downloads only. Passing tests are not cached.
+
+Compare queue, setup, build, test and publication times separately, including
+failed/canceled attempts. Track delivery intervals, repeated checks and escaped
+defects in existing task records or CI artifacts; one run does not prove a gain.
 Qt screenshots use `CLARIFY_TEST_ARTIFACTS_DIR` and stay with CI evidence.
 Without an explicit artifact path, tests use temporary output directories.
 PR-only captures and diagnostic reports follow [file retention](agents/workflow.md#files-and-evidence).

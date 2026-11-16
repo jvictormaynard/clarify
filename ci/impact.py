@@ -26,6 +26,7 @@ RELEASE_INTENT = ".github/release-intent.json"
 POLICY_TOOLS = {
     "scripts/release_delivery.py",
     "scripts/release_candidate.py",
+    "scripts/release_status.py",
     "scripts/app_store_handoff.py",
     "scripts/check_agent_skills.py",
     "scripts/format_staged.py",
@@ -101,6 +102,7 @@ PACKAGE_INPUTS = {
     "scripts/build-desktop.ps1",
     "scripts/windows-build-paths.ps1",
     "scripts/deploy.ps1",
+    "scripts/deployment_profile_backup.py",
     "scripts/setup.ps1",
     "scripts/install_bootstrap_tools.py",
     "scripts/check_settings_payload.py",
@@ -204,11 +206,7 @@ def path_components(path: str) -> set[str]:
         or path.startswith(".github/ISSUE_TEMPLATE/")
     ):
         return set()
-    if path in {
-        "scripts/release_delivery.py",
-        "scripts/app_store_handoff.py",
-        "tests/contract/test_ios_ipa.py",
-    }:
+    if path == "tests/contract/test_ios_ipa.py":
         # Repository checks exercise publication policy; this is not app input.
         return set()
     if path == "workflow_provider.py":
