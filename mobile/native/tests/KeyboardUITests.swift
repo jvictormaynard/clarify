@@ -614,13 +614,18 @@ final class KeyboardUITests: XCTestCase {
       let toolbarCover = UIView(frame: CGRect(x: 0, y: 7, width: grid.bounds.width, height: 44))
       grid.frame.origin.y = 58
       pickerHost.addSubview(grid); pickerHost.addSubview(toolbarCover)
-      for (title, width) in [("e", CGFloat(393)), ("u", 393), ("e", 320),
+      for (title, width) in [("e", CGFloat(393)), ("u", 393), ("e", 320), ("e", 402),
                              ("i", 320), ("i", 393), ("i", 430), ("u", 320), ("u", 430),
                              ("a", 320), ("a", 393), ("a", 430),
                              ("i", 402), ("u", 402), ("n", 402),
                              ("o", 320), ("o", 393), ("o", 402), ("o", 430)] {
         pickerHost.frame.size.width = width; toolbarCover.frame.size.width = width
         grid.frame.size.width = width; grid.layoutIfNeeded()
+        let captureWindow: UIWindow? = title == "i" && width == 430 ? UIWindow(frame: pickerHost.bounds) : nil
+        if let captureWindow {
+          let controller = UIViewController(); controller.view = pickerHost
+          captureWindow.rootViewController = controller; captureWindow.isHidden = false
+        }
         let letter = try key(title), beforeJitter = text, held = try startAccent(title)
         let picker = try XCTUnwrap(grid.subviews.compactMap { $0 as? UIStackView }.first {
           $0.arrangedSubviews.contains { ($0 as? UIButton)?.title(for: .normal) == title }
@@ -661,9 +666,19 @@ final class KeyboardUITests: XCTestCase {
             pickerHost.overrideUserInterfaceStyle = appearance
           }
         }
+        if #available(iOS 26.0, *), title == "e", width == 402 {
+          let r = try key("r")
+          let column = r.convert(CGPoint(x: r.bounds.midX, y: r.bounds.midY), to: picker)
+          emit(held, .changed, at: CGPoint(x: column.x, y: basePoint.y))
+          let acute = try XCTUnwrap(picker.arrangedSubviews.compactMap { $0 as? UIButton }.first {
+            $0.title(for: .normal) == "é"
+          })
+          XCTAssertTrue(acute.accessibilityTraits.contains(.selected), "The installed E-to-R drag must select the acute accent")
+        }
         emit(held, .changed, at: CGPoint(x: sourcePoint.x + 1, y: sourcePoint.y))
         emit(held, .ended)
         XCTAssertEqual(text, beforeJitter + title, "Small finger movement must retain the displayed base choice")
+        captureWindow?.isHidden = true; captureWindow?.rootViewController = nil
       }
       for (title, choice) in [("e", "ę"), ("e", "ė"), ("e", "ē"), ("i", "ī"), ("i", "į"), ("u", "ū"),
                               ("a", "å"), ("a", "æ"), ("o", "ō"), ("o", "ø"), ("o", "œ"),

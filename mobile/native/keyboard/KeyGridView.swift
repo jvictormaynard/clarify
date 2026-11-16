@@ -610,7 +610,8 @@ final class KeyGridView: UIView {
         bar.isLayoutMarginsRelativeArrangement = true
         bar.layoutMargins = UIEdgeInsets(top: 10, left: padding, bottom: 10, right: padding)
       }
-      let cellWidth: CGFloat = modern ? 40 : 42
+      // Keep extended rows at their existing pitch so a drag toward R still selects é.
+      let cellWidth: CGFloat = modern ? (choices.count > 7 ? 37 : 40) : 42
       // Extended rows need room to keep the held key over its base choice.
       let fittedCellWidth = choices.count > 7 ? min(cellWidth, (bounds.width - 2 * padding) / CGFloat(choices.count + 2)) : cellWidth
       let preferredWidth = CGFloat(choices.count) * fittedCellWidth + (modern ? CGFloat(choices.count - 1) * bar.spacing + 2 * padding : 0)
