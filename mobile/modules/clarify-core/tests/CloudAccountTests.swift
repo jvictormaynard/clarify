@@ -90,7 +90,7 @@ final class CloudAccountTests: XCTestCase {
     XCTAssertFalse(account.outputPreferencesSupported, "False capability must remain disabled")
     supports = true
     _ = try await account.command("refresh", value: "", library: library, connectionOnly: true)
-    XCTAssertTrue(ProcessingDestination(defaults: defaults, account: account).outputPreferencesSupported)
+    XCTAssertTrue(account.outputPreferencesSupported)
     XCTAssertEqual(account.historyScope, prod + "|" + productionUser)
     XCTAssertTrue(try library.history(scope: account.historyScope, includeLocal: false).entries.isEmpty)
     XCTAssertEqual(try library.history(scope: oldScope, includeLocal: false).entries, [entry])
@@ -322,6 +322,44 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 1)
       XCTAssertEqual(f.token, "fixture-session"); XCTAssertFalse(f.account.isBusy)
       XCTAssertTrue((f.account.snapshot()["usage"] as! [String: Any]).isEmpty)
+    }
+  }
+  @MainActor private final class ActivationFixture {
+    let suite = "ClarifyTests.\(UUID().uuidString)"
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let user = UUID().uuidString
+    let defaults: UserDefaults
+    let library: LocalLibrary
+    var token: String? = "fixture"
+    var responseUser: String?
+    var status = 200
+    var failure: Error?
+    var suspended: CheckedContinuation<Void, Never>?
+    var onRequest: (() -> Void)?
+    var paths: [String] = []
+    lazy var account = CloudAccount(defaults: defaults, transport: { request in
+      self.paths.append(request.url!.path)
+      if request.url!.path == "/v1/account" {
+        await withCheckedContinuation { self.suspended = $0; self.onRequest?() }
+        if let failure = self.failure { throw failure }
+        return try self.response(request, ["id": self.responseUser ?? self.user, "email": "fixture@example.test"], self.status)
+      }
+      if request.httpMethod == "DELETE" { return try self.response(request, [:], 204) }
+      if request.url!.path == "/v1/text-actions" { return try self.response(request, ["revision": 0, "actions": []]) }
+      return try self.response(request, ["revision": 0, "entries": []])
+    }, readCredential: { self.token }, saveCredential: { self.token = $0 })
+    init() throws {
+      defaults = UserDefaults(suiteName: suite)!
+      library = try LocalLibrary(root: root)
+      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = user
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    }
+    func response(_ request: URLRequest, _ json: [String: Any], _ status: Int = 200) throws -> (Data, HTTPURLResponse) {
+      (try JSONSerialization.data(withJSONObject: json), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+    func resume() { suspended?.resume(); suspended = nil }
+    func cleanup() {
+      resume(); defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root)
     }
   }
   @MainActor func testAutomaticRefreshUsesTheInjectedClockAndKeepsItsMinuteGate() async throws {
