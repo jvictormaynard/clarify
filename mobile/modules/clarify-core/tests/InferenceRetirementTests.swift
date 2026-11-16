@@ -8,7 +8,7 @@ final class InferenceRetirementTests: XCTestCase {
     let defaults = UserDefaults(suiteName: suite)!
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-    var state = CloudAccountState(); state.userID = UUID().uuidString; state.hosted = true
+    var state = CloudAccountState(); state.endpoint = "https://account.example.test"; state.userID = UUID().uuidString; state.hosted = true
     defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
     defaults.set("hosted", forKey: "clarify.processing.destination")
     var requests = 0
