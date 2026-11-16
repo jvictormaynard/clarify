@@ -1,8 +1,30 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import { usageProgress } from '../../shared/usage.ts';
 const { createAppUIService } = createRequire(import.meta.url)('./app-ui-service.cjs');
 const { appUIProfiles, requirePassedTest, requirePassedNativeTests, nativeMethods } = createRequire(import.meta.url)('../scripts/test-app-ui.cjs');
+
+test('account quota follows the request week when fixture setup crosses midnight', async () => {
+  let now = Date.parse('2026-11-15T23:48:17Z');
+  const f = createAppUIService({ now: () => now });
+  await new Promise<void>(done => f.server.listen(0, '127.0.0.1', done));
+  try {
+    for (const [at, start, reset] of [
+      ['2026-11-15T23:59:59Z', '2026-11-09T00:00:00.000Z', '2026-11-16T00:00:00.000Z'],
+      ['2026-11-16T00:00:00Z', '2026-11-16T00:00:00.000Z', '2026-11-23T00:00:00.000Z'],
+      ['2026-11-16T00:26:32Z', '2026-11-16T00:00:00.000Z', '2026-11-23T00:00:00.000Z'],
+    ]) {
+      now = Date.parse(at);
+      const response = await fetch(`http://127.0.0.1:${f.server.address().port}/v1/account`);
+      assert.equal(response.status, 200);
+      const { usage } = await response.json();
+      assert.equal(usage.period_start, start);
+      assert.equal(usage.reset_at, reset);
+      assert.equal(usageProgress(usage, now)?.used_percent, 12.5);
+    }
+  } finally { f.release(); await new Promise<void>(done => f.server.close(done)); }
+});
 
 test('app UI profiles keep full coverage by default and reject ambiguous selection', () => {
   for (const [env, expected] of [

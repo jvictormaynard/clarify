@@ -1,20 +1,17 @@
 const http = require('node:http');
 
 // Only synthetic simulator data. No request leaves this loopback service.
-function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
+function createAppUIService({ record = () => {}, heartbeatMs = 1000, now = Date.now } = {}) {
   const requests = [], unexpected = [], held = [], waiters = [];
   let catalog = 'ready', revision = 1;
   const libraries = { '/v1/dictionary': [], '/v1/snippets': [] };
-  const periodStart = new Date(); periodStart.setUTCHours(0, 0, 0, 0);
-  periodStart.setUTCDate(periodStart.getUTCDate() - (periodStart.getUTCDay() + 6) % 7);
-  const resetAt = new Date(periodStart); resetAt.setUTCDate(resetAt.getUTCDate() + 7);
   const user = { id: '00000000-0000-4000-8000-000000000033', email: 'clarify-e2e@example.test', output_preferences_supported: true,
     processing_contract: { schema_version: 1, output_languages: ['auto', 'pt', 'en', 'es', 'de', 'ru'],
       writing_styles: ['formal', 'casual', 'very_casual', 'natural', 'informal', 'organized'],
       cleanup_levels: ['preserve', 'light', 'clarity'], dictation_actions: true, explicit_dictation_policy: true,
       dictation_editing: { legacy: true, natural: true, clarity: true, action: true, legacy_translated: true, natural_translated: true },
       text_input_bytes: 16000, text_output_bytes: 64000 }, usage: {
-    schema_version: 2, period_start: periodStart.toISOString(), reset_at: resetAt.toISOString(), used_percent: 12.5,
+    schema_version: 2, used_percent: 12.5,
     remaining_percent: 82.5, reserved_percent: 5, allocation_status: 'available', hosted_available: true,
   } };
   const actions = () => [
@@ -77,7 +74,13 @@ function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
       send(401, { meta: { session_token: 'isolated-e2e-session', is_authenticated: false } });
     }
     else if (method === 'POST' && route === '/_allauth/app/v1/auth/code/confirm') send(value.code === '123456' ? 200 : 401, { meta: { session_token: 'isolated-e2e-session', is_authenticated: value.code === '123456' } });
-    else if (method === 'GET' && route === '/v1/account') send(200, user);
+    else if (method === 'GET' && route === '/v1/account') {
+      // A cold native build can cross the weekly reset after this service starts.
+      const periodStart = new Date(now()); periodStart.setUTCHours(0, 0, 0, 0);
+      periodStart.setUTCDate(periodStart.getUTCDate() - (periodStart.getUTCDay() + 6) % 7);
+      const resetAt = new Date(periodStart); resetAt.setUTCDate(resetAt.getUTCDate() + 7);
+      send(200, { ...user, usage: { ...user.usage, period_start: periodStart.toISOString(), reset_at: resetAt.toISOString() } });
+    }
     else if (['GET', 'PUT'].includes(method) && route in libraries) {
       if (method === 'PUT') libraries[route] = value.entries || [];
       send(200, { revision: 0, entries: libraries[route] });
