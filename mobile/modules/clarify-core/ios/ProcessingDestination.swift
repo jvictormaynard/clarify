@@ -34,7 +34,7 @@ final class ProcessingDestination {
   private let computer: ComputerConnection
   private let account: CloudAccount
   // Main-actor ownership is narrower than ComputerConnection.busy: only the
-  // timer may delay an explicit account command; manual computer work rejects it.
+  // timer may delay account commands or text preparation; manual work rejects them.
   @MainActor private var automaticRefreshInProgress = false
   @MainActor private var automaticComputerRefresh = false
   @MainActor private var explicitAccountAction: String?
@@ -48,7 +48,9 @@ final class ProcessingDestination {
   }
   var configured: Bool { computer.configured }
   var isBusy: Bool { computer.busy }
-  var textStartBlocked: Bool { computer.busy }
+  @MainActor var textStartBlocked: Bool {
+    explicitAccountAction != nil || (computer.busy && !automaticComputerRefresh)
+  }
   func captureTextIdentity() -> TextAccountIdentity? { nil }
   var textActions: TextActionCatalog { computer.textActions }
   var processingCapabilities: ProcessingCapabilities { computer.processingCapabilities }
@@ -136,7 +138,18 @@ final class ProcessingDestination {
       OutputLanguage(rawValue: language) != nil else { throw ComputerFailure.notReady }
     let owner = captureHistory()
     let identity = accountIdentity ?? captureTextIdentity()
-    if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
+    let connectionIdentity = account.captureTextIdentity()
+    // AudioSession already owns the accepted UUID. Only wait for coordinator-owned
+    // automatic work; cancelling preparation must leave that request running.
+    while true {
+      try Task.checkCancellation()
+      guard acceptsHistory(owner), context == historyContext,
+        connectionIdentity == account.captureTextIdentity() else { throw CancellationError() }
+      if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
+      guard !textStartBlocked else { throw ComputerFailure.busy }
+      guard automaticRefreshInProgress else { break }
+      try await Task.sleep(nanoseconds: 50_000_000)
+    }
     if computerMode { try await computer.refresh() }
 
     try Task.checkCancellation()

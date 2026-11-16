@@ -742,6 +742,75 @@ final class ComputerTests: XCTestCase {
     XCTAssertFalse(started); XCTAssertEqual(f.idsCreated, 0)
     XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
   }
+  @MainActor func testTextPreparationWaitsOnlyForOwnedAutomaticStatus() async throws {
+    for change in ["none", "cancel", "suspend", "account", "manual"] {
+      let defaults = temporaryDefaults()
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let library = try LocalLibrary(root: root), f = Fixture()
+      var token: String?
+      let account = CloudAccount(defaults: defaults, transport: { _ in
+        XCTFail("Hosted fallback"); throw ComputerFailure.offline
+      }, readCredential: { token }, saveCredential: { token = $0 })
+      let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+      let context = destination.historyContext
+      f.pauseStatus = true
+      let status = expectation(description: "status held")
+      f.onStatus = { status.fulfill() }
+      let automatic = Task { @MainActor in
+        if change == "manual" { try await f.connection.refresh() }
+        else { _ = try await destination.automaticRefresh(library) }
+      }
+      await fulfillment(of: [status], timeout: 2)
+      XCTAssertEqual(destination.textStartBlocked, change == "manual")
+      let entered = expectation(description: "text preparation entered")
+      var finished = false
+      let operationID = UUID().uuidString
+      let text = Task { @MainActor in
+        entered.fulfill()
+        defer { finished = true }
+        let prepared = try await destination.prepareText("rewrite", language: "auto", context: context,
+          preferences: OutputPreferences())
+        return try await destination.processText(operationID, prepared: prepared, text: "Original")
+      }
+      await fulfillment(of: [entered], timeout: 2)
+      if change == "manual" {
+        do { _ = try await text.value; XCTFail("Manual refresh admitted text") }
+        catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+      } else {
+        XCTAssertFalse(finished, "Text must wait for the owned status response")
+      }
+      switch change {
+      case "cancel": text.cancel()
+      case "suspend": f.connection.suspend()
+      case "account": token = "another-session"
+      default: break
+      }
+      if ["cancel", "suspend", "account"].contains(change) {
+        do { _ = try await text.value; XCTFail("Stale or cancelled preparation continued") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertTrue(finished, "Text owner must finish before the timer is released")
+      }
+      XCTAssertTrue(f.connection.busy, "Text must leave the timer's request and cleanup active")
+      XCTAssertEqual(f.requests.count, 1); XCTAssertEqual(f.idsCreated, 0)
+      XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
+      f.pauseStatus = false; f.onProcessing = { f.resume() }; f.resume()
+      if change == "suspend" { _ = try? await automatic.value }
+      else { try await automatic.value }
+      if change == "none" {
+        let result = try await text.value
+        XCTAssertTrue(result.successful)
+        XCTAssertEqual(f.requests.map { $0.url!.path },
+          ["/v1/computer/status", "/v1/computer/status", "/v1/computer/text"])
+        XCTAssertEqual(try f.postedIDs().count, 1); XCTAssertEqual(f.idsCreated, 1)
+        XCTAssertEqual(destination.historyContext, context)
+      } else {
+        XCTAssertEqual(f.requests.count, 1)
+        XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
+      }
+      XCTAssertFalse(f.connection.busy)
+    }
+  }
   @MainActor func testPairDeviceLimitPreservesExistingTrustWithoutRetryOrRevocation() async throws {
     let f = Fixture(); try await f.connection.refresh()
     f.connection.setInvalidationHandler { f.invalidations += 1 }
@@ -1005,6 +1074,12 @@ final class ComputerTests: XCTestCase {
         catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
       } else {
         XCTAssertFalse(finished, "Login must wait for the owned status response")
+        XCTAssertTrue(destination.textStartBlocked, "Explicit reservation must exclude text during automatic status")
+        do {
+          _ = try await destination.prepareText("rewrite", language: "auto", context: destination.historyContext,
+            preferences: OutputPreferences())
+          XCTFail("Explicit account reservation admitted text")
+        } catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
         do {
           try await destination.authorizeComputerConnection("login", value: "duplicate@example.com", library: library)
           XCTFail("Duplicate login accepted")
