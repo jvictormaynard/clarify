@@ -91,6 +91,8 @@ async function main() {
     const endpoint = `http://127.0.0.1:${server.address().port}`;
     record({ event: 'listening', endpoint });
     fs.cpSync(original, fixture, { recursive: true, filter: file => !['Pods', 'build'].includes(path.relative(original, file).split(path.sep)[0]) });
+    // The copied Pod project resolves generated sources relative to this fixture.
+    fs.cpSync(path.join(original, 'build', 'generated'), path.join(fixture, 'build', 'generated'), { recursive: true });
     // The Pod project needs private file references; other installed Pods stay read-only.
     fs.mkdirSync(path.join(fixture, 'Pods'));
     for (const name of fs.readdirSync(path.join(original, 'Pods'))) {
