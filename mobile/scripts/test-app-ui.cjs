@@ -68,7 +68,7 @@ async function main() {
   }
   const fingerprint = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   const original = path.join(root, 'ios');
-  const preserved = ['Clarify/Info.plist', 'Clarify.xcodeproj/project.pbxproj'].map(name => [name, fingerprint(path.join(original, name))]);
+  const preserved = ['Clarify/Info.plist', 'Clarify.xcodeproj/project.pbxproj', 'Pods/Pods.xcodeproj/project.pbxproj', '../modules/clarify-core/ios/ComputerConnection.swift', '../modules/clarify-core/ios/ComputerScanner.swift'].map(name => [name, fingerprint(path.join(original, name))]);
   const fixture = fs.mkdtempSync(path.join(root, '.app-ui-'));
   const journalPath = path.join(output, 'requests.jsonl');
   function record(event) {
@@ -91,7 +91,13 @@ async function main() {
     const endpoint = `http://127.0.0.1:${server.address().port}`;
     record({ event: 'listening', endpoint });
     fs.cpSync(original, fixture, { recursive: true, filter: file => !['Pods', 'build'].includes(path.relative(original, file).split(path.sep)[0]) });
-    fs.symlinkSync(path.join(original, 'Pods'), path.join(fixture, 'Pods'), 'dir');
+    // The Pod project needs private file references; other installed Pods stay read-only.
+    fs.mkdirSync(path.join(fixture, 'Pods'));
+    for (const name of fs.readdirSync(path.join(original, 'Pods'))) {
+      const source = path.join(original, 'Pods', name), target = path.join(fixture, 'Pods', name);
+      if (name === 'Pods.xcodeproj') fs.cpSync(source, target, { recursive: true });
+      else fs.symlinkSync(source, target);
+    }
     run('python3', ['-c', 'import plistlib,sys; p=sys.argv[1]; d=plistlib.load(open(p,"rb")); d["ClarifyCloudURL"]=sys.argv[2]; d["NSAppTransportSecurity"]={"NSAllowsArbitraryLoads":True}; plistlib.dump(d,open(p,"wb"))', path.join(fixture, 'Clarify/Info.plist'), endpoint]);
     run('ruby', [path.join(root, 'scripts/app-ui-project.rb'), root, fixture, endpoint]);
     const testSource = path.join(fixture, 'ClarifyAppFlowTests.swift');
@@ -136,13 +142,25 @@ async function main() {
       const started = Date.now();
       await runXcode(['test-without-building', '-xctestrun', testRun.path, '-destination', `platform=iOS Simulator,id=${simulator}`, '-parallel-testing-enabled', 'NO', '-resultBundlePath', result, `-only-testing:ClarifyAppFlowTests/AppFlowUITests/${scenario.method}`], scenario.method);
       scenarios.at(-1).testSeconds = (Date.now() - started) / 1000;
+      const submissions = requests.filter(item => item.route === '/v1/computer/text');
+      const expected = scenarios.reduce((count, item) => count + (item.profile === 'regular' ? 2 : 1), 0);
+      if (submissions.length !== expected || submissions.some(item => item.status !== 200)
+          || new Set(submissions.map(item => item.value.operation_id)).size !== expected) {
+        throw new Error('Each explicit action must submit once to the paired computer.');
+      }
       run('xcrun', ['simctl', 'shutdown', simulator]);
       run('xcrun', ['simctl', 'delete', simulator]);
       simulator = undefined;
     }
     if (unexpected.length) throw new Error(`Unexpected fixture endpoints: ${JSON.stringify(unexpected)}`);
     if (!requests.some(item => item.route === '/_allauth/app/v1/auth/code/confirm') || !requests.some(item => item.method === 'DELETE')) throw new Error('Account flow did not traverse the real native HTTP client.');
-    if (requests.some(item => ['/v1/text', '/v1/text-actions/execute'].includes(item.route) && ['cancel', 'off', 'a\nb\nc'].includes(item.value.text))) throw new Error('Cancelled or deactivated discovery sent a late processing POST.');
+    if (requests.some(item => item.route === '/v1/computer/text' && ['cancel', 'off', 'a\nb\nc'].includes(item.value.text))) throw new Error('Cancelled or deactivated discovery sent a late processing POST.');
+    if (requests.some(item => ['/v1/dictionary', '/v1/snippets', '/v1/history/sync'].includes(item.route))) {
+      throw new Error('Computer mode accessed account libraries or history.');
+    }
+    if (requests.filter(item => item.route === '/v1/computer/pair' && item.status === 201).length !== profiles.length) {
+      throw new Error('Each isolated simulator must pair through ComputerConnection.');
+    }
     exitCode = 0;
   } catch (error) { console.error(error.message); } finally {
     for (const result of results) if (fs.existsSync(result.path)) spawnSync('xcrun', ['xcresulttool', 'export', 'attachments', '--path', result.path, '--output-path', path.join(output, 'captures', result.name)], { stdio: 'inherit' });
