@@ -2,6 +2,7 @@
 
 import base64
 import json
+import sqlite3
 from pathlib import Path
 import tempfile
 import threading
@@ -27,7 +28,18 @@ class EnrollmentTests(unittest.TestCase):
             )
 
         public = dict(kty="EC", crv="P-256", x=encode(n.x), y=encode(n.y))
-        with tempfile.TemporaryDirectory() as directory:
+        connections = []
+        connect = sqlite3.connect
+
+        def tracked_connect(*args, **kwargs):
+            connection = connect(*args, **kwargs)
+            connections.append(connection)
+            return connection
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("sqlite3.connect", side_effect=tracked_connect),
+        ):
 
             def new():
                 return Control(
@@ -42,17 +54,24 @@ class EnrollmentTests(unittest.TestCase):
                     "generated-account", dict(action=action, host="pc", **fields)
                 )
 
-            control = new()
-            call(control, "enroll", public_key=public)
-            ticket = call(control, "create")["ticket"]
-            control = new()
-            call(control, "enroll", public_key=public)
-            with self.assertRaises(Rejected):
-                call(control, "poll", ticket=ticket)
-            self.assertEqual(call(control, "create")["public_key"], public)
-            call(control, "revoke")
-            with self.assertRaises(Rejected):
-                call(new(), "create")
+            try:
+                control = new()
+                call(control, "enroll", public_key=public)
+                ticket = call(control, "create")["ticket"]
+                control = new()
+                call(control, "enroll", public_key=public)
+                with self.assertRaises(Rejected):
+                    call(control, "poll", ticket=ticket)
+                self.assertEqual(call(control, "create")["public_key"], public)
+                call(control, "revoke")
+                with self.assertRaises(Rejected):
+                    call(new(), "create")
+                for connection in connections:
+                    with self.assertRaises(sqlite3.ProgrammingError):
+                        connection.execute("SELECT 1")
+            finally:
+                for connection in connections:
+                    connection.close()
 
 
 class LifecycleTests(ComputerHostFixture, unittest.TestCase):

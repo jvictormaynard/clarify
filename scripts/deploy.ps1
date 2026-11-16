@@ -261,6 +261,7 @@ Copy-Item (Join-Path $repoQmlPython '__init__.py') $sourceQmlPython -Force
 foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File)) {
     Copy-Item $qmlModule.FullName $sourceQmlPython -Force
 }
+Copy-Item (Join-Path $repoQmlPython "computer_webrtc.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "qt_shell.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "history_view.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "dictation_practice.py") $sourceQmlPython -Force
@@ -275,10 +276,15 @@ foreach ($backendModule in @(
     "clarify_account.py",
     "cloud_defaults.py",
     "computer_host.py",
+    "computer_live.py",
     "computer_cloudflare.py",
     "computer_processing.py",
     "computer_relay_client.py",
     "computer_relay_protocol.py",
+    "connect/webrtc/account.py",
+    "connect/webrtc/bridge.py",
+    "connect/webrtc/control.py",
+    "connect/webrtc/live.py",
     "dictionary_settings.py",
     "dictionary_snippets.py",
     "experimental_audio_history.py",
@@ -288,10 +294,15 @@ foreach ($backendModule in @(
     "hotkey_config.py",
     "local_asr.py",
     "local_asr_catalog.py",
+    "local_asr_live.py",
+    "local_asr_live_assets.py",
     "local_asr_streaming.py",
     "transcription_performance.py",
     "local_asr_product.py",
     "microphone_controls.py",
+    "opencode_acp.py",
+    "opencode_provider.py",
+    "opencode_runtime.py",
     "provider_adapters.py",
     "provider_http.py",
     "provider_registry.py",
@@ -313,7 +324,9 @@ foreach ($backendModule in @(
     "writing_styles.py",
     "workflows.py"
 )) {
-    Copy-Item (Join-Path $repoRoot $backendModule) $sourceDir -Force
+    $backendTarget = Join-Path $sourceDir $backendModule
+    New-Item (Split-Path -Parent $backendTarget) -ItemType Directory -Force | Out-Null
+    Copy-Item (Join-Path $repoRoot $backendModule) $backendTarget -Force
 }
 New-Item (Join-Path $sourceDir "shared") -ItemType Directory -Force | Out-Null
 foreach ($catalogFile in @("__init__.py", "localization.py", "ui_strings.json", "dictation_policy.py", "writing_style_policy.py", "output_preferences.py", "rewrite_prompts.py", "text_preservation.py", "processing_contract.py", "computer_connect.py", "computer_connect.json", "computer_cloudflare.json")) {

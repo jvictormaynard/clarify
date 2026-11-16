@@ -1591,6 +1591,7 @@ class QtProviderGatewayTests(unittest.TestCase):
             preparation_done=threading.Event(),
             provider_cancel_token=CancellationToken(),
             audio_path=Path("fixture.wav"),
+            recorder=SimpleNamespace(),
             attach_worker=Mock(),
             detach_worker=Mock(),
         )

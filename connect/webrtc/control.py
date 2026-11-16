@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import closing
 import hashlib
 import hmac
 import json
@@ -53,7 +54,7 @@ class Control:
             from pathlib import Path
 
             Path(database).parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(database) as db:
+            with closing(sqlite3.connect(database)) as db, db:
                 db.execute(
                     "CREATE TABLE IF NOT EXISTS hosts (owner TEXT, host TEXT, public TEXT NOT NULL, PRIMARY KEY(owner, host))"
                 )
@@ -71,7 +72,7 @@ class Control:
             return
         import sqlite3
 
-        with sqlite3.connect(self.database) as db:
+        with closing(sqlite3.connect(self.database)) as db, db:
             if public is None:
                 db.execute("DELETE FROM hosts WHERE owner=? AND host=?", key)
             else:
