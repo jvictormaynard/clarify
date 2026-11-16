@@ -1369,8 +1369,10 @@ final class KeyboardUITests: XCTestCase {
           XCTAssertEqual(q.bounds.height, width == 430 ? 45 : 43, accuracy: 0.01)
           let qFrame = q.convert(q.bounds, to: grid), aFrame = a.convert(a.bounds, to: grid)
           XCTAssertEqual(aFrame.minY - qFrame.minY, width == 430 ? 56 : 54, accuracy: 0.01)
-          XCTAssertEqual(qFrame.minX, 6.5, accuracy: 0.01)
-          XCTAssertEqual(qFrame.width, (width - 13 - 54) / 10, accuracy: 0.01)
+          // UIStackView aligns horizontal frames to the display's pixel grid.
+          let pixel = 1 / max(UIScreen.main.scale, 1)
+          XCTAssertEqual(qFrame.minX, 6.5, accuracy: pixel)
+          XCTAssertEqual(qFrame.width, (width - 13 - 54) / 10, accuracy: pixel)
         }
       }
     }
