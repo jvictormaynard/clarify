@@ -28,6 +28,11 @@ class ProfileTests(unittest.TestCase):
     def test_all_profiles_have_verified_separate_manifests(self):
         roots = set()
         for model in MODELS:
+            if model == "nemotron-3.5-streaming":
+                installer = installer_for(model)
+                self.assertEqual(installer.manifest["recommended_model"]["id"], model)
+                self.assertEqual(installer_for(model, "cuda:0").root, installer.root)
+                continue
             for device in ("cpu", "cuda:0"):
                 installer = installer_for(model, device)
                 self.assertEqual(installer.manifest["recommended_model"]["id"], model)

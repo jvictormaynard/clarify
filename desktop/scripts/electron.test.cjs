@@ -147,3 +147,70 @@ test('preload revokes and pauses hidden-window playback before acknowledging cap
   handlers['clarify:stop-audio'](null, 'owned-lease');
   assert.deepEqual(effects, ['revoke:owned-lease', 'pause', 'endRecordingPlayback']);
 });
+
+const webRTCModule = import('../electron/webrtc-transport.mjs');
+
+class Channel {
+  readyState='open'; bufferedAmount=0; sent=[];
+  send(value){this.sent.push(value);}
+  close(){this.readyState='closed';}
+}
+
+test('an uncertain response never repeats the request', async()=>{
+  const {ComputerChannel} = await webRTCModule;
+  const channel=new Channel();
+  const rpc=new ComputerChannel(channel,{timeout:10});
+  await assert.rejects(rpc.request({method:'POST',path:'/v1/computer/text',body:{operation_id:'unchanged'}}),/response_uncertain/);
+  assert.equal(channel.sent.filter(value=>JSON.parse(value).kind==='begin').length,1);
+  assert.equal(rpc.pending.size,0);
+  rpc.close();
+});
+
+test('out-of-order payload cannot reach dispatch', async()=>{
+  const {ComputerChannel} = await webRTCModule;
+  const channel=new Channel();let dispatched=0;
+  const rpc=new ComputerChannel(channel,{dispatch:()=>{dispatched++;}});
+  const id=crypto.randomUUID();
+  await rpc.receive(JSON.stringify({kind:'begin',direction:'request',id,count:1}));
+  await assert.rejects(rpc.receive(JSON.stringify({kind:'chunk',id,index:1,data:'{}'})),/invalid_chunk/);
+  assert.equal(dispatched,0);
+  rpc.close();
+});
+
+test('cancellation passes a channel with eight waiting processing requests', async()=>{
+  const {ComputerChannel} = await webRTCModule;
+  const outgoing=new Channel(), incoming=new Channel();
+  outgoing.send=value=>queueMicrotask(()=>incoming.onmessage({data:value}));
+  incoming.send=value=>queueMicrotask(()=>outgoing.onmessage({data:value}));
+  let release, entered, calls=0;
+  const blocked=new Promise(resolve=>{release=resolve;});
+  const allEntered=new Promise(resolve=>{entered=resolve;});
+  const host=new ComputerChannel(incoming,{dispatch:async value=>{
+    if(value.method==='DELETE'){release();return {status:200,body:{cancelled:true}};}
+    if(++calls===8)entered();
+    await blocked;return {status:409,body:{error:'cancelled'}};
+  }});
+  const client=new ComputerChannel(outgoing);
+  try {
+    const processing=Array.from({length:8},()=>client.request({method:'POST'}));
+    await allEntered;
+    await assert.rejects(client.request({method:'POST'}),/capacity/);
+    const cancelled=await client.request({method:'DELETE'});
+    assert.equal(cancelled.body.cancelled,true);
+    assert.equal((await Promise.all(processing)).length,8);
+    assert.equal(calls,8);
+  } finally { client.close(); host.close(); }
+});
+
+
+test('terminal channel closure retires its owner exactly once and blocks later dispatch', async()=>{
+  const {ComputerChannel} = await webRTCModule;
+  const channel=new Channel(); let closed=0, dispatched=0;
+  const rpc=new ComputerChannel(channel,{onClose:()=>{closed++;},dispatch:()=>{dispatched++;}});
+  const pending=rpc.request({method:'POST'});
+  channel.onclose(); rpc.close(); channel.onclose();
+  await assert.rejects(pending,/response_uncertain/);
+  await assert.rejects(rpc.request({method:'POST'}),/response_uncertain/);
+  await assert.rejects(rpc.receive('{}'),/response_uncertain/);
+  assert.equal(closed,1); assert.equal(dispatched,0);
+});

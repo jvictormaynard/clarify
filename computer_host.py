@@ -823,6 +823,9 @@ class ComputerHost:
                     db.close()
                     raise
                 self._db, self._server = db, server
+                start_readiness = getattr(self.processor, "start_readiness", None)
+                if callable(start_readiness):
+                    start_readiness()
                 self.port = server.server_address[1]
                 self._generation = object()
                 self._thread = threading.Thread(
@@ -905,6 +908,9 @@ class ComputerHost:
                 self._db = None
                 self._results.clear()
                 self._result_bytes = 0
+        stop_readiness = getattr(self.processor, "stop_readiness", None)
+        if callable(stop_readiness):
+            stop_readiness()
         try:
             if server is not None:
                 server.close_connections()
@@ -1134,6 +1140,33 @@ class ComputerHost:
                         raise _APIError(409, "operation_cancelled")
             reply(200, result)
 
+    def webrtc_request(self, method, path, authorization, body=None):
+        """Trusted data-channel bridge; shares HTTP auth, bounds and replay state."""
+
+        def read_body(limit):
+            if limit is not None and (
+                not isinstance(body, dict) or len(_json(body)) > limit
+            ):
+                raise _APIError(400, "invalid_request")
+            return body
+
+        result = {}
+
+        def reply(status, value):
+            result.update(status=status, body=value)
+
+        try:
+            if not isinstance(method, str) or not isinstance(path, str):
+                raise _APIError(400, "invalid_request")
+            self._dispatch(
+                method, path, [authorization], read_body, reply, allow_remote=False
+            )
+        except _APIError as error:
+            reply(error.status, {"error": error.code})
+        except Exception:
+            reply(500, {"error": "internal_error"})
+        return result
+
     def _require_started(self):
         if self._server is None:
             raise _APIError(503, "host_stopped")
@@ -1233,6 +1266,11 @@ class ComputerHost:
     def _status(self):
         with self._lock:
             self._require_started()
+        refresh = getattr(self.processor, "refresh_live_readiness", None)
+        if callable(refresh):
+            refresh()
+        with self._lock:
+            self._require_started()
             actions = self.processor.action_readiness
             result = {
                 "processing_contract": processing_capabilities(
@@ -1246,6 +1284,8 @@ class ComputerHost:
                 "computer_name": self.computer_name,
                 "ready": actions["dictate"],
                 "action_readiness": actions,
+                "live_recognition": getattr(self.processor, "live_recognition", False)
+                is True,
                 "text_actions": getattr(self.processor, "text_actions", []),
                 "output_preferences_supported": getattr(
                     self.processor, "output_preferences_supported", False
@@ -1632,6 +1672,19 @@ class ComputerHost:
 
     def _process(self, device, route, body):
         operation, language, value, content_hash = self._validated(route, body)
+        work, prepared, cached = self._admit(
+            device, route, body, operation, content_hash, value
+        )
+        if work is None:
+            return cached
+        return self._execute(
+            device, route, body, operation, language, value, work, prepared
+        )
+
+    def _admit(
+        self, device, route, body, operation, content_hash, value=None, *, live=False
+    ):
+        language = body["language"]
         preferences = {
             name: body[name]
             for name in ("writing_style", "output_language")
@@ -1656,7 +1709,7 @@ class ComputerHost:
             ).fetchone()
             self._check_operation_time(operation, row, window)
             if row:
-                return self._cached(key, row, content_hash)
+                return None, None, self._cached(key, row, content_hash)
             action = "dictate" if route == "dictations" else body["action"]
             prepared = None
             if action == "text_action":
@@ -1699,6 +1752,11 @@ class ComputerHost:
                     raise _APIError(400, "invalid_request") from None
             elif not self.processor.action_readiness.get(action, False):
                 raise _APIError(503, "not_ready")
+            if live:
+                try:
+                    self.processor.require_live(prepared)
+                except ComputerActionNotReady:
+                    raise _APIError(503, "live_unsupported") from None
             self._require_operation_capacity(window)
             if not self._capacity.acquire(blocking=False):
                 raise _APIError(429, "busy")
@@ -1713,9 +1771,31 @@ class ComputerHost:
             except BaseException:
                 self._capacity.release()
                 raise
+        return work, prepared, None
+
+    def _execute(
+        self,
+        device,
+        route,
+        body,
+        operation,
+        language,
+        value,
+        work,
+        prepared,
+        recognize=None,
+    ):
+        key = (device, operation)
+        preferences = {
+            name: body[name]
+            for name in ("writing_style", "output_language")
+            if name in body
+        }
         try:
             try:
-                if route == "dictations":
+                if recognize is not None:
+                    result = recognize()
+                elif route == "dictations":
                     result = self.processor.process_dictation(
                         value,
                         language,

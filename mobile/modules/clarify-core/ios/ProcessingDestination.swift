@@ -27,8 +27,7 @@ struct PreparedTextOperation {
   var accountIdentity: TextAccountIdentity? = nil
 }
 
-// Explicit routing for the containing app. CloudAccount continues to own hosted
-// security and sync. ComputerConnection owns only the computer protocol.
+// Explicit routing for the containing app. CloudAccount owns account authentication and sync. ComputerConnection owns only the computer protocol.
 final class ProcessingDestination {
   static let shared = ProcessingDestination()
   private let defaults: UserDefaults
@@ -38,48 +37,47 @@ final class ProcessingDestination {
   private(set) var computerMode: Bool
   init(defaults: UserDefaults = .standard, computer: ComputerConnection = .shared, account: CloudAccount = .shared) {
     self.defaults = defaults; self.computer = computer; self.account = account
-    computerMode = defaults.string(forKey: "clarify.processing.destination") == "computer"
+    computerMode = true
+    defaults.set("computer", forKey: "clarify.processing.destination")
   }
-  var configured: Bool { computerMode ? computer.configured : account.configured }
-  var isBusy: Bool { computerMode ? computer.busy : account.isBusy }
-  var textStartBlocked: Bool { computerMode ? computer.busy : account.textStartBlocked }
-  func captureTextIdentity() -> TextAccountIdentity? { computerMode ? nil : account.captureTextIdentity() }
-  var textActions: TextActionCatalog { computerMode ? computer.textActions : account.textActions }
-  var processingCapabilities: ProcessingCapabilities { computerMode ? computer.processingCapabilities : account.processingCapabilities }
+  var configured: Bool { computer.configured }
+  var isBusy: Bool { computer.busy }
+  var textStartBlocked: Bool { computer.busy }
+  func captureTextIdentity() -> TextAccountIdentity? { nil }
+  var textActions: TextActionCatalog { computer.textActions }
+  var processingCapabilities: ProcessingCapabilities { computer.processingCapabilities }
   func dictationFields(_ policy: DictationPolicy) throws -> [String: Any] {
     try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: computerMode)
   }
-  var outputPreferencesSupported: Bool { computerMode ? computer.outputPreferencesSupported : account.outputPreferencesSupported }
-  var legacyRewriteReady: Bool { computerMode ? computer.isReady(for: "rewrite") : account.configured }
-  var legacyTranslateReady: Bool { computerMode ? computer.isReady(for: "translate") : account.configured }
-  var historyScope: String? { computerMode ? computer.scope : account.historyScope }
-  var historyContext: String { revision + (computerMode ? "|computer|\(computer.generation)" : "|hosted|" + account.historyContext) }
+  var outputPreferencesSupported: Bool { computer.outputPreferencesSupported }
+  var legacyRewriteReady: Bool { computer.isReady(for: "rewrite") }
+  var legacyTranslateReady: Bool { computer.isReady(for: "translate") }
+  var historyScope: String? { computer.scope }
+  var historyContext: String { revision + "|computer|\(computer.generation)" }
   func captureHistory() -> ProcessingCapture { ProcessingCapture(scope: historyScope, context: historyContext) }
   func acceptsHistory(_ capture: ProcessingCapture) -> Bool { configured && capture == captureHistory() }
   @MainActor func select(_ mode: String) throws {
-    guard ["hosted", "computer"].contains(mode), !account.isBusy, !computer.busy else { throw ComputerFailure.busy }
+    guard mode == "computer", !account.isBusy, !computer.busy else { throw ComputerFailure.busy }
     computer.suspend(); account.clearTextCapabilities(); computerMode = mode == "computer"; revision = UUID().uuidString
     defaults.set(mode, forKey: "clarify.processing.destination")
   }
   func snapshot() -> [String: Any] {
     var result = account.snapshot()
-    result["mode"] = computerMode ? "computer" : "hosted"
+    result["mode"] = "computer"
     result["processingConfigured"] = configured
     result["computer"] = computer.snapshot()
     result["historyContext"] = historyContext
-    result["historyAccount"] = !computerMode && account.historyScope != nil
+    result["historyAccount"] = false
     result.merge(textActions.snapshot) { _, new in new }
     result["outputPreferencesSupported"] = outputPreferencesSupported
     result["processingContract"] = processingCapabilities.value
-    if computerMode { result["syncEnabled"] = false; result["busy"] = computer.busy; result["error"] = ""; result["dictionaryConflict"] = false }
+    result["busy"] = computer.busy || account.isBusy
     return result
   }
   @MainActor func automaticRefresh(_ library: LocalLibrary) async throws -> Bool {
-    if computerMode {
-      if computer.configured, !computer.busy { try await computer.refresh() }
-      return false
-    }
-    return try await account.command("auto", value: "", library: library)
+    let changed = (try? await account.command("auto", value: "", library: library)) ?? false
+    if computer.configured, !computer.busy { try await computer.refresh() }
+    return changed
   }
   @MainActor func authorizeComputerConnection(_ action: String, value: String, library: LocalLibrary) async throws {
     guard computerMode, !computer.busy else { throw ComputerFailure.busy }
@@ -90,13 +88,12 @@ final class ProcessingDestination {
     let capture = captureHistory()
     _ = try await account.command(action, value: value, library: library, connectionOnly: true)
     try Task.checkCancellation()
-    guard computerMode, acceptsHistory(capture) else { throw CancellationError() }
+    guard computerMode, capture == captureHistory() else { throw CancellationError() }
     if account.configured && ["confirm", "social", "refresh"].contains(action) {
       try await computer.resumeRemoteRegistration()
     }
   }
   @MainActor func syncHistory(_ library: LocalLibrary, force: Bool = false) async -> Bool {
-    guard !computerMode else { return false }
     return await account.syncHistory(library, force: force)
   }
   @MainActor func prepareText(_ action: String, actionID: String? = nil, revision: String? = nil,
@@ -108,7 +105,7 @@ final class ProcessingDestination {
     let identity = accountIdentity ?? captureTextIdentity()
     if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
     if computerMode { try await computer.refresh() }
-    else { try await account.refreshTextActions() }
+
     try Task.checkCancellation()
     guard acceptsHistory(owner), context == historyContext else { throw CancellationError() }
     if let identity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
@@ -137,20 +134,23 @@ final class ProcessingDestination {
       try Task.checkCancellation()
       guard computerMode, acceptsHistory(capture) else { throw CancellationError() }
       try activate()
-    } else {
-      try await account.withActivationAccount(prepare: prepare, activate: {
-        guard !self.computerMode, self.acceptsHistory(capture) else { throw CancellationError() }
-        try activate()
-      })
-    }
+    } else { throw ComputerFailure.notReady }
+  }
+  @MainActor func prepareLive(_ operationID: String, preferences: OutputPreferences,
+    policy: DictationPolicy, partial: @escaping (String) -> Void) throws -> ComputerLiveCapture? {
+    guard computerMode, configured else { throw ComputerFailure.notReady }
+    return try computer.prepareLive(operationID, preferences: preferences, policy: policy, partial: partial)
+  }
+  @MainActor func finishLive(_ capture: ComputerLiveCapture, owner: ProcessingCapture) async throws -> ProcessingDictation {
+    guard acceptsHistory(owner) else { capture.cancel(); throw CancellationError() }
+    let result = try await capture.result()
+    try Task.checkCancellation()
+    guard acceptsHistory(owner), !result.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CancellationError() }
+    return ProcessingDictation(transcript: result.transcript, text: result.text, rewritten: result.rewritten,
+      successful: result.successful, outputPreferenceFailed: result.outputPreferenceFailed)
   }
   @MainActor func dictate(_ url: URL, operationID: String, library: LocalLibrary,
     preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> ProcessingDictation {
-    if !computerMode {
-      let result = try await account.dictate(url, operationID: operationID, library: library, preferences: preferences, policy: policy)
-      return ProcessingDictation(transcript: result.transcript, text: result.text, rewritten: result.rewritten, successful: result.successful,
-        outputPreferenceFailed: result.outputPreferenceFailed)
-    }
     let capture = captureHistory()
     let wav = try await ComputerAudio.convert(url)
     guard computerMode, acceptsHistory(capture) else { throw CancellationError() }
@@ -168,11 +168,7 @@ final class ProcessingDestination {
       let response = try await computer.process(operationID, action: prepared.action, text: text, language: prepared.language,
         savedAction: prepared.savedAction, preferences: prepared.preferences)
       result = ProcessingText(text: response.text, successful: response.successful, outputPreferenceFailed: response.outputPreferenceFailed)
-    } else {
-      if let identity = prepared.accountIdentity, !account.acceptsTextIdentity(identity) { throw CancellationError() }
-      result = try await account.processText(operationID, action: prepared.action, text: text, language: prepared.language,
-        savedAction: prepared.savedAction, preferences: prepared.preferences)
-    }
+    } else { throw ComputerFailure.notReady }
     try Task.checkCancellation()
     guard acceptsHistory(capture) else { throw CancellationError() }
     return result

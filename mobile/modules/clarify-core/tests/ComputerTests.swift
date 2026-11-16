@@ -5,6 +5,91 @@ import XCTest
 @testable import ClarifyContracts
 
 final class ComputerTests: XCTestCase {
+  @MainActor private final class RTCPeer: ComputerWebRTCTransport {
+    let computerID = ComputerTests.computer
+    var canStartOperation = true
+    var closed = false
+    var live = false
+    var recognitionCalls: [(String, UUID, String, [String: Any])] = []
+    var requests: [URLRequest] = []
+    var onClose: (() -> Void)?
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+      guard !closed else { throw ComputerFailure.offline }
+      requests.append(request)
+      let object: [String: Any] = request.url?.path.hasSuffix("/status") == true
+        ? ["schema_version": 1, "computer_id": computerID.uuidString, "computer_name": "Fixture PC", "ready": true, "live_recognition": live] : [:]
+      return (try JSONSerialization.data(withJSONObject: object),
+        HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    func recognition(_ action: String, operationID: UUID, token: String, body: [String: Any]) async throws -> (Data, Int) {
+      recognitionCalls.append((action, operationID, token, body))
+      let reply: [String: Any]
+      switch action {
+      case "start": reply = ["started": true, "format": "pcm16_mono_16000", "max_frame_bytes": 2560]
+      case "feed":
+        let frames = body["frames"] as! [[String: Any]]
+        var feedReply: [String: Any] = ["accepted": frames.last!["sequence"]!]
+        if recognitionCalls.filter({ $0.0 == "feed" }).count == 1 { feedReply["partial"] = "hello" }
+        reply = feedReply
+      case "finish": reply = ["operation_id": operationID.uuidString, "transcript": "hello", "text": "hello", "rewritten": false, "successful": true]
+      default: throw ComputerFailure.invalidResponse
+      }
+      return (try JSONSerialization.data(withJSONObject: reply), 200)
+    }
+    func close() { guard !closed else { return }; closed = true; onClose?() }
+  }
+  @MainActor func testDisconnectRevokesThroughRetainedPeerBeforeClosingIt() async throws {
+    let f = Fixture(paired: true), peer = RTCPeer()
+    let closed = expectation(description: "old peer drained and closed")
+    peer.onClose = { closed.fulfill() }
+    try f.connection.configureWebRTC(peer)
+    try await f.connection.refresh()
+    f.connection.disconnect()
+    XCTAssertFalse(f.connection.configured)
+    await fulfillment(of: [closed], timeout: 2)
+    XCTAssertEqual(peer.requests.map { $0.url!.path }, ["/v1/computer/status", "/v1/computer/session"])
+    XCTAssertEqual(peer.requests.last?.httpMethod, "DELETE")
+    XCTAssertTrue(f.requests.isEmpty)
+  }
+  @MainActor func testStatusReplacesAgingPeerBeforeNewWorkWithoutReplayingProcessing() async throws {
+    let f = Fixture(paired: true), peer = RTCPeer()
+    try f.connection.configureWebRTC(peer)
+    try await f.connection.refresh()
+    peer.canStartOperation = false
+    try await f.connection.refresh()
+    XCTAssertTrue(peer.closed)
+    XCTAssertEqual(f.requests.map { $0.url!.path }, ["/v1/computer/status"])
+    XCTAssertEqual(peer.requests.map { $0.httpMethod }, ["GET"])
+  }
+  @MainActor func testLiveUsesOneClaimAndFinalWithoutWAVUpload() async throws {
+    let f = Fixture(paired: true), peer = RTCPeer()
+    peer.live = true
+    try f.connection.configureWebRTC(peer); try await f.connection.refresh()
+    let id = UUID().uuidString
+    var partial = ""
+    let capture = try XCTUnwrap(f.connection.prepareLive(id, preferences: OutputPreferences(), policy: .legacy) { partial = $0 })
+    for _ in 0..<9 { try capture.append(Data(repeating: 0, count: 2560)) }; capture.end()
+    let result = try await capture.result()
+    XCTAssertEqual(result.transcript, "hello"); XCTAssertEqual(partial, "hello")
+    XCTAssertEqual(peer.recognitionCalls.map { $0.0 }, ["start", "feed", "feed", "finish"])
+    XCTAssertEqual(Set(peer.recognitionCalls.map { $0.1 }).count, 1)
+    XCTAssertTrue(peer.recognitionCalls.allSatisfy { $0.2 == Self.token })
+    XCTAssertEqual(peer.requests.map { $0.url!.path }, ["/v1/computer/status"])
+    XCTAssertTrue(f.requests.isEmpty)
+    XCTAssertThrowsError(try f.connection.prepareLive(id, preferences: OutputPreferences(), policy: .legacy) { _ in })
+  }
+  @MainActor func testLiveRequiresReadyRTCAndRetiresCaptureOnSuspend() async throws {
+    let f = Fixture(paired: true)
+    try await f.connection.refresh()
+    XCTAssertNil(try f.connection.prepareLive(UUID().uuidString, preferences: OutputPreferences(), policy: .legacy) { _ in })
+    let peer = RTCPeer(); peer.live = true
+    try f.connection.configureWebRTC(peer); try await f.connection.refresh()
+    let capture = try XCTUnwrap(f.connection.prepareLive(UUID().uuidString, preferences: OutputPreferences(), policy: .legacy) { _ in })
+    f.connection.suspend()
+    XCTAssertThrowsError(try capture.append(Data(repeating: 0, count: 2)))
+    do { _ = try await capture.result(); XCTFail("Expected cancellation") } catch {}
+    XCTAssertTrue(peer.recognitionCalls.isEmpty)
+  }
   private func temporaryDefaults() -> UserDefaults {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
@@ -610,29 +695,6 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 2)
   }
 
-  @MainActor func testAccountSelectedTextNeverUsesThePairedComputerOrFallsBackAfterFailure() async throws {
-    let defaults = temporaryDefaults()
-    var state = CloudAccountState(); state.endpoint = "https://account.test"; state.userID = UUID().uuidString
-    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-    let f = Fixture()
-    var requests: [URLRequest] = [], status = 200
-    let account = CloudAccount(defaults: defaults, transport: { request in
-      requests.append(request)
-      let json = status == 200 ? ["text": "Translated"] : ["code": "allowance_exhausted"]
-      return (try JSONSerialization.data(withJSONObject: json),
-        HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
-    }, readCredential: { "fixture" }, saveCredential: { _ in })
-    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
-    XCTAssertFalse(destination.computerMode)
-    let result = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "translate", language: "pt", savedAction: nil, preferences: OutputPreferences()), text: "Original")
-    XCTAssertEqual(result.text, "Translated"); XCTAssertTrue(result.successful)
-    XCTAssertEqual(requests.first?.url?.path, "/v1/text"); XCTAssertTrue(f.requests.isEmpty)
-    status = 429
-    do { _ = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "rewrite", language: "auto", savedAction: nil, preferences: OutputPreferences()), text: "Original"); XCTFail("Account failure accepted") }
-    catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
-    XCTAssertEqual(requests.count, 2); XCTAssertTrue(f.requests.isEmpty, "Account errors must not use computer credentials")
-  }
-
   @MainActor func testTextStartRefreshesRequestedActionAndRejectsLostReadinessOrStaleOwner() async throws {
     let defaults = temporaryDefaults()
     let f = Fixture()
@@ -647,7 +709,7 @@ final class ComputerTests: XCTestCase {
     do { _ = try await destination.prepareText("rewrite", language: "auto", context: destination.historyContext, preferences: OutputPreferences()); started += 1; XCTFail("Stale readiness accepted") }
     catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
     let context = destination.historyContext
-    try destination.select("hosted"); try destination.select("computer")
+    try destination.select("computer")
     let count = f.requests.count
     do { _ = try await destination.prepareText("translate", language: "auto", context: context, preferences: OutputPreferences()); started += 1; XCTFail("Stale context accepted") } catch {}
     XCTAssertEqual(f.requests.count, count)
@@ -953,20 +1015,20 @@ final class ComputerTests: XCTestCase {
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
     try destination.select("computer")
     let signedIn = destination.snapshot()["signedIn"] as? Bool
-    XCTAssertEqual(signedIn, true); XCTAssertEqual(destination.snapshot()["syncEnabled"] as? Bool, false)
+    XCTAssertEqual(signedIn, true); XCTAssertEqual(destination.snapshot()["syncEnabled"] as? Bool, true)
     XCTAssertEqual(destination.historyScope, Self.credential.scope)
     let capture = destination.captureHistory()
     try library.record(HistoryEntry(id: UUID().uuidString, createdAt: 1, transcript: "PC only", text: "PC only", rewritten: false), scope: capture.scope)
     _ = try await destination.automaticRefresh(library)
     let synchronized = await destination.syncHistory(library, force: true)
-    XCTAssertFalse(synchronized); XCTAssertTrue(hostedRequests.isEmpty)
+    XCTAssertFalse(synchronized); XCTAssertFalse(hostedRequests.contains { ["/v1/text", "/v1/text-actions/execute", "/v1/dictations"].contains($0.url!.path) })
     XCTAssertEqual(try library.dictionary(scope: user).map(\.term), ["Hosted word"])
     XCTAssertTrue(try library.historyBatch(scope: account.historyScope!).upserts.isEmpty)
     f.failure = ComputerFailure.offline
     do { _ = try await destination.automaticRefresh(library); XCTFail("Offline computer accepted") } catch {}
-    XCTAssertTrue(hostedRequests.isEmpty); XCTAssertTrue(destination.computerMode)
+    XCTAssertFalse(hostedRequests.contains { ["/v1/text", "/v1/text-actions/execute", "/v1/dictations"].contains($0.url!.path) }); XCTAssertTrue(destination.computerMode)
     XCTAssertFalse(f.connection.ready)
-    try destination.select("hosted")
+    try destination.select("computer")
     XCTAssertFalse(destination.acceptsHistory(capture)); XCTAssertTrue(account.configured)
   }
   func testWAVEnforcesPCM16Mono16kHzAndDurationBeforeUpload() throws {

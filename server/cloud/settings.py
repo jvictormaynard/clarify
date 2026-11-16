@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "cloud.service",
 ]
 MIDDLEWARE = [
+    "cloud.service.retirement.InferenceRetirementMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "cloud.service.admin_views.AdminBoundary",
     "cloud.service.middleware.RequestLimits",
@@ -229,10 +230,6 @@ try:
         raise ValueError()
 except (InvalidOperation, ValueError):
     raise ImproperlyConfigured("Set a finite, nonnegative monthly USD budget") from None
-if CLARIFY_FUNDED_ENABLED and (not CLARIFY_GROQ_KEY or _budget <= 0):
-    raise ImproperlyConfigured(
-        "Funded processing requires a server Groq key and a positive budget"
-    )
 if (
     not 1 <= CLARIFY_GLOBAL_CONCURRENCY <= 32
     or not 0 <= CLARIFY_DAILY_EMAIL_LIMIT <= 100000

@@ -240,7 +240,7 @@ export function useSettings() {
     setSaved(false);
   };
   const setRetention = (value: string) => { setRetentionDraft(value); setSaved(false); };
-  const setEndpoint = (value: string) => { if (selectingProviderRef.current) return; setEndpointDraft(value); setSaved(false); };
+  const setEndpoint = (value: string | null) => { if (selectingProviderRef.current) return; setEndpointDraft(value); setSaved(false); };
   const setApiKey = (value: string) => { if (selectingProviderRef.current) return; setApiKeyDraft(value); setSaved(false); };
   const setRecording = (value: RecordingDraft | null) => { setRecordingDraft(value); setSaved(false); };
   const capture = state?.hotkeyCaptureAction || undefined;

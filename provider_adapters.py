@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 import io
+import ipaddress
 import mimetypes
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
+
 
 from provider_http import InvalidResponseError
 from provider_types import (
@@ -25,6 +27,27 @@ from provider_types import (
     TranslationResult,
     UnsupportedCapabilityError,
 )
+
+
+def is_keyless_loopback_url(endpoint: str) -> bool:
+    """An explicit local inference endpoint, with no user info or redirects."""
+    try:
+        url = urlsplit(endpoint)
+        return bool(
+            url.scheme in {"http", "https"}
+            and url.hostname
+            and not url.username
+            and not url.password
+            and not url.query
+            and not url.fragment
+            and (url.port is None or 0 < url.port < 65536)
+            and (
+                url.hostname == "localhost"
+                or ipaddress.ip_address(url.hostname).is_loopback
+            )
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def normalize_provider_url(base_url: str, version: str, endpoint: str) -> str:
@@ -393,6 +416,21 @@ class GeminiAdapter(ProviderAdapter):
 class OpenAICompatibleAdapter(ProviderAdapter):
     """Adapter shared by OpenAI, Groq, and future compatible providers."""
 
+    def _require_connection(self, connection: ProviderConnection) -> None:
+        if self.metadata.provider_id == "openai" and is_keyless_loopback_url(
+            connection.base_url
+        ):
+            return
+        super()._require_connection(connection)
+
+    @staticmethod
+    def _request_headers(connection: ProviderConnection) -> dict[str, str]:
+        return (
+            {"Authorization": f"Bearer {connection.api_key}"}
+            if connection.api_key
+            else {}
+        )
+
     _VERSION = "v1"
     _TEXT_MODEL_EXCLUSIONS = (
         "whisper",
@@ -477,7 +515,8 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             provider=self.metadata.provider_id,
             operation=operation,
             cancel_token=cancel_token,
-            headers={"Authorization": f"Bearer {connection.api_key}"},
+            headers=self._request_headers(connection),
+            allow_redirects=False,
         )
         payload = self.http.json(
             response, provider=self.metadata.provider_id, operation=operation
@@ -560,7 +599,8 @@ class OpenAICompatibleAdapter(ProviderAdapter):
                 operation="transcription",
                 cancel_token=cancel_token,
                 safe_to_retry=False,
-                headers={"Authorization": f"Bearer {connection.api_key}"},
+                headers=self._request_headers(connection),
+                allow_redirects=False,
                 files={
                     "file": (
                         request.audio_path.name,
@@ -633,7 +673,8 @@ class OpenAICompatibleAdapter(ProviderAdapter):
             operation="text_generation",
             cancel_token=cancel_token,
             safe_to_retry=False,
-            headers={"Authorization": f"Bearer {connection.api_key}"},
+            headers=self._request_headers(connection),
+            allow_redirects=False,
             json=body,
         )
         payload = self.http.json(

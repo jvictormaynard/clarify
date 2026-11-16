@@ -5,7 +5,12 @@ import { SettingsProcess } from "./settings-process";
 export type SettingsScenario = {
   locale?: "pt" | "en" | "es";
   onboarding?: boolean;
+  personalMissing?: boolean;
+  personalInstall?: boolean;
+  personalCatalog?: boolean;
+  personalCatalogError?: boolean;
   signedIn?: boolean;
+  account?: boolean;
   quota?: boolean;
   usage?: "error" | "legacy" | "malformed" | "waiting" | "unfunded" | "inactive" | "paused" | "exhausted" | "reserved";
   practice?: "account-error" | "auth-error" | "provider-quota" | "missing-model";
@@ -36,9 +41,13 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     if (!python || !fixture) throw new Error("Set CLARIFY_TEST_PYTHON and CLARIFY_TEST_FIXTURE");
     const locale = scenario.locale ?? "pt";
     const args = ["-u", fixture];
+    if (scenario.personalCatalog) args.push("--personal-catalog", "--chatgpt");
+    if (scenario.personalCatalogError) args.push("--personal-catalog", "--personal-catalog-error", "--chatgpt");
+    if (scenario.personalInstall) args.push("--personal-install");
+    if (scenario.personalMissing) args.push("--personal-missing");
     if (scenario.practice) args.push(`--practice-${scenario.practice}`);
     if (scenario.onboarding) args.push("--onboarding");
-    if (scenario.signedIn || scenario.quota) args.push("--signed-in");
+    if (scenario.signedIn || scenario.account || scenario.quota) args.push("--signed-in");
     if (scenario.socialWait) args.push("--social-wait");
     if (scenario.librarySync) args.push("--library-sync");
     if (scenario.history) args.push("--history");
@@ -49,6 +58,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     const controller = new SettingsProcess(python, args, { ...process.env, CLARIFY_TEST_UI_LANGUAGE: locale });
     const requests = new Set<Promise<void>>();
     try {
+      if (scenario.account) await controller.request({ method: "accountCommand", args: ["logout", ""] });
       await page.route("**/__test_rpc", route => {
         const work = (async () => {
           const request = route.request().postDataJSON();

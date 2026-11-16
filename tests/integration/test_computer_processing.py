@@ -72,7 +72,67 @@ class ComputerProcessorTests(unittest.TestCase):
         self.processor = ComputerProcessor(
             self.config, self.dictionary, registry=self.registry
         )
+        self.addCleanup(self.processor.stop_readiness)
         self.token = CancellationToken()
+
+    def test_live_advertisement_caches_verification_and_invalidates_changed_assets(
+        self,
+    ):
+        import tempfile
+        import threading
+        import time
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("local_asr_catalog.installer_for") as factory,
+        ):
+            from pathlib import Path
+
+            asset = Path(directory) / "model.bin"
+            asset.write_bytes(b"original")
+            installer = factory.return_value
+            installer._expected_installed_files.return_value = [(asset, 8, "hash")]
+            entered, release = threading.Event(), threading.Event()
+            self.addCleanup(release.set)
+
+            def verify(**options):
+                entered.set()
+                release.wait(2)
+                return {"state": "installed"}
+
+            installer.status.side_effect = verify
+            self.current = replace(
+                self.current,
+                workflows=replace(
+                    self.current.workflows,
+                    transcription=WorkflowRoute("local_asr", "nemotron-3.5-streaming"),
+                ),
+            )
+            self.assertFalse(self.processor.live_recognition)
+            self.processor.refresh_live_readiness()
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(self.processor.live_recognition)
+            release.set()
+
+            def wait_ready():
+                deadline = time.monotonic() + 2
+                while (
+                    not self.processor.live_recognition and time.monotonic() < deadline
+                ):
+                    time.sleep(0.005)
+                self.assertTrue(self.processor.live_recognition)
+
+            wait_ready()
+            self.processor.refresh_live_readiness()
+            self.assertEqual(installer.status.call_count, 1)
+            asset.write_bytes(b"changed assets")
+            self.processor.refresh_live_readiness()
+            wait_ready()
+            self.assertEqual(installer.status.call_count, 2)
+            self.processor.stop_readiness()
+            self.assertFalse(self.processor.live_recognition)
+            self.registry.transcribe.assert_not_called()
+            self.registry.adapter.assert_not_called()
 
     def test_dictation_editing_readiness_respects_local_permission_and_selected_action(
         self,

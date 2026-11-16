@@ -860,9 +860,9 @@
     "es": "Practicar dictado"
   },
   "practice_destination": {
-    "pt": "O texto aparece nesta tela, sem cópia ou inserção automática. A prática usa sua configuração atual. O processamento da conta pode consumir cota e salvar o ditado no histórico da conta.",
-    "en": "The text appears on this screen, with no automatic copy or insertion. Practice uses your current settings. Account processing can use quota and save dictation in account history.",
-    "es": "El texto aparece en esta pantalla, sin copia ni inserción automática. La práctica usa tus ajustes actuales. El procesamiento de la cuenta puede consumir cuota y guardar el dictado en el historial de la cuenta."
+    "pt": "O texto aparece nesta tela, sem cópia ou inserção automática. A prática usa os modelos e serviços selecionados.",
+    "en": "The text appears on this screen, with no automatic copy or insertion. Practice uses your selected models and services.",
+    "es": "El texto aparece en esta pantalla, sin copia ni inserción automática. La práctica usa los modelos y servicios seleccionados."
   },
   "practice_level": {
     "pt": "Nível do microfone",
@@ -8938,5 +8938,275 @@
     "pt": "Instalar atualização {v0}",
     "en": "Install update {v0}",
     "es": "Instalar actualización {v0}"
+  },
+  "setup_progress": {
+    "pt": "Progresso da configuração",
+    "en": "Setup progress",
+    "es": "Progreso de configuración"
+  },
+  "setup_languages": {
+    "pt": "Quais idiomas você fala?",
+    "en": "Which languages do you speak?",
+    "es": "¿Qué idiomas hablas?"
+  },
+  "setup_speech": {
+    "pt": "Um modelo para sua voz",
+    "en": "A model for your voice",
+    "es": "Un modelo para tu voz"
+  },
+  "setup_text": {
+    "pt": "Quer ajustar o texto?",
+    "en": "Would you like to edit the text?",
+    "es": "¿Quieres ajustar el texto?"
+  },
+  "setup_install": {
+    "pt": "Prepare seu primeiro ditado",
+    "en": "Prepare your first dictation",
+    "es": "Prepara tu primer dictado"
+  },
+  "setup_welcome_hint": {
+    "pt": "Fale. O Clarify transforma sua voz em texto. Sem conta obrigatória.",
+    "en": "Speak. Clarify turns your voice into text. No account required.",
+    "es": "Habla. Clarify convierte tu voz en texto. No necesitas una cuenta."
+  },
+  "setup_language_hint": {
+    "pt": "Selecione um idioma ou use a detecção automática para falar em vários idiomas. Isso não muda o idioma da interface.",
+    "en": "Select a language or use automatic detection for multiple languages. This does not change the interface language.",
+    "es": "Selecciona un idioma o usa la detección automática para varios idiomas. Esto no cambia el idioma de la interfaz."
+  },
+  "setup_speech_hint": {
+    "pt": "A recomendação considera os recursos disponíveis neste computador.",
+    "en": "The recommendation uses the resources available on this computer.",
+    "es": "La recomendación usa los recursos disponibles en este equipo."
+  },
+  "setup_text_hint": {
+    "pt": "Opcional. Você pode configurar depois.",
+    "en": "Optional. You can set this up later.",
+    "es": "Opcional. Puedes configurarlo después."
+  },
+  "setup_install_hint": {
+    "pt": "O Clarify verifica o modelo antes de concluir a configuração.",
+    "en": "Clarify verifies the model before setup can finish.",
+    "es": "Clarify verifica el modelo antes de terminar la configuración."
+  },
+  "setup_voice": {
+    "pt": "Dite onde você escreve.",
+    "en": "Dictate where you type.",
+    "es": "Dicta donde escribes."
+  },
+  "setup_private": {
+    "pt": "Reconhecimento de voz neste computador.",
+    "en": "Speech recognition on this computer.",
+    "es": "Reconocimiento de voz en este equipo."
+  },
+  "setup_phone": {
+    "pt": "Conecte seu iPhone depois, se quiser.",
+    "en": "Connect your iPhone later, if you want.",
+    "es": "Conecta tu iPhone después, si quieres."
+  },
+  "setup_auto_language": {
+    "pt": "Detectar automaticamente · vários idiomas",
+    "en": "Detect automatically · multiple languages",
+    "es": "Detectar automáticamente · varios idiomas"
+  },
+  "setup_recommended": {
+    "pt": "Recomendado",
+    "en": "Recommended",
+    "es": "Recomendado"
+  },
+  "setup_location": {
+    "pt": "O áudio é processado neste computador.",
+    "en": "Audio is processed on this computer.",
+    "es": "El audio se procesa en este equipo."
+  },
+  "setup_download": {
+    "pt": "Download: {v0} MiB. Requer internet para instalar.",
+    "en": "Download: {v0} MiB. Internet is required to install.",
+    "es": "Descarga: {v0} MiB. Se necesita internet para instalar."
+  },
+  "setup_alternatives": {
+    "pt": "Outros modelos de voz",
+    "en": "Other speech models",
+    "es": "Otros modelos de voz"
+  },
+  "setup_speech_model": {
+    "pt": "Modelo de voz",
+    "en": "Speech model",
+    "es": "Modelo de voz"
+  },
+  "setup_check_again": {
+    "pt": "Verificar computador novamente",
+    "en": "Check computer again",
+    "es": "Comprobar equipo de nuevo"
+  },
+  "setup_text_service": {
+    "pt": "Serviço de texto",
+    "en": "Text service",
+    "es": "Servicio de texto"
+  },
+  "setup_raw": {
+    "pt": "Manter a transcrição · sem edição por IA",
+    "en": "Keep the transcript · no AI editing",
+    "es": "Conservar la transcripción · sin edición por IA"
+  },
+  "setup_raw_hint": {
+    "pt": "O texto reconhecido fica como foi falado. Nenhum serviço de texto é conectado.",
+    "en": "Recognized text stays as spoken. No text service is connected.",
+    "es": "El texto reconocido queda como se habló. No se conecta ningún servicio de texto."
+  },
+  "setup_subscription": {
+    "pt": "Use os limites da sua assinatura. O texto é enviado à OpenAI.",
+    "en": "Use your subscription limits. Text is sent to OpenAI.",
+    "es": "Usa los límites de tu suscripción. El texto se envía a OpenAI."
+  },
+  "setup_free": {
+    "pt": "Modelos gratuitos, sujeitos a limites. O texto é enviado ao OpenCode.",
+    "en": "Free models, subject to usage limits. Text is sent to OpenCode.",
+    "es": "Modelos gratuitos, sujetos a límites. El texto se envía a OpenCode."
+  },
+  "setup_key_hint": {
+    "pt": "Use sua chave de API. O serviço pode cobrar pelo uso.",
+    "en": "Use your API key. The service may charge for usage.",
+    "es": "Usa tu clave de API. El servicio puede cobrar por el uso."
+  },
+  "setup_connect_free": {
+    "pt": "Consultar modelos gratuitos",
+    "en": "Check free models",
+    "es": "Consultar modelos gratuitos"
+  },
+  "setup_text_model": {
+    "pt": "Modelo de texto",
+    "en": "Text model",
+    "es": "Modelo de texto"
+  },
+  "setup_ready": {
+    "pt": "Modelo instalado. Pronto para verificar e continuar.",
+    "en": "Model installed. Ready to verify and continue.",
+    "es": "Modelo instalado. Listo para verificar y continuar."
+  },
+  "setup_needs_install": {
+    "pt": "Instale o modelo de voz para continuar.",
+    "en": "Install the speech model to continue.",
+    "es": "Instala el modelo de voz para continuar."
+  },
+  "setup_retry_install": {
+    "pt": "Tentar instalação novamente",
+    "en": "Retry installation",
+    "es": "Reintentar instalación"
+  },
+  "setup_download_install": {
+    "pt": "Baixar e instalar",
+    "en": "Download and install",
+    "es": "Descargar e instalar"
+  },
+  "setup_practice": {
+    "pt": "Verificar e experimentar",
+    "en": "Verify and try it",
+    "es": "Verificar y probar"
+  },
+  "setup_phone_title": {
+    "pt": "Use os modelos do PC no iPhone",
+    "en": "Use your PC models on iPhone",
+    "es": "Usa los modelos del PC en iPhone"
+  },
+  "setup_phone_hint": {
+    "pt": "Conecte o iPhone ao Clarify no seu computador. O PC processa o áudio e precisa ficar ligado. A conta só é necessária para autorizar acesso fora do Wi-Fi.",
+    "en": "Connect iPhone to Clarify on your computer. The PC processes audio and must stay on. An account is only needed to authorize access outside Wi-Fi.",
+    "es": "Conecta el iPhone a Clarify en tu equipo. El PC procesa el audio y debe estar encendido. Solo necesitas una cuenta para autorizar el acceso fuera del Wi-Fi."
+  },
+  "setup_pair_phone": {
+    "pt": "Conectar iPhone",
+    "en": "Connect iPhone",
+    "es": "Conectar iPhone"
+  },
+  "setup_mobile_privacy": {
+    "pt": "O áudio e o texto são processados no computador pareado. As chaves dos provedores ficam no PC.",
+    "en": "Audio and text are processed on your paired computer. Provider keys stay on the PC.",
+    "es": "El audio y el texto se procesan en tu equipo vinculado. Las claves de los proveedores quedan en el PC."
+  },
+  "setup_account_library": {
+    "pt": "A conta sincroniza seu dicionário, snippets e histórico. Os modelos e as chaves pessoais continuam sob seu controle.",
+    "en": "Your account syncs dictionary, snippets and history. You keep control of personal models and keys.",
+    "es": "Tu cuenta sincroniza el diccionario, los snippets y el historial. Tú controlas los modelos y las claves personales."
+  },
+  "setup_opencode_missing": {
+    "pt": "Instale o OpenCode neste computador para consultar os modelos gratuitos.",
+    "en": "Install OpenCode on this computer to check its free models.",
+    "es": "Instala OpenCode en este equipo para consultar sus modelos gratuitos."
+  },
+  "setup_openai_endpoint": {
+    "pt": "OpenAI · chave pessoal ou endpoint local",
+    "en": "OpenAI · personal key or local endpoint",
+    "es": "OpenAI · clave personal o endpoint local"
+  },
+  "setup_endpoint_hint": {
+    "pt": "Opcional. Use o endereço do seu servidor compatível com OpenAI. O texto é enviado a esse endereço.",
+    "en": "Optional. Use your OpenAI-compatible server address. Text is sent to this address.",
+    "es": "Opcional. Usa la dirección de tu servidor compatible con OpenAI. El texto se envía a esa dirección."
+  },
+  "setup_mobile_computer": {
+    "pt": "Seus modelos no computador",
+    "en": "Your models on your computer",
+    "es": "Tus modelos en tu equipo"
+  },
+  "setup_mobile_computer_hint": {
+    "pt": "O iPhone usa um PC pareado com o Clarify aberto.",
+    "en": "iPhone uses a paired PC with Clarify open.",
+    "es": "El iPhone usa un PC vinculado con Clarify abierto."
+  },
+  "Transcrição ao vivo": {
+    "pt": "Transcrição ao vivo",
+    "en": "Live transcription",
+    "es": "Transcripción en vivo"
+  },
+  "setup_opencode_install": {
+    "pt": "O Clarify instala o OpenCode neste computador quando você conecta. Os modelos gratuitos têm limites do provedor.",
+    "en": "Clarify installs OpenCode on this computer when you connect. Free models have provider limits.",
+    "es": "Clarify instala OpenCode en este equipo al conectar. Los modelos gratuitos tienen límites del proveedor."
+  },
+  "setup_skip_text": {
+    "pt": "Agora não",
+    "en": "Not now",
+    "es": "Ahora no"
+  },
+  "setup_install_opencode": {
+    "pt": "Instalar e conectar OpenCode",
+    "en": "Install and connect OpenCode",
+    "es": "Instalar y conectar OpenCode"
+  },
+  "setup_custom_endpoint": {
+    "pt": "Usar um servidor local ou outro endereço",
+    "en": "Use a local server or another address",
+    "es": "Usar un servidor local u otra dirección"
+  },
+  "setup_local_endpoint_hint": {
+    "pt": "Para um servidor local, informe o endereço e deixe a chave vazia se ela não for exigida.",
+    "en": "For a local server, enter its address and leave the key empty if it is not required.",
+    "es": "Para un servidor local, introduce la dirección y deja la clave vacía si no es necesaria."
+  },
+  "ChatGPT subscription": {
+    "pt": "Assinatura ChatGPT",
+    "en": "ChatGPT subscription",
+    "es": "Suscripción de ChatGPT"
+  },
+  "Could not load OpenCode's free models. Check your connection and try again.": {
+    "pt": "Não foi possível consultar os modelos do OpenCode. Verifique a conexão e tente novamente.",
+    "en": "Could not load OpenCode's free models. Check your connection and try again.",
+    "es": "No se pudieron consultar los modelos de OpenCode. Comprueba la conexión e inténtalo de nuevo."
+  },
+  "OpenCode refused or could not complete this free request. Retry later or select another free model explicitly.": {
+    "pt": "O OpenCode não concluiu a solicitação. Tente novamente ou escolha outro modelo.",
+    "en": "OpenCode could not complete the request. Try again or choose another model.",
+    "es": "OpenCode no completó la solicitud. Inténtalo de nuevo o elige otro modelo."
+  },
+  "OpenCode free usage limit reached. Retry later or explicitly select another service. No fallback was used.": {
+    "pt": "O limite gratuito do OpenCode foi atingido. Tente mais tarde ou escolha outro serviço.",
+    "en": "OpenCode free usage limit reached. Try later or choose another service.",
+    "es": "Se alcanzó el límite gratuito de OpenCode. Inténtalo más tarde o elige otro servicio."
+  },
+  "No anonymous free OpenCode text model is available.": {
+    "pt": "Nenhum modelo gratuito do OpenCode está disponível sem login.",
+    "en": "No free OpenCode model is available without sign-in.",
+    "es": "No hay modelos gratuitos de OpenCode disponibles sin iniciar sesión."
   }
 }

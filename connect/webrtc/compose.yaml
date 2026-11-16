@@ -1,0 +1,38 @@
+# Inactive unless the operator explicitly selects the webrtc profile.
+services:
+  turn:
+    profiles: [webrtc]
+    image: coturn/coturn@sha256:71c3c990283385567f11794ee692e3a47b66fd9b0bb39e42afbe776e331dd888
+    network_mode: host
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    cpus: 1
+    volumes:
+      - ${TURN_CERT_DIRECTORY:-./disabled-certificates}:/certificates:ro
+    environment:
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-}
+      TURN_PUBLIC_IP: ${TURN_PUBLIC_IP:-}
+      TURN_REALM: ${TURN_REALM:-}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        test "$${#TURN_SHARED_SECRET}" -ge 32
+        test -n "$$TURN_PUBLIC_IP"
+        test -n "$$TURN_REALM"
+        exec turnserver -n --log-file=stdout --simple-log \
+          --listening-ip=0.0.0.0 --relay-ip="$$TURN_PUBLIC_IP" \
+          --realm="$$TURN_REALM" --use-auth-secret \
+          --static-auth-secret="$$TURN_SHARED_SECRET" \
+          --cert=/certificates/fullchain.pem --pkey=/certificates/privkey.pem \
+          --listening-port=3478 --tls-listening-port=5349 \
+          --min-port=55000 --max-port=55099 --no-cli \
+          --no-multicast-peers --max-allocate-lifetime=120 \
+          --denied-peer-ip=10.0.0.0-10.255.255.255 \
+          --denied-peer-ip=172.16.0.0-172.31.255.255 \
+          --denied-peer-ip=192.168.0.0-192.168.255.255 \
+          --denied-peer-ip=169.254.0.0-169.254.255.255 \
+          --denied-peer-ip=0.0.0.0-0.255.255.255 \
+          --denied-peer-ip=127.0.0.0-127.255.255.255 \
+          --denied-peer-ip=::1 --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff \
+          --user-quota=4 --total-quota=512 --max-bps=1048576

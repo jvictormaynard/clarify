@@ -25,6 +25,7 @@ from workflow_config import DEFAULT_WORKFLOW_PROMPTS, validate_workflow_route
 from shared.dictation_policy import DictationCleanupPolicy, cleanup_level
 from provider_types import ProviderCapability, ProviderConnection
 from provider_registry import PROVIDER_REGISTRY
+from provider_adapters import is_keyless_loopback_url
 
 
 class TextActionStateChanged(ValueError):
@@ -85,13 +86,17 @@ class TextActionService:
         self._refresh_generation = 0
 
     def managed(self):
-        return self.account is not None and any(
-            getattr(self.account, key, False) is True
-            for key in ("managed", "signed_in", "hosted")
+        # Sign-in must not select a processing provider.
+        return False
+
+    def account_owned(self):
+        return self.account is not None and (
+            self.account.scope is not None
+            or self.account.snapshot().get("accountLibraryRequired", False)
         )
 
     def owner(self):
-        if not self.managed():
+        if not self.account_owned():
             return None
         owner = self.account.history_identity()
         if owner is None:
@@ -121,7 +126,7 @@ class TextActionService:
         }
         if not changed:
             return config
-        if self.managed():
+        if self.account_owned():
             devices = {key: dict(value) for key, value in settings.devices.items()}
             owner = self._device_key()
             prefs = devices.setdefault(owner, {})
@@ -145,7 +150,7 @@ class TextActionService:
         return replace(config, text_actions=replace(settings, actions=tuple(actions)))
 
     def sync_legacy_routes(self, config, previous):
-        if self.managed():
+        if self.account_owned():
             return config
         settings = settings_for(config)
         actions = []
@@ -346,7 +351,7 @@ class TextActionService:
         return native_bindings(self.repository.load(), self._library()[1])
 
     def bindings_for(self, config):
-        if not self.managed():
+        if not self.account_owned():
             return native_bindings(config, settings_for(config).actions)
         actions = self._library()[1]
         preferences = settings_for(config).devices.get(self._device_key(), {})
@@ -408,12 +413,7 @@ class TextActionService:
                 after[self._device_key()] = owner_preferences
                 new_settings = replace(new_settings, after_dictation=after)
             for action in new_actions:
-                if not self.managed():
-                    new_settings.profile(action.processing_profile_id).resolved(before)
-                elif action.processing_profile_id != "default":
-                    raise ValueError(
-                        "Account actions use the account processing service"
-                    )
+                new_settings.profile(action.processing_profile_id).resolved(before)
             native_bindings(before, new_actions)  # Validate collisions before effects.
             owner = self.owner()
             if owner is None:
@@ -679,7 +679,14 @@ class TextActionService:
                     or metadata.default_base_url,
                 )
                 cache_key = (provider_id, connection.base_url, connection.api_key)
-                if not connection.api_key:
+                if (
+                    not connection.api_key
+                    and provider_id != "opencode"
+                    and not (
+                        provider_id == "openai"
+                        and is_keyless_loopback_url(connection.base_url)
+                    )
+                ):
                     status = "not_configured"
             return TextProfileModelRequest(
                 profile_id,
@@ -844,7 +851,13 @@ class TextActionService:
                 )
             except Exception:
                 return False
-        return bool(getattr(config, route.provider_id).api_key)
+        if route.provider_id == "opencode":
+            return PROVIDER_REGISTRY.adapter("opencode").available()
+        provider = getattr(config, route.provider_id)
+        return bool(provider.api_key) or (
+            route.provider_id == "openai"
+            and is_keyless_loopback_url(route.custom_endpoint or provider.base_url)
+        )
 
     def set_after(self, action_id, language, context, revision, *, config_change=None):
         from text_actions import TEXT_LANGUAGES

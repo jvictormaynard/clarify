@@ -361,12 +361,37 @@ focus removes the mask. Main content has no top fade, so headings retain full
 contrast at the measured 40 px inset. It keeps a stable scrollbar lane. Controls stack when needed. Library and history text can wrap and remain
 available in full; layout must not truncate persisted content.
 
-Authentication keeps full-width forms through each step. Managed accounts hide
-personal providers. Destructive operations keep their confirmation and account
+Authentication keeps full-width forms through each step. Signed-in accounts retain
+personal provider controls. Destructive operations keep their confirmation and account
 context checks. Opening a screen does not acquire the microphone or submit an
 authentication request.
 
-Initial setup and Account Settings share the same sign-in method selector:
+Personal onboarding starts with welcome, spoken language, a hardware-based speech
+recommendation, optional text service and verified installation. Back preserves
+choices; each step moves keyboard focus to its heading. Model names remain visible.
+Other speech models and personal endpoint settings remain available. Installation
+can be cancelled and retried. Completion requires the backend installation check.
+Practice and phone pairing follow setup. Opening setup does not request audio,
+install a model or connect a provider. The user starts each of those actions.
+Use centered step dots, a centered heading and a compact content column. Show the
+Clarify logo on welcome; subsequent steps have no repeated plain text brand label.
+The speech card shows the model, processing location and download. Put hardware
+details and the refresh action in the model-options disclosure. Stack a full-width
+primary action above Back in a centered footer, with at least 44 px button height.
+Use the existing controls, semantic colors and fonts. At 640 px, retain readable
+spacing without horizontal scroll. Short windows scroll.
+The text-service step uses one 480 px column for labels, controls, errors and
+actions. Use 16 px between form groups and 8 px between a label and its control.
+Keep one short service explanation. ChatGPT sign-in fills the column; account
+management stays in Settings. Show model selection after connection and catalog
+discovery. Personal API services retain manual model entry after connection.
+Put a custom endpoint in a disclosure. Clear setup errors when the service
+changes. Show Continue when the selected service is ready; offer Not now to
+continue with the raw transcript without connecting a service.
+Live speech appears in a bounded panel above the pill while recording. Partials
+are display-only and clear when capture ends.
+
+Account Settings uses the shared sign-in method selector:
 Google, Microsoft, GitHub and email. The shared sign-in form keeps full-width
 controls with a 44 px minimum height, 8 px gaps between method choices and a
 14 px form gap during onboarding. Email opens its own form; Back retains the
@@ -394,8 +419,8 @@ the configured toggle or hold behavior. Practice has only Skip and Continue in
 its footer. Continue stays disabled until a completed, nonempty transcript has
 no error or blocked state. Skip also closes active recording safely. Error
 recovery uses a contextual settings link. Starting again uses the shortcut.
-Back appears on the left and the forward action on the right in onboarding
-navigation rows, including email and code confirmation. Setup and practice
+Email and code confirmation place Back on the left and the forward action on
+the right. Personal model setup uses the centered stacked footer described above. Setup and practice
 group Skip and Continue on the right, with Skip immediately before Continue. The sign-in
 method choices retain their order. A completed transcript shows a success state;
 Skip and failed attempts do not. Replay uses the same practice destination and
@@ -430,8 +455,8 @@ phrase and restores the keys. The animation loops automatically, including on
 hover. Reduced motion shows the completed text without motion.
 
 The email form and Account Settings use an outlined guest button. It opens local setup during onboarding and
-returns to General from Account Settings. An expired managed session retains its
-explicit sign-out action before personal processing becomes available.
+returns to General from Account Settings. An expired account session retains its
+explicit sign-out action. Personal processing does not depend on that session.
 
 Provider marks use local official assets. The Google button uses the current
 gradient G and a bundled Google Sans Medium font, with its provider-specific

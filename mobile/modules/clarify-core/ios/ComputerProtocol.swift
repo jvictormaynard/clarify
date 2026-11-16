@@ -348,9 +348,10 @@ struct ComputerInvitation: Decodable {
   let routes: [ComputerRoute]
   let pairingToken: String
   let expiresAt: String
+  var webrtc: ComputerWebRTCBinding? = nil
   enum CodingKeys: String, CodingKey {
     case schemaVersion = "schema_version", computerID = "computer_id", computerName = "computer_name"
-    case routes, pairingToken = "pairing_token", expiresAt = "expires_at"
+    case webrtc, routes, pairingToken = "pairing_token", expiresAt = "expires_at"
   }
   static func base64URL(_ value: String, bytes: Int? = nil) -> Data? {
     guard !value.isEmpty, value.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 95 }), value.count % 4 != 1 else { return nil }
@@ -366,7 +367,7 @@ struct ComputerInvitation: Decodable {
       let data = base64URL(String(value.dropFirst(prefix.count))), data.count <= 8_192,
       let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
       ComputerJSONKeys.unique(data),
-      Set(raw.keys) == Set(["schema_version", "computer_id", "computer_name", "routes", "pairing_token", "expires_at"]),
+      Set(raw.keys).subtracting(["webrtc"]) == Set(["schema_version", "computer_id", "computer_name", "routes", "pairing_token", "expires_at"]),
       let routes = raw["routes"] as? [[String: Any]],
       routes.allSatisfy({ (try? ComputerRoute.parse($0, cloudflare: cloudflare)) != nil }),
       let invitation = try? JSONDecoder().decode(Self.self, from: data),
@@ -382,6 +383,7 @@ struct ComputerInvitation: Decodable {
     formatter.formatOptions = [.withInternetDateTime]
     guard let expiry = fractional ?? formatter.date(from: invitation.expiresAt), expiry > now,
       expiry.timeIntervalSince(now) <= 300 else { throw ComputerFailure.expiredQR }
+    try invitation.webrtc?.validate()
     for route in invitation.routes { _ = try route.validated(relayHost: ComputerRelayConfiguration.host(), cloudflare: cloudflare) }
     return invitation
   }

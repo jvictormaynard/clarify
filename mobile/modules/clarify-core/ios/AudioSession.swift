@@ -8,6 +8,9 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
   private var engine = AVAudioEngine()
   private let fileLock = NSLock()
   private var file: AudioClipWriter?
+  private var liveCapture: ComputerLiveCapture?
+  private var liveConverter: ComputerLivePCMConverter?
+  private var liveOperationID: String?
   private var captureAfter: TimeInterval = 0
   private var meteredOperationID: String?
   private var meteredAt: TimeInterval = 0
@@ -173,7 +176,10 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
             }
           }
           self.meteredAt = observedAt
-          do { try file.write(buffer) }
+          do {
+            try file.write(buffer)
+            if let capture = self.liveCapture { try self.liveConverter?.append(buffer, to: capture) }
+          }
           catch {
             let failedURL = self.audioURL
             DispatchQueue.main.async {
@@ -339,6 +345,27 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     let format = engine.inputNode.outputFormat(forBus: 0)
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("clarify-\(UUID().uuidString).m4a")
     let newFile = try AudioClipWriter(url: url, inputFormat: format)
+    let capture: ComputerLiveCapture?
+    do { capture = try MainActor.assumeIsolated {
+      // Keep the supported background/keyboard WAV path until native live
+      // transport has passed physical-device background acceptance.
+      guard Bundle.main.object(forInfoDictionaryKey: "ClarifyExperimentalLiveCapture") as? Bool == true,
+        UIApplication.shared.applicationState == .active else { return nil }
+      return try ProcessingDestination.shared.prepareLive(id, preferences: clipPreferences, policy: clipPolicy) { [weak self] partial in
+        guard let self, self.state.operationID == id,
+          [.recording, .locked, .transcribing].contains(self.state.phase),
+          ProcessingDestination.shared.acceptsHistory(self.clipHistory),
+          self.store?.isCancelled(id) != true else { return }
+        self.state.livePartial = partial; self.publish()
+      }
+    } } catch { newFile.cancel(); try? FileManager.default.removeItem(at: url); throw error }
+    let converter: ComputerLivePCMConverter?
+    do { converter = try capture.map { _ in try ComputerLivePCMConverter(format: format) } }
+    catch {
+      capture?.cancel()
+      MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) }
+      newFile.cancel(); try? FileManager.default.removeItem(at: url); throw error
+    }
     let cueDuration = playCue(starting: true)
     if haptics, UIApplication.shared.applicationState == .active {
       feedback.record("start")
@@ -346,6 +373,7 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     // The engine discards the short start cue so it is not sent for transcription.
     let captureStart = Date().addingTimeInterval(cueDuration)
     fileLock.lock()
+    liveCapture = capture; liveConverter = converter; liveOperationID = capture == nil ? nil : id
     file = newFile; audioURL = url; captureAfter = captureStart.timeIntervalSince1970
     meteredOperationID = id; meteredAt = 0; meteredLevel = 0
     fileLock.unlock()
@@ -353,15 +381,18 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     state.operationID = id
     state.textOperation = false
     state.phase = locked ? .locked : .recording
-    state.text = nil; state.message = nil; state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
+    state.text = nil; state.livePartial = nil; state.message = nil; state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     publish()
   }
   private func closeFile(finalize: Bool = false) -> URL? {
     fileLock.lock()
     var failed = false
     if finalize {
-      do { try file?.finish() } catch { failed = true }
-    } else { file?.cancel() }
+      do { if let capture = liveCapture { try liveConverter?.finish(to: capture) } }
+      catch { liveCapture?.cancel(); failed = true }
+      do { try file?.finish() } catch { liveCapture?.cancel(); failed = true }
+    } else { liveCapture?.cancel(); file?.cancel() }
+    liveCapture = nil; liveConverter = nil
     file = nil
     let url = audioURL; audioURL = nil
     meteredOperationID = nil; meteredAt = 0; meteredLevel = 0
@@ -382,6 +413,7 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     let preferences = clipPreferences
     let policy = clipPolicy
     startedAt = nil
+    fileLock.lock(); let live = liveCapture; fileLock.unlock()
     guard let url = closeFile(finalize: true) else { fail(L("Não foi possível gravar o áudio.")); return }
     playCue(starting: false)
     if haptics, UIApplication.shared.applicationState == .active { feedback.record("finish") }
@@ -397,7 +429,7 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
       fail(L("Entre na conta novamente.")); return
     }
     processRecording(retainedURL, id: id, recordedAt: recordedAt, historyOwner: historyOwner,
-      preferences: preferences, policy: policy)
+      preferences: preferences, policy: policy, live: live)
   }
   private func retainRecording(_ url: URL, createdAt: TimeInterval, duration: TimeInterval) -> URL {
     let retained = (try? recoveryResult.get().retain(url, createdAt: createdAt, duration: duration)) ?? url
@@ -489,13 +521,13 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     let row = recovery?.recordings().first { $0.id == recovery?.id(for: source) }
     try prepareDictation(preferences: preferences)
     let url = retainRecording(source, createdAt: row?.createdAt ?? Date().timeIntervalSince1970, duration: row?.duration ?? 0)
-    state.operationID = id; state.textOperation = false; state.text = nil; state.message = nil
+    state.operationID = id; state.textOperation = false; state.text = nil; state.livePartial = nil; state.message = nil
     state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     processRecording(url, id: id, recordedAt: Date().timeIntervalSince1970, historyOwner: clipHistory,
       preferences: clipPreferences, policy: clipPolicy)
   }
   private func processRecording(_ url: URL, id: String, recordedAt: TimeInterval, historyOwner: ProcessingCapture,
-    preferences: OutputPreferences, policy: DictationPolicy) {
+    preferences: OutputPreferences, policy: DictationPolicy, live: ComputerLiveCapture? = nil) {
     keyboardRetry = (id, url, ProcessingDestination.shared.historyContext)
     let recoveryID = try? recoveryResult.get().id(for: url)
     if let recoveryID { processingRecordings.insert(recoveryID) }
@@ -509,13 +541,17 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     task = Task { @MainActor [weak self] in
       guard let self = self else { return }
       defer {
+        if self.liveOperationID == id { self.liveOperationID = nil }
         if let recoveryID { self.processingRecordings.remove(recoveryID) }
         self.state.libraryRevision += 1; self.publish()
         self.endBackgroundTask(backgroundID)
       }
       do {
-        let outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(), preferences: preferences, policy: policy)
+        let outcome: ProcessingDictation
+        if let live { outcome = try await ProcessingDestination.shared.finishLive(live, owner: historyOwner) }
+        else { outcome = try await ProcessingDestination.shared.dictate(url, operationID: id, library: self.library(), preferences: preferences, policy: policy) }
         guard !Task.isCancelled, self.state.operationID == id, ProcessingDestination.shared.acceptsHistory(historyOwner) else { return }
+        self.state.livePartial = nil
         let transcript = outcome.transcript
         if let recoveryID { try? self.recoveryResult.get().mark(recoveryID, status: .complete) }
         self.state.text = outcome.text
@@ -561,7 +597,7 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     let accountIdentity = destination.captureTextIdentity()
     // Reserve the operation before discovery can suspend. The keyboard can then
     // acknowledge and cancel preparation through the same existing task owner.
-    state.operationID = id; state.textOperation = true; state.text = nil; state.message = nil
+    state.operationID = id; state.textOperation = true; state.text = nil; state.livePartial = nil; state.message = nil
     state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil; state.phase = .rewriting; publish()
     task = Task { @MainActor [weak self] in
       guard let self else { return }
@@ -601,6 +637,7 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
   }
   func clearResult(publish: Bool = true) {
     keyboardRetry = nil
+    state.livePartial = nil
     state.operationID = nil; state.textOperation = false; state.text = nil; state.phase = .idle; state.message = nil
     state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     if publish { self.publish() }
@@ -615,7 +652,15 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     clearResult(publish: false)
     deactivate(); libraryChanged()
   }
+  private func cancelLiveCapture() {
+    fileLock.lock()
+    liveCapture?.cancel(); liveCapture = nil; liveConverter = nil
+    fileLock.unlock()
+    liveOperationID = nil
+  }
   func cancel(preserveCapture: Bool = false) {
+    cancelLiveCapture()
+    state.livePartial = nil
     keyboardRetry = nil
     let capturedAt = startedAt
     let wasRecording = [.recording, .locked].contains(state.phase)
@@ -632,13 +677,16 @@ final class ClarifyAudioSession: NSObject, AVAudioPlayerDelegate {
     }
     if wasRecording { playCue(starting: false) }
     if state.phase.busy {
-      state.operationID = nil; state.phase = .idle; state.text = nil; state.message = nil
+      state.operationID = nil; state.phase = .idle; state.text = nil; state.livePartial = nil; state.message = nil
       state.errorRecovery = nil; state.errorCode = nil; state.errorPhase = nil; state.errorStatus = nil
     }
     endBackgroundTask()
     publish()
   }
   private func fail(_ message: String, diagnostics: ClarifyError? = nil) {
+    cancelLiveCapture()
+    state.livePartial = nil
+    if let id = state.operationID { MainActor.assumeIsolated { ComputerConnection.shared.cancelOperation(id) } }
     let capturedAt = startedAt
     if !ProcessingDestination.shared.configured, state.sessionActive { stopAudio() }
     cuePlayer?.stop(); cuePlayer = nil

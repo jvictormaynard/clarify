@@ -629,15 +629,18 @@ class KeyboardViewController: UIInputViewController {
     cancel.accessibilityLabel = error ? L("Fechar") : L("Cancelar gravação")
     cancel.alpha = cancel.isEnabled ? 1 : 0.4
     globe.isHidden = !needsInputModeSwitchKey
-    let caption = error ? (outputPreferenceError ?? state.message!) : pending == "cancel" ? L("Cancelando…") : pending == "start" ? L("Preparando…") :
-      state.phase == .rewriting ? L("Reescrevendo…") : processing ? L("Transcrevendo…") : L("Ouvindo…")
+    let partial = recording && !processing && !error ? state.livePartial : nil
+    let caption = partial.map { String($0.suffix(240)) } ?? (error ? (outputPreferenceError ?? state.message!) : pending == "cancel" ? L("Cancelando…") : pending == "start" ? L("Preparando…") :
+      state.phase == .rewriting ? L("Reescrevendo…") : processing ? L("Transcrevendo…") : L("Ouvindo…"))
+    recordingStatus.lineBreakMode = partial == nil ? .byTruncatingTail : .byTruncatingHead
+    recordingStatus.accessibilityLabel = partial.map { L("Transcrição ao vivo") + ": " + $0 }
     waveform.isHidden = error; finishRecordingButton.isHidden = error
     recordingStatus.numberOfLines = error ? 0 : 2
     if errorStatusTop?.isActive != error {
       (error ? recordingStatusTop : errorStatusTop)?.isActive = false
       (error ? errorStatusTop : recordingStatusTop)?.isActive = true
     }
-    if visible, recordingStatus.text != caption, UIAccessibility.isVoiceOverRunning {
+    if visible, partial == nil, recordingStatus.text != caption, UIAccessibility.isVoiceOverRunning {
       UIAccessibility.post(notification: .announcement, argument: caption)
     }
     recordingStatus.text = caption

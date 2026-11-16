@@ -500,6 +500,8 @@ class QmlComputerController(QObject):
         future = self._worker.submit(stop)
         self._worker.shutdown(wait=True)
         self._shutdown_succeeded = future.result()
+        if hasattr(self, "webrtc"):
+            self.webrtc.shutdown()
         if not self._shutdown_succeeded:
             self._error = "failed"
         self._busy = False
@@ -511,11 +513,20 @@ def create_computer_controller(runtime, parent=None):
     """Reuse the profile, secrets, dictionary and bounded provider registry."""
     state_path = Path(runtime.repositories.config.path).with_name("computer.sqlite3")
 
+    try:
+        from .computer_webrtc import ComputerWebRTC, WebRTCHost
+    except ImportError:  # Frozen standalone entrypoint.
+        from computer_webrtc import ComputerWebRTC, WebRTCHost
+
+    from computer_live import ComputerLivePeer
+
+    remote = ComputerWebRTC(runtime.account)
+    remote.recognition_factory = lambda host, ticket: ComputerLivePeer(host)
+
     def factory():
         from computer_host import ComputerHost as Host
         from computer_processing import ComputerProcessor
         from shared.computer_connect import relay_configuration
-        from computer_cloudflare import configuration as cloudflare_configuration
 
         try:
             from .qml_runtime import QtWorkflowConfig
@@ -527,21 +538,24 @@ def create_computer_controller(runtime, parent=None):
             runtime.dictionary_service,
             registry=runtime.provider_registry,
         )
-        return Host(
-            processor,
-            runtime.repositories.config.secret_store,
-            state_path,
-            address_provider=computer_addresses,
-            allow_port_fallback=True,
-            cloudflare_config=cloudflare_configuration(),
-            **relay_configuration(),
+        return WebRTCHost(
+            Host(
+                processor,
+                runtime.repositories.config.secret_store,
+                state_path,
+                address_provider=computer_addresses,
+                allow_port_fallback=True,
+                cloudflare_config=None,
+                **relay_configuration(),
+            ),
+            remote,
         )
 
-    return QmlComputerController(
+    controller = QmlComputerController(
         state_path,
         factory,
-        blocked=lambda: bool(
-            runtime.account and (runtime.account.signed_in or runtime.account.managed)
-        ),
         parent=parent,
     )
+
+    controller.webrtc = remote
+    return controller

@@ -353,8 +353,13 @@ def main():
         patch("clarify.desktop.qml_settings._is_windows", return_value=False),
         patch(
             "local_asr_catalog.installer_for",
-            side_effect=lambda model, device: Mock(
-                status=lambda: {"state": "installed"}
+            side_effect=lambda model, device="cpu": Mock(
+                status=lambda: {
+                    "state": "missing"
+                    if "--personal-missing" in sys.argv
+                    else "installed"
+                },
+                requirements=lambda: {"download_bytes": 157286400},
             ),
         ),
     ):
@@ -408,18 +413,79 @@ def main():
                 )
             )
             fixtures.enter_context(patch("webbrowser.open", return_value=True))
+        if "--personal-catalog" in sys.argv:
+            from provider_registry import PROVIDER_REGISTRY
+            from provider_types import ModelCatalog
+
+            # Synthetic catalog only; never install or call a real text service.
+            adapter = PROVIDER_REGISTRY.adapter("opencode")
+            fixtures.enter_context(
+                patch.object(adapter, "available", return_value=True)
+            )
+            fixtures.enter_context(patch.object(adapter, "install", return_value=None))
+            fixtures.enter_context(
+                patch.object(
+                    adapter,
+                    "validate",
+                    return_value=ModelCatalog(
+                        (),
+                        ("opencode/fixture-free-a", "opencode/fixture-free-b"),
+                    ),
+                )
+            )
+            if "--personal-catalog-error" in sys.argv:
+                from provider_types import ProviderConfigurationError
+
+                adapter.validate.side_effect = ProviderConfigurationError(
+                    "opencode",
+                    "Could not load OpenCode's free models. Check your connection and try again.",
+                )
+                fixtures.enter_context(
+                    patch.object(
+                        PROVIDER_REGISTRY.adapter("openai"),
+                        "validate",
+                        side_effect=ProviderConfigurationError(
+                            "openai", "Invalid API key."
+                        ),
+                    )
+                )
         onboarding = "--onboarding" in sys.argv
         if not onboarding:
             repositories.config.apply(
                 replace(repositories.config.load(), onboarding_completed=True)
             )
+        local_product = Mock(state=LocalASRProductState("installed"), busy=False)
+        if "--personal-install" in sys.argv:
+            from tests.support.local_asr_product import FakeInstaller
+            from local_asr_product import LocalASRProductController
+
+            class SetupInstaller(FakeInstaller):
+                def install(self, callback=None, cancel_event=None):
+                    if self.install_calls:
+                        threading.Timer(1.0, self.release.set).start()
+                    return super().install(callback, cancel_event)
+
+            setup_installer = SetupInstaller()
+            fixtures.enter_context(
+                patch(
+                    "local_asr_catalog.installer_for",
+                    side_effect=lambda *args: setup_installer,
+                )
+            )
+            fixtures.enter_context(
+                patch(
+                    "local_asr_catalog.ModelInstaller",
+                    side_effect=lambda *args: setup_installer,
+                )
+            )
+            local_product = LocalASRProductController(installer=setup_installer)
         settings = QmlSettingsController(
             repositories,
             account_service=OnboardingAccount(directory)
             if onboarding or "--signed-in" in sys.argv or "--social-wait" in sys.argv
             else None,
             microphone_backend=backend,
-            local_product=Mock(state=LocalASRProductState("installed"), busy=False),
+            local_product=local_product,
             chatgpt_session=chatgpt,
         )
         if "--text-actions" in sys.argv:

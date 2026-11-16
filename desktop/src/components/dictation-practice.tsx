@@ -46,7 +46,9 @@ export function DictationPractice({ controller }: SettingsPageProps) {
   const phase = active ? "practice" : success ? "success" : step;
   const recordingShortcut = state.hotkeyActions.find(action => action.id === "recording_hotkey");
   const shortcut = recordingShortcut?.key ? recordingShortcut.display : undefined;
+  const [phone, setPhone] = useState(false);
   const close = () => void run("practiceCommand", "close");
+
   const testBusy = useRef(state.microphoneTestBusy);
   testBusy.current = state.microphoneTestBusy;
   useEffect(() => {
@@ -59,21 +61,37 @@ export function DictationPractice({ controller }: SettingsPageProps) {
   useEffect(() => {
     heading.current?.closest("main")?.scrollTo({ top: 0 });
     heading.current?.focus({ preventScroll: true });
-  }, [phase]);
+  }, [phase, phone]);
   const leaveSetup = async () => {
     if (state.microphoneTestBusy) await run("stopMicrophoneTest");
     setStep("practice");
   };
   const configure = async () => {
     await run("practiceCommand", "close");
-    await navigate(practice?.phase === "microphone_unavailable" ? "dictation" : practice?.blocked === "practice_model" ? "models" : practice?.blocked === "practice_session" || state.accountState?.managed || state.accountState?.signedIn ? "account" : "models");
+    await navigate(practice?.phase === "microphone_unavailable" ? "dictation" : practice?.blocked === "practice_model" ? "models" : practice?.blocked === "practice_session" || state.accountState?.managed ? "account" : "models");
   };
   const status = (!active && practice?.blocked) || practice?.status || (practice?.phase === "microphone_unavailable" ? "practice_microphone" : "");
-  const statusKey = status === "provider_authentication" && !state.accountState?.managed && !state.accountState?.signedIn
+  const statusKey = status === "provider_authentication" && !state.accountState?.managed
     ? "practice_configuration" : statusMessages[status] || (status === "practice_microphone" ? "practice_microphone" : "practice_failed");
   const configurationRequired = ["practice_microphone", "practice_configuration", "practice_model", "practice_session", "practice_quota", "account_allowance_exhausted", "account_allocation_waiting", "account_authentication_required", "provider_authentication", "provider_quota"].includes(status);
   const languages: Record<string, string> = { auto: t("Idioma original"), en: "English", pt: "Português", es: "Español", de: "Deutsch", ru: "Русский" };
 
+  if (phone) return <main className="onboarding onboarding-page onboarding-flow">
+    <div className="onboarding-content">
+      <div className="onboarding-heading">
+        <h1 ref={heading} tabIndex={-1}>{t("setup_phone_title")}</h1>
+        <p className="hint">{t("setup_phone_hint")}</p>
+      </div>
+      <div className="onboarding-flow-actions">
+        <Button variant="text" onClick={() => setPhone(false)}>{t("Voltar")}</Button>
+        <Button variant="text" onClick={close}>{t("practice_skip")}</Button>
+        <Button variant="primary" onClick={async () => {
+          await run("practiceCommand", "close");
+          await navigate("devices");
+        }}>{t("setup_pair_phone")}</Button>
+      </div>
+    </div>
+  </main>;
   return <main className="onboarding onboarding-page onboarding-flow" data-phase={phase}>
     <div className="onboarding-content" key={phase}>
       <div className="onboarding-heading">
@@ -142,7 +160,7 @@ export function DictationPractice({ controller }: SettingsPageProps) {
       <div className="onboarding-flow-actions onboarding-practice-actions">
         <Button variant="text" onClick={close}>{t("practice_skip")}</Button>
         <Button variant="primary" disabled={phase === "setup" ? busy || state.microphoneInventoryBusy || !shortcut : busy || !success}
-          onClick={() => phase === "setup" ? void leaveSetup() : close()}>{t("Continuar")}</Button>
+          onClick={() => phase === "setup" ? void leaveSetup() : setPhone(true)}>{t("Continuar")}</Button>
       </div>
     </div>
   </main>;

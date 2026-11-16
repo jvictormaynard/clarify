@@ -160,10 +160,6 @@ class WorkflowProviderService:
     ):
         from text_actions import validate_input, validate_output
 
-        if self.text_action_input_policy is TextActionInputPolicy.PAIRED_COMPUTER and (
-            snapshot.account_context is not None or self._uses_account()
-        ):
-            raise ValueError("Paired text input requires personal processing")
         validate_input(text, language, policy=self.text_action_input_policy)
         target = parse_output_language(
             output_language
@@ -181,21 +177,7 @@ class WorkflowProviderService:
         if cancel is not None:
             cancel.raise_if_cancelled()
         action, route = snapshot.action, snapshot.route
-        if snapshot.account_context is not None:
-            value = self.account.execute_text_action(
-                snapshot,
-                text,
-                target if target is not None else language,
-                cancel=cancel,
-                **(
-                    {"writing_style": writing_style}
-                    if writing_style is not None
-                    else {}
-                ),
-                **({"output_language": target} if target not in (None, "auto") else {}),
-            )
-            result = RewriteResult(value, "clarify", "openai/gpt-oss-20b")
-        elif route is None or self._uses_account():
+        if route is None:
             raise RuntimeError("Text action account context changed")
         elif action.kind == "translation" and target != "auto":
             if not language or language == "auto":
@@ -276,11 +258,8 @@ class WorkflowProviderService:
         return route
 
     def _uses_account(self):
-        return self.account is not None and (
-            self.account.hosted
-            or getattr(self.account, "signed_in", False) is True
-            or getattr(self.account, "managed", False) is True
-        )
+        # Account authority is for sync and remote authorization only.
+        return False
 
     def _connection(self, route, *, current: AppConfig | None = None):
         current = current if current is not None else self.config.current()
@@ -329,35 +308,6 @@ class WorkflowProviderService:
                 else current.dictation_cleanup_level
             )
         )
-        if self._uses_account():
-            options = {}
-            if policy.requested is not None:
-                options["cleanup_level"] = policy.requested
-            if style is not None:
-                options["writing_style"] = style
-            if target is not None:
-                options["output_language"] = target
-            if after_action is not None:
-                options["text_action"] = after_action
-                options["text_action_language"] = after_language
-            if after_action_error:
-                # A missing optional action cannot become default hosted AI.
-                options["cleanup_level"] = "preserve"
-            if dictation_snapshot is not None:
-                options["expected_identity"] = dictation_snapshot.account_context
-            result = self.account.transcribe(
-                audio_source,
-                selection.language
-                if selection is not None and output_language is None
-                else language,
-                self.dictionary_service,
-                **options,
-            )
-            return (
-                replace(result, cleanup_level_requested=policy.requested)
-                if after_action_error
-                else result
-            )
         route = current.workflow(WorkflowScope.TRANSCRIPTION)
         if not route.enabled or not route.model_id:
             raise RuntimeError("Transcription workflow is disabled or unconfigured")
@@ -369,6 +319,8 @@ class WorkflowProviderService:
                 prompt=selection.prompt,
             )
         provider = route.provider_id
+        if selection is None and str(language or "auto").lower() == "auto":
+            language = getattr(current, "recognition_language", "auto")
         metadata = self.registry.describe(provider)
         # A multimodal model normally edits in its audio request. With active
         # snippets, keep recognition separate so standalone saved text bypasses
@@ -672,12 +624,6 @@ class WorkflowProviderService:
         source = str(text).strip()
         if not source:
             raise RuntimeError("No text selected")
-        if self._uses_account():
-            return RewriteResult(
-                self.account.transform_text(source, "rewrite"),
-                "clarify",
-                "openai/gpt-oss-20b",
-            )
         route = self._route(WorkflowScope.REWRITE)
         provider = route.provider_id
         if not self.registry.supports(provider, ProviderCapability.TEXT_GENERATION):
@@ -721,13 +667,6 @@ class WorkflowProviderService:
         source = str(text)
         if not source.strip():
             raise RuntimeError("No text selected")
-        if self._uses_account():
-            return TranslationResult(
-                self.account.transform_text(source, "translate", target_language),
-                "clarify",
-                "openai/gpt-oss-20b",
-                target_language,
-            )
         route = self._route(WorkflowScope.TRANSLATION)
         provider = route.provider_id
         target = str(target_language or "").strip().lower()

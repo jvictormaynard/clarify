@@ -13,11 +13,12 @@ import re
 import subprocess
 import threading
 
-MODELS = ("ggml-base", "ggml-small", "ggml-medium")
+MODELS = ("ggml-base", "ggml-small", "ggml-medium", "nemotron-3.5-streaming")
 PROFILE_LABELS = (
     "Fast - Whisper Base",
     "Balanced - Whisper Small",
     "Quality - Whisper Medium",
+    "Nemotron 3.5 Streaming (provisional)",
 )
 
 
@@ -71,6 +72,10 @@ def devices():
 def installer_for(model, device="cpu"):
     from local_asr import LocalASRInstaller, default_install_root, default_manifest_path
 
+    if model == "nemotron-3.5-streaming":
+        from local_asr_live_assets import installer_for_native
+
+        return installer_for_native()
     if model not in MODELS:
         raise ValueError("Unknown local model")
     backend = "cuda" if normalize_device(device).startswith("cuda:") else "cpu"
@@ -109,7 +114,7 @@ class ModelInstaller:
     def requirements(self):
         result = self.cpu.requirements()
         gpu = len(self.inventory) > 2
-        if gpu:
+        if gpu and self.model != "nemotron-3.5-streaming":
             extra = installer_for(self.model, "cuda:0").requirements()
             result["download_bytes"] += max(
                 0, extra.get("download_bytes", 0) - self.cpu.asset("model").size
@@ -128,6 +133,9 @@ class ModelInstaller:
     def status(self, **kwargs):
         self.inventory = devices()
         result = self.cpu.status(**kwargs)
+        if self.model == "nemotron-3.5-streaming":
+            result["requirements"] = self.cpu.requirements()
+            return result
         if result["state"] == "installed":
             gpu = installer_for(self.model, "cuda:0")
             if len(self.inventory) > 2 and not gpu.model_path.exists():
@@ -165,7 +173,7 @@ class ModelInstaller:
         self.inventory = devices()
         self.cpu.install(callback, event)
         warning = ""
-        if len(self.inventory) > 2:
+        if len(self.inventory) > 2 and self.model != "nemotron-3.5-streaming":
             token.raise_if_cancelled()
             try:
                 installer_for(self.model, "cuda:0").install(callback, event)
@@ -176,6 +184,12 @@ class ModelInstaller:
         token.raise_if_cancelled()
         if callback:
             callback("Measuring CPU/GPU speed", 0, 0)
+        if self.model == "nemotron-3.5-streaming":
+            status = self.cpu.status()
+            status["detail"] = (
+                "Installed provisional native streaming model. CPU only; no automatic default selection."
+            )
+            return status
         try:
             result = calibrate(
                 self.pool,
@@ -200,7 +214,8 @@ class ModelInstaller:
         # Each root retains its own guards. Removing one hard link leaves the other valid.
         self.pool.cancel()
         self.pool.shutdown()
-        installer_for(self.model, "cuda:0").remove(cancel_event)
+        if self.model != "nemotron-3.5-streaming":
+            installer_for(self.model, "cuda:0").remove(cancel_event)
         return self.cpu.remove(cancel_event)
 
 
@@ -223,6 +238,8 @@ class EnginePool:
                     "Local measurement is stopping. Try again shortly."
                 )
         device = normalize_device(device)
+        if model == "nemotron-3.5-streaming":
+            device = "cpu"
         if device == "auto":
             device = measured_device(model)
         key = (model, device)
@@ -235,10 +252,18 @@ class EnginePool:
                             and engine._startup_cancel is None
                         ):
                             engine._stop_locked()
-            if key not in self._engines:
-                self._engines[key] = LocalASRSidecarManager(
-                    installer_for(model, device), compute_device=device
-                )
+            if (
+                key not in self._engines
+                or getattr(self._engines[key], "_closed", False) is True
+            ):
+                if model == "nemotron-3.5-streaming":
+                    from local_asr_live import NativeEngine
+
+                    self._engines[key] = NativeEngine(installer_for(model))
+                else:
+                    self._engines[key] = LocalASRSidecarManager(
+                        installer_for(model, device), compute_device=device
+                    )
             return self._engines[key]
 
     def cancel(self):

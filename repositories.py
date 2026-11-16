@@ -191,6 +191,7 @@ class AppConfig:
     openai: ProviderConfig = field(default_factory=ProviderConfig)
     groq: ProviderConfig = field(default_factory=ProviderConfig)
     local_asr: ProviderConfig = field(default_factory=ProviderConfig)
+    opencode: ProviderConfig = field(default_factory=ProviderConfig)
     chatgpt: ProviderConfig = field(
         default_factory=lambda: ProviderConfig(base_url="https://api.openai.com/v1")
     )
@@ -201,6 +202,7 @@ class AppConfig:
     dictation_writing_style: WritingStyle | None = None
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
+    recognition_language: str = "auto"
     history_enabled: bool = False
     experimental_audio_history: bool = False
     automatic_updates: bool = False
@@ -283,7 +285,7 @@ class AppConfig:
         def provider_config(name: str) -> ProviderConfig:
             metadata = PROVIDER_REGISTRY.describe(name)
             defaults_for_provider = provider_defaults[name]
-            if name == "chatgpt":
+            if name in {"chatgpt", "opencode"}:
                 return ProviderConfig(
                     base_url=metadata.default_base_url,
                     text_model=string(metadata.text_model_key),
@@ -555,6 +557,7 @@ class AppConfig:
             groq=provider_configs["groq"],
             local_asr=provider_configs["local_asr"],
             chatgpt=provider_configs["chatgpt"],
+            opencode=provider_configs["opencode"],
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
@@ -566,6 +569,9 @@ class AppConfig:
                 source.get("local_asr_device")
             ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
+            recognition_language=choice(
+                "recognition_language", SUPPORTED_LANGUAGES, "auto"
+            ),
             history_enabled=history_enabled,
             experimental_audio_history=source.get("experimental_audio_history") is True,
             automatic_updates=source.get("automatic_updates") is True,
@@ -601,6 +607,8 @@ class AppConfig:
             # The legacy loader enumerates every registered audio-model key.
             # Text-only providers retain an empty compatibility field.
             "chatgpt_audio_model": "",
+            "opencode_audio_model": "",
+            "opencode_text_model": self.opencode.text_model,
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
             "dictation_cleanup_level": self.dictation_cleanup_level,
@@ -609,6 +617,7 @@ class AppConfig:
             else None,
             "local_asr_device": self.local_asr_device,
             "local_asr_streaming": self.local_asr_streaming,
+            "recognition_language": self.recognition_language,
             "refinement_provider": self.selection.refinement_provider,
             "refinement_model": self.selection.refinement_model,
             "ui_mode": self.ui.mode,

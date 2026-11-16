@@ -31,6 +31,12 @@ const pageComponents = {
 
 export function App() {
   const controller = useSettings();
+  const setupWasRequired = useRef(false);
+  useEffect(() => {
+    if (!controller.state) return;
+    if (setupWasRequired.current && !controller.state.onboardingRequired) void controller.run("practiceCommand", "open");
+    setupWasRequired.current = controller.state.onboardingRequired;
+  }, [controller.state?.onboardingRequired, controller.run]);
   const [collapsed, setCollapsed] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   useEffect(() => {

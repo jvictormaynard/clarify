@@ -60,7 +60,13 @@ export type ComputerState = {
   error: string; devices: { id: string; name: string }[];
   pairingReady: boolean; pairingExpiresAt: number;
 };
+export type PersonalSetupState = {
+  language: string; busy: boolean; error: string;
+  recommendation: { providerId: string; modelId: string; label: string; reason: string; executionDevice: string; downloadBytes: number; installed: boolean };
+  textOptions: { id: string; label: string; available: boolean; runtimeInstalled?: boolean; connected: boolean; modelId: string; modelLabel: string; access: string; models?: Option[] }[];
+};
 export interface Settings {
+  personalSetupState?: PersonalSetupState;
   textActions?: TextAction[];
   textActionProfiles?: TextActionProfile[];
   textActionProviders?: (Option & { defaultModel: string; supportsCustomEndpoint: boolean })[];
@@ -144,6 +150,7 @@ export interface Settings {
   providerError: string;
   providerSupportsCustomEndpoint: boolean;
   localProfiles: string[];
+  localModelIds?: string[];
   localProfileIndex: number;
   localDevices: string[];
   localDeviceIndex: number;
@@ -186,6 +193,7 @@ export type SettingsArguments = {
   refreshTextActions: [];
   practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
   computerCommand: [action: "enable" | "pair" | "stop" | "revoke" | "durable" | "close", value: string];
+  personalSetupCommand: [action: "recommend" | "configure" | "connect_opencode" | "complete" | "cancel" | "reset_text_choice", value: string];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   chatgptCommand: [action: ChatGPTAction, value: string];

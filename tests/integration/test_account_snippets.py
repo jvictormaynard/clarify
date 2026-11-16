@@ -1,12 +1,10 @@
 from dataclasses import replace
-from pathlib import Path
 import unittest
 import json
 from unittest.mock import patch
 
 from clarify_account import AccountError, merge_snippets
 from dictionary_snippets import Snippet
-from workflows import RecordingSnapshot
 import tests.support.account as fixture
 
 
@@ -14,108 +12,6 @@ class AccountSnippetTests(unittest.TestCase):
     setUp = fixture.AccountFixture.setUp
     response = fixture.AccountFixture.response
     signed_in = fixture.AccountFixture.signed_in
-
-    def test_cleanup_is_optional_and_preserve_has_no_false_failure_or_model(self):
-        self.signed_in()
-        self.account._last_sync_attempt = self.account._clock()
-        self.request.return_value = self.response(
-            {
-                "transcript": "Não  envie 42.",
-                "text": "Não  envie 42.",
-                "rewritten": False,
-                "cleanup_level_requested": "preserve",
-                "cleanup_level_applied": "preserve",
-                "refinement_attempted": False,
-                "refinement_failed": False,
-            }
-        )
-        result = self.account.transcribe(
-            RecordingSnapshot(Path("unused"), b"fake"),
-            "pt",
-            self.service,
-            cleanup_level="preserve",
-        )
-        self.assertEqual(
-            self.request.call_args.kwargs["data"]["cleanup_level"], "preserve"
-        )
-        self.assertEqual(result.cleanup_level_requested, "preserve")
-        self.assertEqual(result.cleanup_level_applied, "preserve")
-        self.assertFalse(result.refinement_failed)
-        self.assertIsNone(result.refinement_model)
-        self.assertEqual(result.raw_text, "Não  envie 42.")
-
-    def test_explicit_cleanup_rejects_missing_or_mismatched_response_policy(self):
-        self.signed_in()
-        self.account._last_sync_attempt = self.account._clock()
-        self.request.reset_mock()
-        self.request.return_value = self.response(
-            {"transcript": "Source", "text": "Changed", "rewritten": True}
-        )
-        with self.assertRaises(AccountError):
-            self.account.transcribe(
-                RecordingSnapshot(Path("unused"), b"fake"),
-                "pt",
-                self.service,
-                cleanup_level="preserve",
-            )
-        self.request.assert_called_once()
-
-    def test_explicit_cleanup_rejects_account_switch_and_cancelled_reply(self):
-        from provider_http import CancellationToken, ProviderCancelledError
-
-        for switched in (True, False):
-            with self.subTest(switched=switched):
-                self.signed_in()
-                self.account._last_sync_attempt = self.account._clock()
-                self.request.reset_mock()
-                token = CancellationToken()
-
-                def respond(*args, **kwargs):
-                    if switched:
-                        self.account._generation += 1
-                    else:
-                        token.cancel()
-                    return self.response(
-                        {
-                            "transcript": "Source",
-                            "text": "Source",
-                            "rewritten": False,
-                            "cleanup_level_requested": "preserve",
-                            "cleanup_level_applied": "preserve",
-                        }
-                    )
-
-                self.request.side_effect = respond
-                with self.assertRaises(
-                    AccountError if switched else ProviderCancelledError
-                ):
-                    self.account.transcribe(
-                        RecordingSnapshot(Path("unused"), b"fake", token),
-                        "pt",
-                        self.service,
-                        cleanup_level="preserve",
-                    )
-                self.request.assert_called_once()
-                self.request.side_effect = None
-
-    def test_cloud_result_is_not_expanded_again_or_replaced_with_raw_text(self):
-        self.signed_in()
-        self.account._last_sync_attempt = self.account._clock()
-        self.request.return_value = self.response(
-            {
-                "transcript": "minha assinatura",
-                "text": "sig",
-                "rewritten": False,
-                "snippet_expanded": True,
-            }
-        )
-        result = self.account.transcribe(
-            RecordingSnapshot(Path("unused"), b"fake"), "pt", self.service
-        )
-        self.assertEqual(result.text, "sig")
-        self.assertFalse(result.refinement_failed)
-        self.assertEqual(result.raw_text, "minha assinatura")
-        self.assertEqual(result.refined_text, "sig")
 
     def test_account_cache_is_separate_from_guest_and_other_accounts(self):
         first = self.signed_in()
@@ -227,24 +123,6 @@ class AccountSnippetTests(unittest.TestCase):
         self.service.reload()
         self.assertEqual(self.service.state.snippets, (Snippet("sig", "signature"),))
 
-    def test_old_server_dictation_result_remains_usable_without_recursive_expansion(
-        self,
-    ):
-        self.signed_in()
-        self.account._last_sync_attempt = self.account._clock()
-        self.service.reload()
-        self.service.replace(
-            replace(self.service.state, snippets=(Snippet("sig", "second expansion"),))
-        )
-        self.request.return_value = self.response(
-            {"transcript": "source", "text": "sig", "rewritten": True}
-        )
-        result = self.account.transcribe(
-            RecordingSnapshot(Path("unused"), b"fake"), "pt", self.service
-        )
-        self.assertEqual(result.text, "sig")
-        self.assertFalse(result.refinement_failed)
-
     def test_account_transport_limit_preserves_previous_cache_and_guest_can_still_save(
         self,
     ):
@@ -276,22 +154,6 @@ class AccountSnippetTests(unittest.TestCase):
         self.assertIn("É".encode("utf-8"), self.request.call_args.kwargs["data"])
         self.assertEqual(
             self.request.call_args.kwargs["headers"]["Content-Type"], "application/json"
-        )
-
-    def test_oversized_hosted_result_has_a_clear_failure_and_no_text_result(self):
-        self.signed_in()
-        self.account._last_sync_attempt = self.account._clock()
-        self.request.return_value = self.response(
-            {"code": "snippet_result_too_large", "phase": "processing"}, 422
-        )
-        with self.assertRaises(AccountError) as caught:
-            self.account.transcribe(
-                RecordingSnapshot(Path("unused"), b"fake"), "pt", self.service
-            )
-        self.assertEqual(caught.exception.code, "snippet_result_too_large")
-        self.assertEqual(
-            str(caught.exception),
-            "O texto dos snippets excede o limite. Use menos frases de ativação.",
         )
 
     def test_failed_snippet_write_rolls_back_simultaneous_dictionary_change(self):

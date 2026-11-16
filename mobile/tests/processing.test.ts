@@ -4,7 +4,8 @@ import { processingAvailable, computerStatus } from '../src/processing.ts';
 
 test('computer authorization is independent of the hosted session and readiness', () => {
   assert.equal(processingAvailable(undefined), false);
-  assert.equal(processingAvailable({ signedIn: true }), true);
+  assert.equal(processingAvailable({ signedIn: true }), false);
+  assert.equal(processingAvailable({ mode: 'hosted', signedIn: true }), false);
   assert.equal(processingAvailable({ mode: 'hosted', signedIn: false }), false);
   assert.equal(processingAvailable({ mode: 'computer', signedIn: true }), false);
   assert.equal(processingAvailable({ mode: 'computer', signedIn: false, computer: { paired: true, ready: false, computerID: 'fixture', computerName: 'PC', status: 'offline', busy: false } }), true);

@@ -201,7 +201,7 @@ class AccountHistoryTests(unittest.TestCase):
         self.http.return_value = self.response({}, 401)
         with self.assertRaises(AccountError):
             self.history.sync(force=True)
-        self.assertTrue(self.account.managed)
+        self.assertFalse(self.account.managed)
         self.assertFalse(self.history.append(self.record(), owner))
         self.assertEqual(self.local.list_records(), [])
 

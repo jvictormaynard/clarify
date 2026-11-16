@@ -1,8 +1,9 @@
 # Connect an iPhone to a computer
 
-This feature adds a paired computer as a separate processing destination. The
-existing Clarify account destination keeps its authentication, quota and history
-contracts. Computer processing uses the computer's own provider configuration.
+The paired computer is the mobile processing destination. It uses its own local
+models or personal provider configuration. A Clarify account supplies optional
+libraries and authorizes internet signaling; it supplies no inference quota.
+Signing in alone does not make mobile processing ready.
 
 The desktop owner is an opt-in host service. The containing iOS app owns scanning,
 pairing, credentials and transport. The keyboard receives only the existing
@@ -65,7 +66,7 @@ iOS applies a scoped ATS exception only to the configured relay domain and its
 subdomains. Native requests still require HTTPS, TLS 1.2 or later and the exact
 desktop certificate. The parser rejects the relay apex, nested namespaces,
 incorrect pins and CA-only routes in that scope. See
-[native trust and acceptance](../mobile/README.md#optional-relay-build-configuration-and-trust)
+[native trust and acceptance](../mobile/README.md#legacy-optional-relay-build-configuration-and-trust)
 and [relay operation and limits](../connect/README.md).
 
 Pairing returns a separate revocable credential for each device. The app keeps it
@@ -73,49 +74,43 @@ in its private Keychain. The computer persists token hashes and bounded operatio
 state in its own SQLite store. Its private TLS identity uses the desktop secret
 store. A Settings snapshot must not expose permanent device credentials.
 
-## Cloudflare internet access
+## Internet access through WebRTC
 
-The internal preview can also use a named Cloudflare Tunnel. This is separate
-from the optional TLS byte relay above. `shared/computer_cloudflare.json` owns
-the fixed control URL and tunnel domain; null values disable this transport.
-Cloudflare routes use normal system TLS trust and need no ATS exception.
+New hosts use direct WebRTC data channels with TURN fallback. They do not create
+Cloudflare tunnels. The desktop remains opt-in, and LAN pairing remains available
+without an account. The computer must remain awake and run Clarify.
 
-Pair once on the same network. A free, verified Clarify account authorizes the
-internet connection in the iPhone app. This authorization does not select hosted
-processing or synchronize computer history. The account session stays on the
-phone. After login, the app can continue the existing pairing without another
-QR scan. If the desktop's registration reply is lost, an authenticated LAN
-status read can recover the saved route without repeating the allocation.
+Configure the exact HTTPS `/signal` URL through `CLARIFY_WEBRTC_SIGNAL_URL` on
+desktop and `ClarifyWebRTCSignalURL` in the iOS containing app. Without this
+configuration, internet access remains disabled. A verified account authorizes
+signaling and short-lived TURN access. Pairing pins the computer's P-256 public
+key. The signed answer binds the ticket and SDP to that saved key; a discovered
+key cannot replace it. Each processing request still needs the paired device token.
 
-The control Worker checks that account through the fixed `/v1/account` endpoint.
-It issues a single-use, four-minute grant. The desktop redeems that grant for
-its own connector token, which stays in the OS secret store. The Worker keeps
-bounded allocation state in D1 and never receives processing audio or text.
-See [control admission and failure handling](../connect/cloudflare/README.md).
+Electron main owns the hidden data-channel peer and its private Python pipe.
+Settings and pill renderers cannot access that pipe. The iOS containing app owns
+a hidden WKWebView with bundled transport code; the existing audio session owns
+the microphone. Account sessions stay in native code, and the keyboard receives
+no connection secret. Disconnect, account transition and host shutdown cancel
+peer-owned work. An uncertain processing response is never replayed on another
+route. TURN sees encrypted packets and network metadata; relay bandwidth is an
+operator cost. Deployment and physical-iPhone/cellular acceptance remain separate
+from the Linux transport harness. See [operator setup and transport bounds](../connect/webrtc/README.md).
 
-Cloudflare terminates the outer HTTPS connection. Processing requests therefore
-use RFC 9180 HPKE with X25519, HKDF-SHA256 and ChaCha20Poly1305 inside HTTPS. The
-desktop stores the recipient private key beside its existing TLS identity. The
-route carries the public key, and its hostname is bound to the SHA-256 of that
-key. Responses use a fresh request-specific key and bind to the complete sealed
-request. Device credentials, audio and text remain inside these envelopes.
-This static recipient key does not provide forward secrecy if that private key
-is later compromised. Cloudflare can observe network metadata and interrupt
-traffic.
-
-Only `/v1/computer/sealed` is exposed on the loopback tunnel origin. Plaintext
-computer endpoints are rejected there. Existing operation IDs, revocation,
-cancellation and once-only processing rules still apply. A failed processing
-POST never triggers an automatic second upload on another route.
-
-The desktop runs a pinned, hash-verified `cloudflared` executable as the current
-user, with self-update disabled and its token in a private temporary file. It
-does not install a system service. The computer must remain awake, connected
-and running Clarify. Native HPKE requires iOS 17 or later; older devices retain
-LAN access. “Internet access configured” means the route was saved, not that a
-cellular request has succeeded. Cellular acceptance needs an actual iPhone test.
+The older Cloudflare and TLS relay modules remain for stored-route compatibility
+and historical tests. They are not the new host's default connection path.
 
 ## Processing API
+
+WebRTC live recognition shares the host's durable operation admission,
+cancellation and final publication rules. Frames carry mono PCM16 at 16 kHz;
+partials are display-only. A final request checks the captured byte count and
+digest before passing raw recognized text through the frozen dictation workflow.
+See [the live wire contract](../connect/webrtc/README.md#live-recognizer-injection).
+The containing app keeps incremental capture behind `ClarifyExperimentalLiveCapture`
+and foreground admission pending native background acceptance. The default keyboard
+and background route remains WAV, selected before capture. Normal WAV and text
+processing retain the endpoints below.
 
 | Request | Body or result |
 | --- | --- |

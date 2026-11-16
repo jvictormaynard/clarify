@@ -296,24 +296,29 @@ class WebSettingsTests(unittest.TestCase):
         state = self.request("savePreference", "setLanguage", ["en"])["result"]
         self.assertFalse(state["dirty"])
 
-    def test_preference_rpc_blocks_managed_personal_routes_but_allows_general_controls(
+    def test_preference_rpc_allows_personal_routes_while_account_is_managed(
         self,
     ):
         self.settings._account._state["mode"] = "hosted"
-        original = self.settings.repositories.config.load()
         for method, args in (
             ("setRouteProviderId", ["openai"]),
             ("setRouteModelId", ["custom"]),
             ("setRouteEnabled", [False]),
             ("setLocalStreaming", [True]),
             ("setLocalAsrCloudRefinement", [True]),
-            ("useLocalAsr", []),
         ):
             with self.subTest(method=method):
-                self.assertIn("error", self.request("savePreference", method, args))
-                self.assertEqual(self.settings.repositories.config.load(), original)
+                self.assertNotIn("error", self.request("savePreference", method, args))
         self.assertNotIn("error", self.request("savePreference", "setLanguage", ["pt"]))
-        self.assertTrue(self.settings._account.managed)
+        self.assertFalse(self.settings._account.managed)
+        # Account mode cannot bypass actual local-model readiness.
+        self.assertIn("error", self.request("savePreference", "useLocalAsr", []))
+        from dataclasses import replace
+
+        self.settings._local_state = replace(
+            self.settings._local_state, status="installed"
+        )
+        self.assertNotIn("error", self.request("savePreference", "useLocalAsr", []))
 
     def test_preference_rpc_requires_an_explicit_method_and_typed_arguments(self):
         original = self.settings.repositories.config.load()
@@ -1007,7 +1012,7 @@ class WebSettingsTests(unittest.TestCase):
             account._state["mode"] = "hosted"
             account._generation += 1
         before_guest = guest.load()
-        self.assertTrue(account.managed)
+        self.assertFalse(account.managed)
         self.assertIn("result", self.request("load"))
         self.assertIn("result", self.request("save", "local"))
         self.assertEqual(service.state, before_guest)

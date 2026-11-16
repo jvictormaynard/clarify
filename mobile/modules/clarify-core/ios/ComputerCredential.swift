@@ -7,11 +7,13 @@ struct ComputerCredential: Codable, Equatable {
   let deviceID: UUID
   let sessionToken: String
   let routes: [ComputerRoute]
+  var webrtc: ComputerWebRTCBinding? = nil
   // Network addresses and device credentials can change for the same computer.
   var scope: String { "computer|" + computerID.uuidString.lowercased() }
   func validate() throws {
     guard ComputerInvitation.validName(computerName), (1...4).contains(routes.count),
       Set(routes.map(\.url)).count == routes.count, Self.validToken(sessionToken) else { throw ComputerFailure.invalidResponse }
+    try webrtc?.validate()
     for route in routes { _ = try route.validated() }
   }
   static func validToken(_ token: String) -> Bool {

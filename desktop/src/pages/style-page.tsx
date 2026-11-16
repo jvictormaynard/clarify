@@ -7,7 +7,7 @@ import { WorkflowRoute } from "../components/workflow-route";
 import { textActionLanguages, TextEditing, AutomaticSavedAction } from "../components/after-dictation-action";
 
 export function StylePage({ controller: c }: SettingsPageProps) {
-  const managed = !!(c.state.accountState?.managed || c.state.accountState?.signedIn);
+  const managed = !!(c.state.accountState?.managed);
   return <>
     <Section title={t("Seu texto")}>
     <TextEditing controller={c} />

@@ -9,6 +9,7 @@ export interface Snapshot {
   operationID?: string;
   playingRecordingID?: string;
   text?: string;
+  livePartial?: string;
   message?: string;
   errorCode?: string;
   errorRecovery?: string;

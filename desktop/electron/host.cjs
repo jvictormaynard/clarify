@@ -10,7 +10,8 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
   let tray, trayLocale, pillShown = false, pillFocusable = false, hitTimer, interactive = false, regions = [];
   const index = path.resolve(__dirname, '../dist/index.html');
   const urls = {settings: pathToFileURL(index).href, pill: pathToFileURL(index).href + '?surface=pill'};
-  const stop = () => { stopping = true; bridge.end(); app.quit(); };
+  const rtc = require('./webrtc-main.cjs').computerWebRTCPipe({BrowserWindow, ipcMain, session}, message => bridge.send(message));
+  const stop = () => { rtc.stop(); stopping = true; bridge.end(); app.quit(); };
   const emit = (win, topic, message) => { if (loaded.has(win) && !win.isDestroyed()) win.webContents.send(topic, message); };
   const hitTest = () => {
     const point = screen.getCursorScreenPoint(), bounds = windows.pill.getContentBounds();
@@ -51,6 +52,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
     }
   };
   const bridge = new Bridge(input, output, message => {
+    if (rtc.receive(message)) return;
     if (message.event === 'shutdown') { stop(); return; }
     if (message.window) { applyWindow(message.window); return; }
     if (message.event === 'settings' && message.state && typeof message.state === 'object') settingsPatch = {...settingsPatch, ...message.state};
@@ -77,7 +79,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       emit(windows.settings, 'clarify:state', message);
     }
     else { emit(windows.pill, 'clarify:state', message); refreshTray(); }
-  }, () => { stopping = true; app.quit(); });
+  }, () => { rtc.stop(); stopping = true; app.quit(); });
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
@@ -188,7 +190,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
     else if (method === 'closeAccepted') { wantsVisible.settings = false; win.hide(); bridge.send({event: 'settings-hidden'}); }
     else throw new Error('Invalid window control');
   });
-  app.on('before-quit', () => { stopping = true; clearInterval(hitTimer); tray?.destroy(); bridge.end(); });
+  app.on('before-quit', () => { rtc.stop(); stopping = true; clearInterval(hitTimer); tray?.destroy(); bridge.end(); });
   app.on('window-all-closed', () => stop());
   return {windows, bridge};
 }

@@ -109,6 +109,7 @@ struct DictationSnapshot: Codable {
   var phase = DictationPhase.idle
   var operationID: String?
   var text: String?
+  var livePartial: String?
   var message: String?
   var errorCode: String?
   var errorRecovery: String?
@@ -137,7 +138,7 @@ struct DictationSnapshot: Codable {
       let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
     return text
   }
-  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, retryAvailable, playingRecordingID, text, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported, dictationMode, dictationModes, dictationActionID, toneAllowed }
+  private enum CodingKeys: String, CodingKey { case sessionActive, heartbeat, phase, operationID, retryAvailable, playingRecordingID, text, livePartial, message, errorCode, errorRecovery, errorPhase, errorStatus, configured, libraryRevision, computerMode, processingContext, textOperation, textActions, legacyRewriteReady, legacyTranslateReady, outputPreferencesSupported, dictationMode, dictationModes, dictationActionID, toneAllowed }
   init() {}
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -148,6 +149,8 @@ struct DictationSnapshot: Codable {
     operationID = try values.decodeIfPresent(String.self, forKey: .operationID)
     playingRecordingID = try values.decodeIfPresent(String.self, forKey: .playingRecordingID)
     text = try values.decodeIfPresent(String.self, forKey: .text)
+    livePartial = try values.decodeIfPresent(String.self, forKey: .livePartial)
+    if (livePartial?.utf8.count ?? 0) > 32768 { livePartial = nil }
     message = try values.decodeIfPresent(String.self, forKey: .message)
     errorCode = try values.decodeIfPresent(String.self, forKey: .errorCode)
     errorRecovery = try values.decodeIfPresent(String.self, forKey: .errorRecovery)

@@ -28,43 +28,38 @@ pastes the result back into the app you were using. It can also rewrite or
 translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
-> Clarify supports bring-your-own-key cloud providers and optional hosted
-> dictation through a Clarify account. Personal cloud access uses your own
-> API key or an eligible ChatGPT plan. On Windows, subscribers can connect their plan
-> for text rewriting, translation, and refinement without a Clarify account.
-> This uses the existing ChatGPT plan limits and sends text directly to OpenAI;
-> it does not include audio transcription. See [ChatGPT plan setup](docs/chatgpt-plan.md).
-> The optional Local Whisper provider
-> does not require an API key for local transcription; it downloads its
-> runtime/model only after an explicit action, and its packaged Windows/offline
-> acceptance is still pending. Keys and local usage statistics stay on your
-> computer. With your own key, cloud audio/text goes directly to the provider you configure; Local
-> Whisper keeps transcription local unless you explicitly enable cloud
-> refinement. Hosted dictation sends audio and text through the Clarify service
-> to Groq and uses a sponsored individual allowance within the project's funded
-> budget. Operating costs are reserved before processing funds are distributed.
+> Processing uses local speech models, personal provider keys, a connected ChatGPT
+> subscription for text, or free models requested by OpenCode on the user's computer.
+> Clarify-funded inference is retired. An account supplies authentication and optional
+> library/history synchronization, plus authorization for remote computer access.
+> Signing in does not select a processing model or grant inference quota.
+> ChatGPT subscription access is text-only and uses that subscription's limits;
+> see [ChatGPT plan setup](docs/chatgpt-plan.md). OpenCode's catalog must explicitly
+> report zero input/output prices. Free access has provider limits; a refusal does
+> not select a paid service automatically. Optional editing failure preserves the
+> transcript. Local speech assets download only after an explicit action.
+>
+> Native Nemotron streaming is provisional. Windows packaging and native iPhone
+> acceptance remain open. Phone incremental capture is disabled by default pending
+> background acceptance; the established WAV path remains available. Source changes
+> do not establish release or physical-device acceptance.
 
-> The Settings interface described here follows the current source on `main`.
+> The Settings interface described here follows this source candidate.
 > Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
 > before downloading; older releases have a different interface. Release acceptance is tracked in
 > [Release readiness](docs/release-readiness.md).
 
 ## Features
 
-Clarify uses the device language for Portuguese, English and Spanish,
-including the passwordless authentication email. On first launch, use Google,
-Microsoft or GitHub, or enter your email and confirm the code inside the app
-to enter or create an account.
-**Continue without an account** opens local-model setup; a personal API key is
-also available there. Signing in activates Clarify processing automatically.
-Signed-in accounts use Clarify-managed models. Personal provider and local-model
-settings are available in account-free mode. Style and Text actions are available
-in both modes. Weekly sponsored
-usage appears as a percentage with the next renewal in your local time. Quotas
-renew each Monday at 00:00 UTC. An unknown quota shows a loading state, and an
-unfunded allowance has an explicit availability message. Sign-out and deletion
-are inside a collapsed Danger zone, with separate confirmations. Vocabulary sync runs automatically,
-and usage updates after processing. Local caches preserve offline edits and
+Clarify uses Portuguese, English and Spanish interfaces. Personal onboarding guides
+spoken language, a hardware-based speech recommendation, optional text processing,
+verified installation and practice. Model names remain visible, and advanced
+provider settings stay available when signed in. Recognition and output languages
+are separate. Account sign-in supports Google, Microsoft, GitHub and email codes.
+Account libraries synchronize independently of inference. Sign-out and deletion
+retain separate confirmations in the Danger zone. Existing provider choices remain
+saved; former hosted users need a personal processing route.
+Local caches preserve offline edits and
 conflicts keep both copies until resolved. New account transcriptions synchronize
 automatically between Windows and iOS, including original/revised text, time and
 source device. The History page supports complete text, pagination and synchronized
@@ -77,9 +72,11 @@ available on the [App Store](https://apps.apple.com/app/id6820869157).
 TestFlight is used for internal testing. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
 The source also supports [pairing an iPhone with a computer](docs/computer-connection.md)
-by QR for direct LAN processing with the computer's personal configuration.
-The [financial model and public transparency page](docs/finances.md) explain how
-confirmed support pays operating costs and weekly processing quotas. Stripe
+by QR for LAN processing with the computer's personal configuration. Remote access
+uses operator-configured WebRTC with TURN fallback; new hosts do not allocate
+Cloudflare tunnels. The computer must stay available. The relay still has bandwidth
+and VPS costs. The [financial records and public transparency page](docs/finances.md)
+retain operating-cost and historical funding information; funded inference is retired. Stripe
 registration is deferred until a business account is available.
 
 - Voice transcription and prompt-quality rewriting from any Windows app

@@ -7,7 +7,7 @@ import { Button as ButtonControl } from "./primitives/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "./primitives/menu";
 import { ProviderBrandIcon } from "./provider-brand-icon";
 
-export function ChatGPTPlan({ controller }: SettingsPageProps) {
+export function ChatGPTPlan({ controller, setup = false }: SettingsPageProps & { setup?: boolean }) {
   const { state, run, validateProvider, validatingProvider } = controller;
   const account = state.chatgptState;
   const connected = account?.connected === true;
@@ -23,21 +23,21 @@ export function ChatGPTPlan({ controller }: SettingsPageProps) {
   }));
   return (
     <>
-      <p className="hint">{t("Use seu plano ChatGPT Plus ou Pro para tarefas de texto. O texto é enviado à OpenAI. O uso compartilha os limites do seu plano, sem cota adicional. A transcrição de áudio não está incluída.")}</p>
-      <p className="hint" role="status">
+      {!setup && <p className="hint">{t("Use seu plano ChatGPT Plus ou Pro para tarefas de texto. O texto é enviado à OpenAI. O uso compartilha os limites do seu plano, sem cota adicional. A transcrição de áudio não está incluída.")}</p>}
+      {(!setup || connected) && <p className="hint" role="status">
         {enabled ? t("Plano ChatGPT conectado") : connected
           ? t("Conta conectada. O uso do plano ChatGPT não foi autorizado.")
           : t("ChatGPT não conectado")}
-      </p>
-      {options.length > 0 && (
+      </p>}
+      {options.length > (setup ? 1 : 0) && (
         <Row title={t("Conta ChatGPT")}>
           <Picker label={t("Conta ChatGPT")} value={account?.accountId ?? ""}
             options={options} disabled={busy || state.providerBusy || state.routeModelStatus === "loading"}
             onChange={value => void command("select_account", value)} />
         </Row>
       )}
-      {account?.error && <p className="hint" role="alert">{t(account.error)}</p>}
-      {state.providerError && state.providerError !== account?.error &&
+      {!setup && account?.error && <p className="hint" role="alert">{t(account.error)}</p>}
+      {!setup && state.providerError && state.providerError !== account?.error &&
         <p className="hint" role="alert">{t(state.providerError)}</p>}
       <div className="inline-actions">
         {busy ? (
@@ -51,8 +51,8 @@ export function ChatGPTPlan({ controller }: SettingsPageProps) {
                 {t(connected ? "Reconectar ChatGPT" : "Continuar com ChatGPT")}
               </Button>
             )}
-            {connected && <>
-              <Button variant={needsReconnect ? "default" : "primary"}
+            {connected && !setup && <>
+              <Button variant={setup || needsReconnect ? "default" : "primary"}
                 onClick={() => void command("manage_usage")}>{t("Gerenciar uso no ChatGPT")}</Button>
               <Menu>
                 <MenuTrigger disabled={state.providerBusy}

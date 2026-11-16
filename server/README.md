@@ -8,10 +8,10 @@ operator commands and the public transparency page. Stripe registration is
 deferred until a business account is available.
 See the [privacy notice and account deletion instructions](../PRIVACY.md).
 The server is optional: local inference and personal provider keys still work
-without an account. The iOS app uses a Clarify account or an explicitly paired
-computer. Personal models and provider keys remain on that computer.
-Accounts share vocabulary, hosted audio allowance and new account
-transcriptions. Pre-upgrade records and guest history stay on their original
+without an account. The iOS app processes through an explicitly paired
+computer. Signing in alone does not enable processing. Personal models and
+provider keys remain on that computer. Accounts share vocabulary, action
+definitions and account transcriptions. Pre-upgrade records and guest history stay on their original
 device. Account snippets have a separate synchronized library; guest snippets
 and personal provider keys stay on their original device. Signing in does not
 upload guest snippets. Account
@@ -56,7 +56,8 @@ docker run --env-file server/.env -p 8080:8080 clarify-account
 ```
 
 Set the fields in `server/.env.example` in the host's private secret store.
-Use a dedicated database and Groq project/key. Never ship these values in clients.
+Use a dedicated database. The account service needs no inference provider key.
+Never ship server credentials in clients.
 Start-up runs serialized migrations and creates the allauth database cache.
 Place the service behind a TLS reverse proxy which overwrites forwarded headers.
 Set its public host in `ALLOWED_HOSTS`. Limit request bodies to 25 MiB at ingress.
@@ -82,13 +83,9 @@ failed sends also consume this conservative limit. Adjust
 Do not send real messages from tests.
 
 Before opening registration, test code delivery and logout with a test account.
-Before enabling hosted inference, approve a global budget and check Groq's own
-project spending/rate limits. Both registration and hosted inference default off;
-the monthly budget defaults to zero. Sponsored processing requires confirmed
-funding entries and operating provisions. New receipts require explicit
-operating-cost confirmation before distribution. Individual quotas expire each
-Monday at 00:00 UTC and are presented as percentages. A spending cap does not record a
-received contribution. These are beta controls, not a promise of a paid plan.
+Registration defaults off. Inference is retired independently of the historical
+funding flags and budgets. The source retains accounting migrations and finance
+records; a funded allocation cannot reopen processing endpoints.
 
 ## Client protocol
 
@@ -111,29 +108,25 @@ for provider registration, server secrets, native continuation and acceptance ga
 | `POST /_allauth/app/v1/auth/code/request` | Request login code with `email` |
 | `POST /_allauth/app/v1/auth/code/confirm` | Confirm login with six-digit `code` |
 | `DELETE /_allauth/app/v1/auth/session` | Revoke current session |
-| `GET /v1/account` | Account identity and shared allowance |
+| `GET /v1/account` | Account identity; `hosted_inference_available: false` |
 | `DELETE /v1/account` | Delete account with `{"confirm":true}` |
-| `GET /v1/usage` | Shared allowance for this account |
+| `GET /v1/usage` | Retired: HTTP 410, `inference_retired` |
 | `GET /v1/dictionary` | This account's vocabulary and revision |
 | `PUT /v1/dictionary` | Replace vocabulary using `revision` and `entries` |
 | `GET /v1/snippets` | This account's snippet library and revision |
 | `PUT /v1/snippets` | Replace snippets using `revision` and `entries` |
 | `POST /v1/history/sync` | Synchronize bounded new account records and deletions with a durable cursor |
-| `POST /v1/dictations` | Multipart `audio`, UUID `operation_id`, optional `language`; returns updated allowance |
-| `POST /v1/text` | Fixed rewrite or translation: UUID `operation_id`, `action`, `text`, `language`; returns updated allowance |
+| `POST /v1/dictations` | Retired: HTTP 410, `inference_retired` |
+| `POST /v1/text` | Retired: HTTP 410, `inference_retired` |
+| `GET /v1/text-actions`, `PUT /v1/text-actions` | Read or replace revision-controlled action definitions |
+| `POST /v1/text-actions/execute` | Retired: HTTP 410, `inference_retired` |
 
-Account and processing `/v1` routes require an active session and a verified primary email. The
-server derives account ownership from that session. It rejects caller-supplied
-owner IDs, provider URLs, prompts, models and token settings. There is no chat,
-completion or general provider proxy. Fixed processing is Whisper Large V3 Turbo
-followed by GPT OSS 20B. `shared/rewrite_prompts.py` owns the common
-desktop and hosted prompts, including writing style and output language.
-
-Speech recognition receives only enabled canonical dictionary spellings, joined
-with commas and bounded to 896 characters without splitting a term. Aliases and
-pronunciations remain stored but are not sent as recognition instructions.
-Rewriting retains its separate vocabulary context and canonical prompt. A
-rewrite failure still returns the recognized transcript successfully.
+Account library `/v1` routes require an active session and a verified primary
+email. The server derives ownership from that session. The retirement middleware
+returns `410 {"code":"inference_retired","update_required":true}` for processing
+and usage routes before body parsing, authentication, admission or provider work.
+There is no provider proxy or hosted fallback. Updated clients execute account
+text-action definitions with their own personal profile on the computer.
 
 Snippets have a spoken `trigger`, literal `replacement`, `enabled` flag and
 `case_sensitive` flag. The account library allows up to 512 entries, 256
@@ -145,61 +138,16 @@ guest libraries retain their existing per-entry limits.
 
 Snippet writes use optimistic revisions; a stale write returns
 `snippet_conflict`. The independent library prevents older dictionary clients
-from erasing snippets. Account deletion removes the library. Only enabled
-triggers join bounded recognition/refinement hints. Saved replacements never enter recognition hints. A standalone spoken trigger
-inserts its exact saved text without a rewrite request. Other matches are
-substituted once before refinement. The provider receives the substituted source,
-not the full library, and may adjust wording and formatting. Refinement failure
-returns the substituted source. The original recognized transcript stays unchanged.
-Triggers produced by refinement are never substituted. Hosted clients use the returned final `text` without expanding it
-again; `snippet_expanded: true` marks an applied expansion even when
-`rewritten` is false. Idempotent retries return the saved result and do not
-expand it again.
+from erasing snippets. Account deletion removes the library. Recognition, snippet substitution and optional editing run on the user's
+computer. Account definitions synchronize independently of processing profiles.
+For personal execution and output preferences, see [account text actions](TEXT_ACTIONS.md)
+and the [computer processing contract](../docs/computer-connection.md).
 
-The complete rendered JSON UTF-8 dictation response, including original text,
-expanded text and usage, is limited to 393,216 bytes. Measurement includes the
-renderer escaping for Unicode line and paragraph separators. An expansion above this
-limit returns `422 snippet_result_too_large` with phase `processing`; no partial
-text is returned or cached. The operation settles once at the conservative
-reservation and its bounded error is replayed without another provider call or
-audio charge. Clients show the error and do not publish text to the clipboard.
-For a snippet-expanded result, the original transcript and final text must each
-fit 32,768 UTF-8 bytes. This retains compatibility with the existing account
-history record. A larger field returns the same bounded error before success;
-the server does not truncate text or change the history schema.
-
-Processing errors return a bounded `code`, `phase`, validated `operation_id`,
-and updated `usage`. Empty recognition is `422 no_speech` with phase
-`transcription`; it does not mean microphone authorization failed. Upstream
-recognition errors or malformed recognition results are `502
-transcription_failed`. Selected-text provider failures are `502
-text_processing_failed` with phase `text`. Unexpected internal processing
-failures retain `502 processing_failed` with phase `processing`. Audio
-validation and admission retain their existing codes. Authentication and
-pre-validation failures can omit the operation identifier. Clients must map
-known codes to local messages and must not display arbitrary provider text.
-
-Application diagnostics record only code, phase and operation identifier, never
-exception text, recordings, transcripts or provider responses. A failed paid
-operation retains conservative accounting and is never retried automatically;
-the error classification does not refund allowance or repeat inference.
-
-Signing in automatically connects vocabulary. Each account has a separate local
-cache; logout restores guest vocabulary. Sync combines independent edits and
-preserves deletions. A same-word conflict requires a choice; revision mismatches
-never silently overwrite the server. Sync runs after login and local edits, then
-at most once per minute while the app is active or before hosted dictation.
-Failed attempts also use the cooldown. Processing responses update consumption
-without a separate usage request. This version does not push changes in real time.
-
-Managed selected-text processing uses the canonical rewrite/translation prompts
-in `shared/rewrite_prompts.py`. Text
-input is limited to 16,000 UTF-8 bytes, with fixed actions, languages and model.
-It uses the same authenticated ownership, idempotency, global cost reservations,
-concurrency and monthly operation limits as audio, plus six text requests per
-account per minute. Text operations consume the same funded provider-cost quota
-as audio processing. There is no
-caller-supplied prompt, model, URL or tool option.
+Signing in connects vocabulary. Each account has a separate local cache; logout
+restores guest vocabulary. Sync combines independent edits and preserves deletions.
+A same-word conflict requires a choice; revision mismatches never overwrite the
+server silently. Failed attempts retain the existing cooldown. This version does
+not push library changes in real time.
 
 `GET /transparency/` and `GET /v1/public/finances` are public. They publish
 normalized financial records without account or donor identifiers. They do not
@@ -207,31 +155,18 @@ expose administrator access or processing endpoints.
 
 ## Bounds and retention
 
-- Audio: 24 MiB, 250 ms through 5 minutes. Decode locally to mono 16 kHz WAV;
-  validate actual duration. No remote media URLs or playlists. Temporary audio
-  is removed after the request. Container restarts clear abandoned temp files.
-- Vocabulary: 512 entries, shared validation with desktop, bounded provider
-  context. It is input data and cannot change provider instructions.
-- One in-flight operation per account, four globally by default, six dictations
-  per account per minute, and 2,000 per account per month. Atomic PostgreSQL
-  admission prevents quota and budget races across workers and month boundaries.
-- Every operation reserves its worst-case provider cost before provider work.
-  Actual usage includes completion/reasoning tokens and the ASR minimum charge.
-  Failed or uncertain provider work retains the conservative cost reservation;
-  it is not automatically refunded or retried.
-- Duplicate operation ID and identical content reuse a result for five minutes.
-  Different content is rejected. Expired IDs cannot repeat paid work while the
-  operation record exists. Clients must reuse their UUID when retrying.
-- Processing result text is cached for five minutes, then swept within roughly
-  one minute. This retry cache is independent of synchronized account history.
-  `/v1/history/sync` stores new account transcriptions until explicitly deleted.
-  Each account has bounded storage; permanent tombstones prevent stale uploads
-  from restoring deleted entries. History synchronization does not call a
-  provider or change audio allowance. Operation metadata is removed after 31 days;
-  monthly aggregate cost records remain for budget accounting. Account deletion
-  removes the user, dictionary, account history and synchronization metadata,
-  removes cached processing text/content hashes and
-  detaches accounting records. Backup retention must be configured by the host.
+- Processing routes reject input before parsing or provider work. Updated clients
+  send audio and processing text to the paired computer or selected provider.
+- Vocabulary and snippets use bounded libraries and revision-controlled writes.
+  A library is data; it cannot grant server inference or select credentials.
+- `/v1/history/sync` stores account records until explicitly deleted. Bounded
+  storage and permanent tombstones prevent stale uploads from restoring them.
+  Synchronization does not call a provider.
+- Historical cost, reservation and funding records remain for audit. Retired
+  processing endpoints cannot create a new reservation. Legacy cached processing
+  results and operation metadata retain their existing cleanup policy. Account
+  deletion removes identity, libraries, history and synchronization metadata and
+  detaches historical accounting records. Configure backup retention separately.
 - No transcripts, audio, credentials, HTTP headers or provider error bodies in
   application/access logs. The default proxy limiter uses the connection peer,
   not untrusted forwarding headers. Behind a shared proxy, this is conservative
@@ -240,7 +175,8 @@ expose administrator access or processing endpoints.
 
 Open code does not grant access to the hosted service. Security rests on account
 verification, ownership checks, bounded inputs, atomic limits and server secrets.
-Self-hosters configure their own credentials, limits and database.
+Self-hosters configure account delivery, limits and database. Inference remains
+on each user's computer or selected provider.
 
 ## Release gates
 
@@ -271,7 +207,7 @@ this route avoids the current snapshot failure still needs controlled live
 verification. Changing this recovery source pin requires a new review.
 
 Server tests, desktop Python/Settings checks and iOS native compilation must pass.
-Live email, device activation/dictation, account isolation, quota exhaustion,
+Live email, device pairing, account isolation, inference retirement,
 session revocation and account deletion need staging acceptance. No automatic
 TestFlight upload is part of this change. The public iOS release must validate
 keyboard activation and return to the source app under the
