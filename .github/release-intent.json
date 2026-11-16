@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "component": "mobile",
-  "version": "0.17.0",
-  "base_sha": "4ef2e4bb833f49e5071744febfb01ecd22f743fc",
-  "notes": "Internal TestFlight 0.17.0 (90) for user physical-device testing of the keyboard parity changes merged in PR326, including Portuguese (Brazil), English (US), accent menus, hold and slide gestures, bounded horizontal Space-drag caret movement, key accessibility metadata and sounds. Include the reviewed main integrations through PR320. The five installed tests and all actions/assertions remain; the approved per-test allowance is 600 seconds and the whole suite limit is 1800000 milliseconds. Require exact canonical main CI, reviewed metadata, immutable tag, signed IPA verification, confirmed upload, VALID processing and availability in Clarify Interno. Simulator evidence does not establish full physical-device parity, VoiceOver, exact animation timing, sound/haptic matching, older iOS or wrapped-line vertical caret movement. Physical testing is the purpose of this TestFlight. Existing internal-testing scope and standing keyboard release decision apply. No App Store submission.",
+  "version": "0.17.1",
+  "base_sha": "918eda010f163e4f78e5f7371999d329d5a93ef8",
+  "notes": "Internal TestFlight 0.17.1 (91) for physical verification of the key sizing correction merged in PR344. On the 430-point portrait viewport inferred from the supplied screenshots and current key dimensions, on iOS26, select taller keys and the matching row pitch before host measurement; preserve horizontal geometry, toolbar height and typing behavior. Other widths and older iOS retain their existing geometry. The existing height regression covers both profiles and prevents transient host frames from stretching the keyboard; horizontal assertions allow display-pixel rounding. No installed-test actions, assertions, waits, captures, time limits, workflows or dependencies change. Source PRCI43778106912 passed including Swift227 with one expected skip, UIKit78 and all five installed tests; canonical main CI must also pass at the exact release source. Require reviewed metadata, immutable tag, signed app and both extensions, confirmed upload, Apple VALID and IN_BETA_TESTING and availability in Clarify Interno. New physical screenshot confirmation and full physical keyboard parity remain open; this internal delivery is for user testing. Existing internal-testing scope and standing keyboard release decision apply. No App Store submission.",
   "evidence": {
-    "build": "90",
-    "highest_build": "89",
+    "build": "91",
+    "highest_build": "90",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-15T19:17:08Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/43751520495"
+    "checked_at": "2026-11-16T01:24:16Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/43786036556"
   }
 }
