@@ -653,6 +653,13 @@ final class KeyboardUITests: XCTestCase {
         if title == "i" || title == "u" || title == "a" || title == "o" || title == "n" {
           let capture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: pickerHost.bounds).image { pickerHost.layer.render(in: $0.cgContext) })
           capture.name = "accent-\(title)-\(Int(width))-reference"; capture.lifetime = .keepAlways; self.add(capture)
+          if title == "i", width == 430 {
+            let appearance = pickerHost.overrideUserInterfaceStyle
+            pickerHost.overrideUserInterfaceStyle = .dark; pickerHost.layoutIfNeeded()
+            let darkCapture = XCTAttachment(image: UIGraphicsImageRenderer(bounds: pickerHost.bounds).image { pickerHost.layer.render(in: $0.cgContext) })
+            darkCapture.name = "accent-i-430-dark-reference"; darkCapture.lifetime = .keepAlways; self.add(darkCapture)
+            pickerHost.overrideUserInterfaceStyle = appearance
+          }
         }
         emit(held, .changed, at: CGPoint(x: sourcePoint.x + 1, y: sourcePoint.y))
         emit(held, .ended)

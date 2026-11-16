@@ -602,29 +602,51 @@ final class KeyGridView: UIView {
       preview.removeFromSuperview()
       suppressKey = true
       var choices = KeyboardState.accents(for: title)
-      let bar = UIStackView(); bar.axis = .horizontal; bar.distribution = .fillEqually; bar.spacing = 2
+      let bar = UIStackView(); bar.axis = .horizontal; bar.distribution = .fillEqually
       let modern = usesModernKeyAppearance
-      let cellWidth: CGFloat = modern ? 37 : 42
+      bar.spacing = modern ? 0 : 2
+      let padding: CGFloat = modern ? 11 : 0
+      if modern {
+        bar.isLayoutMarginsRelativeArrangement = true
+        bar.layoutMargins = UIEdgeInsets(top: 10, left: padding, bottom: 10, right: padding)
+      }
+      let cellWidth: CGFloat = modern ? 40 : 42
       // Extended rows need room to keep the held key over its base choice.
-      let fittedCellWidth = choices.count > 7 ? min(cellWidth, bounds.width / CGFloat(choices.count + 2)) : cellWidth
-      let preferredWidth = CGFloat(choices.count) * fittedCellWidth + (modern ? CGFloat(choices.count - 1) * bar.spacing : 0)
+      let fittedCellWidth = choices.count > 7 ? min(cellWidth, (bounds.width - 2 * padding) / CGFloat(choices.count + 2)) : cellWidth
+      let preferredWidth = CGFloat(choices.count) * fittedCellWidth + (modern ? CGFloat(choices.count - 1) * bar.spacing + 2 * padding : 0)
       let width = min(bounds.width - 12, preferredWidth)
       let center = button.convert(CGPoint(x: button.bounds.midX, y: 0), to: self)
-      let cell = (width - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
+      let cell = (width - 2 * padding - CGFloat(choices.count - 1) * bar.spacing) / CGFloat(choices.count)
       var baseIndex = 0, origin: CGFloat = 6, distance = CGFloat.greatestFiniteMagnitude
       // Keep the base aligned; prefer the rightmost equally aligned slot for right-half keys.
       for offset in choices.indices {
         let index = center.x > bounds.midX ? choices.count - 1 - offset : offset
-        let relativeCenter = cell / 2 + CGFloat(index) * (cell + bar.spacing)
+        let relativeCenter = padding + cell / 2 + CGFloat(index) * (cell + bar.spacing)
         let proposed = center.x - relativeCenter
         let candidate = min(max(6, proposed), bounds.width - width - 6)
         let gap = abs(candidate - proposed)
         if gap < distance { baseIndex = index; origin = candidate; distance = gap }
       }
       let base = choices.removeFirst(); choices.insert(base, at: baseIndex)
-      bar.frame = CGRect(x: origin, y: center.y - (modern ? 62 : 52), width: width, height: modern ? 48 : 46)
-      bar.backgroundColor = .secondarySystemBackground; bar.layer.cornerRadius = 8
-      accentKeys = choices.map { value in let key = key(value) {}; bar.addArrangedSubview(key); return key }
+      bar.frame = CGRect(x: origin, y: center.y - (modern ? 73 : 52), width: width, height: modern ? 68 : 46)
+      bar.backgroundColor = modern ? UIColor { traits in
+        // Keep the measured gray opaque so toolbar buttons cannot show through.
+        if traits.userInterfaceStyle == .dark {
+          return traits.accessibilityContrast == .high ? UIColor(white: 0.36, alpha: 1) :
+            UIColor(red: 68.0 / 255, green: 73.0 / 255, blue: 78.0 / 255, alpha: 1)
+        }
+        return .white
+      } : .secondarySystemBackground
+      bar.layer.cornerRadius = modern ? 10 : 8
+      accentKeys = choices.map { value in
+        let key = key(value) {}
+        if modern {
+          key.titleLabel?.font = .systemFont(ofSize: 22)
+          key.titleVerticalOffset = 0
+          key.layer.cornerRadius = 10
+        }
+        bar.addArrangedSubview(key); return key
+      }
       accentBar = bar; activeAccentGesture = gesture; addSubview(bar); selectedAccent = title
       // The picker extends above the grid into the controller's toolbar area.
       superview?.bringSubviewToFront(self)
