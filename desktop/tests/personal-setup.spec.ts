@@ -21,9 +21,14 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await expect(page.getByRole("heading", { level: 2 })).toContainText("Whisper");
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
   await expect(page.getByText(/Download:.*MiB/)).not.toContainText("NaN");
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+    return state.localModelIds[state.localProfileIndex];
+  }).toBe("ggml-base");
   await page.screenshot({ path: `${evidence}/recommendation.png` });
   await page.getByRole("button", { name: "Other speech models", exact: true }).click();
   const model = page.getByRole("combobox", { name: "Speech model", exact: true });
+  await expect(page.getByText(/150\.0 MiB maximum download/)).toBeVisible();
   for (const [name, id] of [
     [/Parakeet/, "parakeet-v3-int8"],
     [/Granite/, "granite-5-turboctc"],

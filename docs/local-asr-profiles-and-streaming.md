@@ -27,7 +27,10 @@ Installation and removal use separate guarded roots. No model downloads during
 dictation or selection. CPU-only models do not offer GPU setup or measurement.
 Parakeet and Granite start a separate process for each request so cancellation
 can stop native compute before audio cleanup. Model loading repeats; warm
-benchmark times do not describe this request path.
+benchmark times do not describe this request path. Parakeet uses temporary model
+hard links and relative filenames so Windows paths with accented characters work.
+Filesystems without hard links require temporary model copies, which adds disk
+work per request.
 
 CUDA uses the pinned whisper.cpp v1.9.1 Windows package plus the official NVIDIA cuBLAS 11.11.3.6 archive. Both archives and extracted files are verified. The upstream CUDA package alone omits cuBLAS. NVIDIA terms are linked before installation and the original cuBLAS license is retained. GPU libraries are downloaded only with explicit installation, not bundled in the app executable.
 

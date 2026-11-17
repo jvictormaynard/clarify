@@ -21,6 +21,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
   const [endpointOpen, setEndpointOpen] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const browsedSpeech = useRef("");
   const recommendation = setup?.recommendation;
   const speechModel = speech || recommendation?.modelId || "";
   const selected = setup?.textOptions.find(option => option.id === provider);
@@ -29,6 +30,13 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     if (["opencode", "chatgpt"].includes(provider) && !model && selected?.models?.length) setModel(selected.models[0].id);
   }, [provider, model, selected?.models]);
   const pending = busy || !!setup?.busy || saving || state.providerBusy || controller.validatingProvider;
+  useEffect(() => {
+    if (step !== "speech") { browsedSpeech.current = ""; return; }
+    if (speechModel && !pending && speechIds[state.localProfileIndex] !== speechModel && browsedSpeech.current !== speechModel) {
+      browsedSpeech.current = speechModel;
+      void run("selectLocalProfile", speechIds.indexOf(speechModel));
+    }
+  }, [step, speechModel, pending, speechIds, state.localProfileIndex, run]);
   const installed = state.localAsrStatus === "installed" && speechIds[state.localProfileIndex] === speechModel || (!speech && !!recommendation?.installed);
   const options = { language, speechModelId: speechModel, textProvider: provider, textModelId: model || selected?.modelId || "" };
   const textReady = provider === "none" || !!(selected?.connected && options.textModelId &&

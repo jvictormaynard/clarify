@@ -294,6 +294,8 @@ foreach ($backendModule in @(
     "hotkey_config.py",
     "local_asr.py",
     "local_asr_catalog.py",
+    "local_asr_batch.py",
+    "local_asr_batch_assets.py",
     "local_asr_live.py",
     "local_asr_live_assets.py",
     "local_asr_streaming.py",

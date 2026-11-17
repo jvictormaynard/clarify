@@ -21,6 +21,16 @@ from local_asr_streaming import wav_bytes
 
 class BatchTests(unittest.TestCase):
     def installer(self, root, model="parakeet-v3-int8"):
+        if Path(root).is_dir():
+            folder = Path(root) / "models"
+            folder.mkdir(exist_ok=True)
+            for name in (
+                "encoder.int8.onnx",
+                "decoder.int8.onnx",
+                "joiner.int8.onnx",
+                "tokens.txt",
+            ):
+                (folder / name).write_bytes(b"fake model")
         return SimpleNamespace(
             manifest={"recommended_model": {"id": model}},
             verify=lambda **kwargs: None,
@@ -29,7 +39,7 @@ class BatchTests(unittest.TestCase):
         )
 
     def test_final_sherpa_json_and_cpu_flags(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory(prefix="João-") as root:
             installer = self.installer(root)
             commands = []
 
@@ -38,11 +48,20 @@ class BatchTests(unittest.TestCase):
 
                 def __init__(self, command, **kwargs):
                     commands.extend(command)
+                    self_test = Path(kwargs["cwd"])
+                    for argument in command[1:]:
+                        assert argument.isascii()
+                    assert (self_test / "input.wav").is_file()
+                    assert (
+                        self_test / "encoder.int8.onnx"
+                    ).read_bytes() == b"fake model"
                     # This is the v1.12.14 CLI's stderr format, including suffix.
                     kwargs["stderr"].write(
-                        f'config\n{command[-1]}\n{{"text":"Olá {{mundo}}"}}\n----\nnum threads: 3\n'.encode(
+                        b"config Jo\xe3o\n"
+                        + f'{command[-1]}\r\n{{"text":"Olá {{mundo}}"}}\r\n'.encode(
                             "utf8"
                         )
+                        + b"diagnostic Jo\xe3o\n"
                     )
                     kwargs["stderr"].flush()
 
@@ -52,7 +71,13 @@ class BatchTests(unittest.TestCase):
                 def wait(self, **kwargs):
                     return 0
 
-            with patch("local_asr_batch.subprocess.Popen", FakeProcess):
+            with (
+                patch("local_asr_batch.subprocess.Popen", FakeProcess),
+                patch(
+                    "local_asr_batch.os.link",
+                    side_effect=OSError("hard links unavailable"),
+                ),
+            ):
                 engine = create_engine("parakeet-v3-int8", installer)
                 self.assertEqual(
                     engine.transcribe(
@@ -74,7 +99,7 @@ class BatchTests(unittest.TestCase):
                 returncode = None
 
                 def __init__(self, command, **kwargs):
-                    self.audio = Path(command[-1])
+                    self.audio = Path(kwargs["cwd"]) / command[-1]
                     engine.cancel()
 
                 def poll(self):

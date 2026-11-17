@@ -360,7 +360,9 @@ def main():
                     if "--personal-missing" in sys.argv
                     else "installed"
                 },
-                requirements=lambda: {"download_bytes": 157286400},
+                requirements=lambda: {
+                    "download_bytes": 157286400 if model == "ggml-base" else 314572800
+                },
             ),
         ),
     ):
@@ -455,7 +457,12 @@ def main():
             repositories.config.apply(
                 replace(repositories.config.load(), onboarding_completed=True)
             )
-        local_product = Mock(state=LocalASRProductState("installed"), busy=False)
+        local_product = Mock(
+            state=LocalASRProductState(
+                "installed", requirements={"download_bytes": 314572800}
+            ),
+            busy=False,
+        )
         if "--personal-install" in sys.argv:
             from tests.support.local_asr_product import FakeInstaller
             from local_asr_product import LocalASRProductController

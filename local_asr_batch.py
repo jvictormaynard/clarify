@@ -208,17 +208,20 @@ class BatchEngine:
             log_path = Path(directory) / "native.log"
             with result_path.open("wb") as output, log_path.open("wb") as errors:
                 if self.model == "parakeet-v3-int8":
-                    models = self.installer.model_path.parent
+                    # Narrow-argv Windows CLIs cannot open arbitrary Unicode paths.
+                    # Stage links under a Unicode cwd passed through CreateProcessW;
+                    # every model/audio argument itself stays ASCII.
+                    self._stage_sherpa_models(Path(directory), abort, cancel_event)
                     command = [
                         str(self.installer.executable_path),
-                        f"--encoder={self.installer.model_path}",
-                        f"--decoder={models / 'decoder.int8.onnx'}",
-                        f"--joiner={models / 'joiner.int8.onnx'}",
-                        f"--tokens={models / 'tokens.txt'}",
+                        "--encoder=encoder.int8.onnx",
+                        "--decoder=decoder.int8.onnx",
+                        "--joiner=joiner.int8.onnx",
+                        "--tokens=tokens.txt",
                         "--model-type=nemo_transducer",
                         "--provider=cpu",
                         "--num-threads=3",
-                        str(wav_path),
+                        "input.wav",
                     ]
                     environment = os.environ.copy()
                     runtime_lib = str(
@@ -231,6 +234,7 @@ class BatchEngine:
                         stderr=errors,
                         stdin=subprocess.DEVNULL,
                         env=environment,
+                        cwd=directory,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
                 else:
@@ -271,15 +275,14 @@ class BatchEngine:
             if max(result_path.stat().st_size, log_path.stat().st_size) > MAX_OUTPUT:
                 raise LocalASRSidecarError("Batch runtime output exceeded its limit")
             try:
-                raw = (
-                    log_path if self.model == "parakeet-v3-int8" else result_path
-                ).read_text(encoding="utf8")
                 if self.model == "parakeet-v3-int8":
-                    # sherpa CLI prints the filename before its final JSON.
-                    raw = raw.split(str(wav_path) + "\n", 1)[1].lstrip()
-                    payload, _ = json.JSONDecoder().raw_decode(raw)
+                    # The pinned CLI emits one JSON line after its ASCII filename.
+                    # Diagnostics before/after it can use a Windows code page.
+                    raw = log_path.read_bytes().replace(b"\r\n", b"\n")
+                    line = raw.rsplit(b"input.wav\n", 1)[1].lstrip().split(b"\n", 1)[0]
+                    payload = json.loads(line)
                 else:
-                    payload = json.loads(raw)
+                    payload = json.loads(result_path.read_bytes())
                 if "error" in payload:
                     raise LocalASRSidecarError(payload["error"])
                 text = payload["text"]
@@ -305,6 +308,25 @@ class BatchEngine:
                     with self._state:
                         self._abort = None
                     self._busy.release()
+
+    def _stage_sherpa_models(self, directory, abort, external):
+        for name in (
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+            "tokens.txt",
+        ):
+            self._check(abort, external)
+            source = self.installer.model_path.parent / name
+            destination = directory / name
+            try:
+                os.link(source, destination)
+            except OSError:
+                # Different volumes or filesystems can require a cancellable copy.
+                with source.open("rb") as reader, destination.open("xb") as writer:
+                    while chunk := reader.read(1024 * 1024):
+                        self._check(abort, external)
+                        writer.write(chunk)
 
     @staticmethod
     def _stop_process(process):
