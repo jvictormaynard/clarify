@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "provider": "local_asr",
+  "engine": {
+    "name": "transcribe.cpp",
+    "version": "v0.4.2",
+    "source_url": "https://github.com/handy-computer/transcribe.cpp/tree/v0.4.2",
+    "license": "MIT"
+  },
+  "recommended_model": {
+    "id": "granite-5-turboctc",
+    "display_name": "Granite Speech 5.0 470M TurboCTC multilingual Q8_0 (provisional)",
+    "license": "Apache-2.0",
+    "source_url": "https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF/tree/88845afaa7beadca4b9ec545df0dd7332349ab88"
+  },
+  "requirements": {
+    "platform": "windows x64",
+    "compute": "CPU, maximum 3 threads; batch only; provisional candidate",
+    "runtime": "transcribe.cpp 0.4.2; Microsoft Visual C++ 2015-2022 Redistributable (x64)",
+    "memory_bytes": 1500000000,
+    "disk_bytes": 850000000,
+    "download_bytes": 523715953
+  },
+  "license_files": [
+    "local_asr_manifests/granite5-LICENSE.txt",
+    "local_asr_manifests/granite5-NOTICE.txt"
+  ],
+  "assets": {
+    "runtime": {
+      "filename": "transcribe-native-0.4.2-windows-x86_64-cpu-vulkan.tar.gz",
+      "url": "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.4.2/transcribe-native-0.4.2-windows-x86_64-cpu-vulkan.tar.gz",
+      "size": 18052817,
+      "sha256": "6094102cf57b404b050707ceb258b12ce647b92e801b5d46077214e5b030c8aa",
+      "license": "MIT",
+      "source_url": "https://github.com/handy-computer/transcribe.cpp/releases/tag/v0.4.2",
+      "archive": "tar.gz"
+    },
+    "model": {
+      "filename": "granite-speech-5.0-470m-turboctc-Q8_0.gguf",
+      "url": "https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF/resolve/88845afaa7beadca4b9ec545df0dd7332349ab88/granite-speech-5.0-470m-turboctc-Q8_0.gguf",
+      "source_url": "https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF/tree/88845afaa7beadca4b9ec545df0dd7332349ab88",
+      "license": "Apache-2.0",
+      "size": 505663136,
+      "sha256": "fc34cbe71f979a6aeb8bea08bfac88d5c62c1736c0bc845827e37c90f28e336c"
+    }
+  },
+  "extracted_files": [
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/contract.json",
+      "path": "runtime/contract.json",
+      "size": 125,
+      "sha256": "f80a767bbff1f9e79916e0d874bf91e97ab4abfe8fc050f97c2191a243064b5c"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-base.dll",
+      "path": "runtime/ggml-base.dll",
+      "size": 675328,
+      "sha256": "ed3596197098edf9a6b6d4eac8b85362cbec0ee2a5e338006e4864781807dd4a"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-alderlake.dll",
+      "path": "runtime/ggml-cpu-alderlake.dll",
+      "size": 1103360,
+      "sha256": "2ed1df33efbb3800c34797dd5f5fffaca513266aff451470394bea42d5bd0129"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-cannonlake.dll",
+      "path": "runtime/ggml-cpu-cannonlake.dll",
+      "size": 1205760,
+      "sha256": "b9113914f4b74add4d25e09474ad0157c2919858df02029e03bfc4cad9191b94"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-cascadelake.dll",
+      "path": "runtime/ggml-cpu-cascadelake.dll",
+      "size": 1205760,
+      "sha256": "dbaf116b5963fb06c419a15c4ce06d7eaa56f3e075e58bac1db758d8679426bb"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-haswell.dll",
+      "path": "runtime/ggml-cpu-haswell.dll",
+      "size": 1104896,
+      "sha256": "7284dd19351f3b0130a9deb2d4bbc965c9feffa72fe6ebefa77c73ef2f137dc2"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-icelake.dll",
+      "path": "runtime/ggml-cpu-icelake.dll",
+      "size": 1205760,
+      "sha256": "8fb7c4bffd30e6ca3da237116e3b5a68dbf317b720d865f8891005bde620ac66"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-sandybridge.dll",
+      "path": "runtime/ggml-cpu-sandybridge.dll",
+      "size": 1075712,
+      "sha256": "08ad3710832d62e019fbfd91aae54eda9a8841c51547ac42b45a538de4050f3a"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-skylakex.dll",
+      "path": "runtime/ggml-cpu-skylakex.dll",
+      "size": 1205760,
+      "sha256": "d6cc2ae65ac2b4d6b947f6d1a5a0c5e0071e0c675ef301b6e7e47707840fb658"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-sse42.dll",
+      "path": "runtime/ggml-cpu-sse42.dll",
+      "size": 842240,
+      "sha256": "26b15b35b444fca28025f2723b47788c621fb421c4734eec795b69d9133b1197"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-cpu-x64.dll",
+      "path": "runtime/ggml-cpu-x64.dll",
+      "size": 842752,
+      "sha256": "7da17a52d8c483408f90ecffa1a0c550675a83210deec2a59cfc2c029730e5b2"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml-vulkan.dll",
+      "path": "runtime/ggml-vulkan.dll",
+      "size": 43652608,
+      "sha256": "6f7a0725260c9c5ec0026b9c6426e54e42cb77ccccbccce126d023ca969423d8"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/ggml.dll",
+      "path": "runtime/ggml.dll",
+      "size": 61952,
+      "sha256": "ff02f87dad8e389e750f00863af60825d8cbb35854b28074728e6d8cba676752"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/licenses/LICENSE",
+      "path": "runtime/licenses/LICENSE",
+      "size": 1104,
+      "sha256": "acef7d1711847656cdeb0007784dbe19bd7fd069767b0b38bd62714c6a8f3159"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/licenses/ggml/LICENSE",
+      "path": "runtime/licenses/ggml/LICENSE",
+      "size": 1099,
+      "sha256": "bcd8ec749126d45cb06737d0690295d73df4b6e7e194205bcf91190368f27285"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/licenses/src/third_party/miniz/LICENSE",
+      "path": "runtime/licenses/src/third_party/miniz/LICENSE",
+      "size": 1184,
+      "sha256": "0115478d567121238cf6cc1c0c361926cf07a49d9e4c9e66da97fac6a01646b3"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/licenses/src/third_party/silero_vad/LICENSE",
+      "path": "runtime/licenses/src/third_party/silero_vad/LICENSE",
+      "size": 1095,
+      "sha256": "9cb98d261a9f2dfd347ee43b314343c68fe063ecc7f31514e24b248b1be727c6"
+    },
+    {
+      "archive_path": "transcribe-native-windows-x86_64-cpu-vulkan/transcribe.dll",
+      "path": "runtime/transcribe.dll",
+      "size": 2052608,
+      "sha256": "bfe89e1ad7c126c51f0774133f3744f75c1b79829bd8cc2527ffbd172f4cf3b3"
+    }
+  ]
+}
