@@ -178,3 +178,9 @@
   .onboarding-practice.onboarding-flow .onboarding-heading { margin-bottom: 24px; }
   .onboarding-practice .onboarding-composer-body { min-height: 168px; }
 }
+
+.onboarding-practice .onboarding-flow-actions .button.primary {
+  background: var(--foreground);
+  color: var(--background);
+  border-color: var(--foreground);
+}

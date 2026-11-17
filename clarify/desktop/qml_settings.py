@@ -3920,11 +3920,15 @@ class QmlSettingsController(QObject):
         self.loaded.emit()
         return True
 
-    @Property(str, constant=True)
+    @Property(str, notify=configChanged)
     def uiLanguage(self):
         from shared.localization import device_language
 
-        return device_language()
+        return (
+            device_language()
+            if self._config.interface_language == "auto"
+            else self._config.interface_language
+        )
 
     @Property("QVariantMap", notify=accountStateChanged)
     def accountState(self):
@@ -4329,12 +4333,7 @@ class QmlSettingsController(QObject):
                 "label": "ChatGPT subscription",
                 "available": True,
                 "connected": bool(chatgpt["connected"] and chatgpt["planEnabled"]),
-                "models": [
-                    {"id": model, "label": model}
-                    for model in self._provider_activity.get("chatgpt", {}).get(
-                        "textModels", []
-                    )
-                ],
+                "models": self.chatgptTextCatalog.get("models", []),
                 "modelId": self._config.chatgpt.text_model,
                 "modelLabel": self._config.chatgpt.text_model,
                 "access": "subscription",
@@ -4365,6 +4364,12 @@ class QmlSettingsController(QObject):
                 {
                     "id": provider,
                     "label": PROVIDER_REGISTRY.describe(provider).display_name,
+                    "models": [
+                        {"id": model, "label": model}
+                        for model in self._provider_activity.get(provider, {}).get(
+                            "textModels", []
+                        )
+                    ],
                     "available": True,
                     "connected": bool(config.api_key)
                     or (
@@ -4411,6 +4416,29 @@ class QmlSettingsController(QObject):
 
         if self._account_shutdown:
             return False
+        if action == "interface_language":
+            try:
+                payload = json.loads(value)
+                if (
+                    not isinstance(payload, dict)
+                    or set(payload) != {"interfaceLanguage"}
+                    or payload["interfaceLanguage"] not in {"en", "pt", "es"}
+                ):
+                    raise ValueError("Select a supported interface language.")
+                if self.dirty or self.providerDirty or self.personalSetupState["busy"]:
+                    raise ValueError("Finish the current operation before setup.")
+                config = self._config_repository.load()
+                persisted = self._config_repository.apply(
+                    replace(config, interface_language=payload["interfaceLanguage"])
+                )
+                self._replace_loaded_config(persisted)
+                self._personal_setup["error"] = ""
+                self.personalSetupStateChanged.emit()
+                return True
+            except Exception as error:
+                self._personal_setup["error"] = str(error)
+                self.personalSetupStateChanged.emit()
+                return False
         if action == "cancel":
             self._personal_setup_cancel.cancel()
             self._personal_setup_generation += 1

@@ -9,6 +9,36 @@ from tests.support.qml_text_actions import QmlTextActionFixture
 
 
 class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
+    def test_interface_language_persists_without_changing_speech_or_output(self):
+        settings = self.settings
+        original = settings._config_repository.load()
+        self.assertTrue(
+            settings.personalSetupCommand(
+                "interface_language", json.dumps({"interfaceLanguage": "es"})
+            )
+        )
+        saved = settings._config_repository.load()
+        self.assertEqual(settings.uiLanguage, "es")
+        self.assertEqual(saved.interface_language, "es")
+        self.assertEqual(type(saved).from_mapping(saved.to_mapping()), saved)
+        self.assertEqual(saved.ui.language, original.ui.language)
+        self.assertEqual(saved.recognition_language, original.recognition_language)
+        self.assertEqual(saved.workflows, original.workflows)
+        for value in (
+            '{"interfaceLanguage":"de"}',
+            '{"interfaceLanguage":[]}',
+            '{"interfaceLanguage":"en","language":"pt"}',
+        ):
+            self.assertFalse(settings.personalSetupCommand("interface_language", value))
+            self.assertEqual(settings._config_repository.load(), saved)
+        settings.setProviderApiKey("fixture-unsaved-key")
+        self.assertFalse(
+            settings.personalSetupCommand(
+                "interface_language", '{"interfaceLanguage":"en"}'
+            )
+        )
+        self.assertEqual(settings._config_repository.load(), saved)
+
     def test_cpu_only_models_cannot_select_gpu_or_run_gpu_measurement(self):
         settings = self.settings
         settings._local_devices = [
@@ -213,3 +243,40 @@ class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
             [m["id"] for m in option["models"]], list(settings._opencode_models)
         )
         self.assertEqual(option["modelId"], settings._config.opencode.text_model)
+
+        config = settings._config_repository.load()
+        saved_endpoint = replace(
+            config,
+            openai=replace(
+                config.openai, api_key="", base_url="http://127.0.0.1:8080/v1"
+            ),
+        )
+        settings._config_repository.apply(saved_endpoint)
+        settings._replace_loaded_config(saved_endpoint)
+        installer = Mock()
+        installer.status.return_value = {"state": "installed"}
+        with patch("local_asr_catalog.installer_for", return_value=installer):
+            self.assertTrue(
+                settings.personalSetupCommand(
+                    "complete",
+                    json.dumps(
+                        {
+                            "language": "pt",
+                            "speechModelId": "ggml-base",
+                            "textProvider": "openai",
+                            "textModelId": "fixture-local-rewriter",
+                        }
+                    ),
+                )
+            )
+            self.wait_setup()
+        self.assertEqual(settings.personalSetupState["error"], "")
+        saved = settings._config_repository.load()
+        self.assertEqual(saved.workflow("transcription").model_id, "ggml-base")
+        for scope in ("refinement", "local_asr_refinement", "rewrite", "translation"):
+            route = saved.workflow(scope)
+            self.assertEqual(
+                (route.provider_id, route.model_id, route.custom_endpoint),
+                ("openai", "fixture-local-rewriter", "http://127.0.0.1:8080/v1"),
+            )
+        self.assertEqual(saved.openai.text_model, "fixture-local-rewriter")

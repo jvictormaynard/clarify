@@ -195,7 +195,7 @@ export type SettingsArguments = {
   refreshTextActions: [];
   practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
   computerCommand: [action: "enable" | "pair" | "stop" | "revoke" | "durable" | "close", value: string];
-  personalSetupCommand: [action: "recommend" | "configure" | "connect_opencode" | "complete" | "cancel" | "reset_text_choice", value: string];
+  personalSetupCommand: [action: "interface_language" | "recommend" | "configure" | "connect_opencode" | "complete" | "cancel" | "reset_text_choice", value: string];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   chatgptCommand: [action: ChatGPTAction, value: string];

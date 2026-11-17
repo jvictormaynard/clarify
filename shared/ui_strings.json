@@ -9268,5 +9268,110 @@
     "pt": "Whisper Medium (compatibilidade)",
     "en": "Whisper Medium (compatibility)",
     "es": "Whisper Medium (compatibilidad)"
+  },
+  "setup_choose_language": {
+    "pt": "Escolha seu idioma",
+    "en": "Choose your language",
+    "es": "Elige tu idioma"
+  },
+  "setup_interface_language": {
+    "pt": "Idioma da interface",
+    "en": "Interface language",
+    "es": "Idioma de la interfaz"
+  },
+  "setup_interface_hint": {
+    "pt": "Você pode escolher os idiomas da fala e do texto depois.",
+    "en": "You can choose spoken and output languages later.",
+    "es": "Puedes elegir los idiomas del habla y del texto después."
+  },
+  "setup_previous_language": {
+    "pt": "Idioma anterior",
+    "en": "Previous language",
+    "es": "Idioma anterior"
+  },
+  "setup_next_language": {
+    "pt": "Próximo idioma",
+    "en": "Next language",
+    "es": "Siguiente idioma"
+  },
+  "setup_choose_rewriting": {
+    "pt": "Como você quer reescrever?",
+    "en": "How would you like to rewrite?",
+    "es": "¿Cómo quieres reescribir?"
+  },
+  "setup_rewriting_hint": {
+    "pt": "Escolha um serviço para revisar seu ditado ou mantenha a transcrição.",
+    "en": "Choose a service to clean up your dictation, or keep the transcript.",
+    "es": "Elige un servicio para revisar tu dictado o conserva la transcripción."
+  },
+  "setup_free_choice": {
+    "pt": "Experimentar modelos gratuitos",
+    "en": "Try free models",
+    "es": "Probar modelos gratuitos"
+  },
+  "setup_personal_choice": {
+    "pt": "Usar chave de API ou servidor local",
+    "en": "Use an API key or local server",
+    "es": "Usar clave de API o servidor local"
+  },
+  "setup_connect_plan": {
+    "pt": "Conecte seu serviço de reescrita",
+    "en": "Connect your rewriting service",
+    "es": "Conecta tu servicio de reescritura"
+  },
+  "setup_connect_hint": {
+    "pt": "Conecte um provedor e escolha um modelo de reescrita.",
+    "en": "Connect a provider, then choose a rewriting model.",
+    "es": "Conecta un proveedor y elige un modelo de reescritura."
+  },
+  "setup_connected": {
+    "pt": "Conectado",
+    "en": "Connected",
+    "es": "Conectado"
+  },
+  "setup_not_connected": {
+    "pt": "Não conectado",
+    "en": "Not connected",
+    "es": "Sin conectar"
+  },
+  "setup_runtime_needed": {
+    "pt": "Download necessário",
+    "en": "Download required",
+    "es": "Descarga necesaria"
+  },
+  "setup_manage_connection": {
+    "pt": "Gerenciar",
+    "en": "Manage",
+    "es": "Gestionar"
+  },
+  "setup_connect": {
+    "pt": "Conectar",
+    "en": "Connect",
+    "es": "Conectar"
+  },
+  "setup_more_providers": {
+    "pt": "Mais provedores",
+    "en": "More providers",
+    "es": "Más proveedores"
+  },
+  "setup_search_providers": {
+    "pt": "Buscar provedores",
+    "en": "Search providers",
+    "es": "Buscar proveedores"
+  },
+  "setup_connecting": {
+    "pt": "Preparando o provedor e carregando modelos…",
+    "en": "Preparing the provider and loading models…",
+    "es": "Preparando el proveedor y cargando modelos…"
+  },
+  "setup_browser_connection": {
+    "pt": "Continue no navegador para conectar seu plano ChatGPT. Você pode cancelar e tentar novamente aqui.",
+    "en": "Continue in your browser to connect your ChatGPT plan. You can cancel and retry here.",
+    "es": "Continúa en el navegador para conectar tu plan ChatGPT. Puedes cancelar y volver a intentarlo aquí."
+  },
+  "setup_rewriting_model": {
+    "pt": "Modelo de reescrita",
+    "en": "Rewriting model",
+    "es": "Modelo de reescritura"
   }
 }

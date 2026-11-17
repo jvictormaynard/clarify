@@ -4,8 +4,9 @@ import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog,
 
 
 async function finishPersonalSetup(page: Page) {
-  await page.getByRole("button", { name: "Vamos começar", exact: true }).click();
-  for (const step of ["language", "speech", "text"]) {
+  await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  await page.getByRole("radio", { name: /Manter a transcrição/ }).click();
+  for (const step of ["welcome", "speech"]) {
     await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", step);
     await page.getByRole("button", { name: "Continuar", exact: true }).click();
   }
@@ -109,7 +110,6 @@ settingsScenario({ onboarding: true }, () => {
     await composer.focus();
     await expect(composer).toBeFocused();
     await expect(composer.locator(".onboarding-keys")).toBeVisible();
-    await expect(page.locator(".onboarding-flow-actions").getByRole("button")).toHaveText(["Pular prática", "Continuar"]);
     await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeDisabled();
     await expect(composer.getByRole("textbox", { name: "Assunto", exact: true })).toHaveValue("Uma conversa rápida");
     await expect(composer.getByText("Diga, por exemplo: Hoje vou escrever uma mensagem com o Clarify.", { exact: true })).toHaveCount(0);
@@ -148,7 +148,7 @@ settingsScenario({ onboarding: true }, () => {
     await page.getByRole("button", { name: "Pular prática", exact: true }).click();
     await expect(settingsDialog(page)).toBeVisible();
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Boas-vindas ao Clarify" })).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Escolha seu idioma" })).toBeHidden();
     await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
   });
 });

@@ -366,28 +366,36 @@ personal provider controls. Destructive operations keep their confirmation and a
 context checks. Opening a screen does not acquire the microphone or submit an
 authentication request.
 
-Personal onboarding starts with welcome, spoken language, a hardware-based speech
-recommendation, optional text service and verified installation. Back preserves
-choices; each step moves keyboard focus to its heading. Model names remain visible.
-Other speech models and personal endpoint settings remain available. Installation
-can be cancelled and retried. Completion requires the backend installation check.
-Practice and phone pairing follow setup. Opening setup does not request audio,
-install a model or connect a provider. The user starts each of those actions.
-Use centered step dots, a centered heading and a compact content column. Show the
-Clarify logo on welcome; subsequent steps have no repeated plain text brand label.
+Personal onboarding follows the approved OpenBot reference layout, implemented
+with Clarify components and assets. Start with a centered interface-language
+wheel, then rewriting setup, speech setup, verified installation, practice and
+optional phone pairing. The interface preference is separate from spoken and
+output languages. The wheel supports keyboard arrows, wheel input and drag.
+Back preserves choices; each step moves keyboard focus to its heading.
+
+Use one focused task per screen, a centered heading, small step dots and a compact
+480 px content column. Show the Clarify brand on the language screen. Use grouped
+choice and provider rows, quiet separators, short copy and generous spacing.
+The primary action is a centered pill with foreground/background colors. Use
+semantic tokens and shared controls. At 640 px, retain readable spacing without
+horizontal scroll. Short windows scroll.
+
+Rewriting setup offers the supported ChatGPT subscription connection, OpenCode
+free models, personal API services and a compatible local endpoint. Keep raw
+transcription available. More providers opens a searchable dialog. Each provider
+row shows its current connection state and an explicit action. API keys and
+endpoint details use a connection dialog. ChatGPT uses the supported browser
+sign-in and cancellation flow. Do not show unsupported code-login methods.
+Show model selection after connection and catalog discovery. Rewriting and speech
+models have separate controls and saved routes. Changing a provider clears its
+setup errors. An optional skip continues with the raw transcript.
+
 The speech card shows the model, processing location and download. Put hardware
-details and the refresh action in the model-options disclosure. Stack a full-width
-primary action above Back in a centered footer, with at least 44 px button height.
-Use the existing controls, semantic colors and fonts. At 640 px, retain readable
-spacing without horizontal scroll. Short windows scroll.
-The text-service step uses one 480 px column for labels, controls, errors and
-actions. Use 16 px between form groups and 8 px between a label and its control.
-Keep one short service explanation. ChatGPT sign-in fills the column; account
-management stays in Settings. Show model selection after connection and catalog
-discovery. Personal API services retain manual model entry after connection.
-Put a custom endpoint in a disclosure. Clear setup errors when the service
-changes. Show Continue when the selected service is ready; offer Not now to
-continue with the raw transcript without connecting a service.
+details and the refresh action in the model-options disclosure. Installation
+shows progress and supports cancel and retry. Provider preparation uses an
+indeterminate status when byte progress is unavailable. Completion requires the
+backend installation check. Opening setup does not request audio, install a
+model or connect a provider. The user starts each action.
 Live speech appears in a bounded panel above the pill while recording. Partials
 are display-only and clear when capture ends.
 

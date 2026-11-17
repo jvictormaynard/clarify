@@ -203,6 +203,7 @@ class AppConfig:
     local_asr_device: str = "auto"
     local_asr_streaming: bool = False
     recognition_language: str = "auto"
+    interface_language: str = "auto"
     history_enabled: bool = False
     experimental_audio_history: bool = False
     automatic_updates: bool = False
@@ -569,6 +570,9 @@ class AppConfig:
                 source.get("local_asr_device")
             ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
+            interface_language=choice(
+                "interface_language", ("auto", "en", "pt", "es"), "auto"
+            ),
             recognition_language=choice(
                 "recognition_language", SUPPORTED_LANGUAGES, "auto"
             ),
@@ -618,6 +622,7 @@ class AppConfig:
             "local_asr_device": self.local_asr_device,
             "local_asr_streaming": self.local_asr_streaming,
             "recognition_language": self.recognition_language,
+            "interface_language": self.interface_language,
             "refinement_provider": self.selection.refinement_provider,
             "refinement_model": self.selection.refinement_model,
             "ui_mode": self.ui.mode,

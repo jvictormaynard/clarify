@@ -3,6 +3,8 @@ import { Check, Keyboard, Languages, Mail, Mic, Smartphone } from "lucide-react"
 import "../styles/onboarding.css";
 import "../styles/onboarding-practice.css";
 import { t } from "../i18n";
+import { writingStyleOptions } from "../settings/writing-style-options";
+import type { WritingStyle } from "../settings/bridge";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Input, Picker, Row, Section, TextArea } from "./ui";
 
@@ -141,6 +143,13 @@ export function DictationPractice({ controller }: SettingsPageProps) {
               disabled={busy} onChange={value => void run("setLanguage", value)} />
           </div>
         </div>
+        {state.writingStyleRefinementAllowed !== false && <div className="onboarding-setup-row">
+          <h2>{t("Tom")}</h2>
+          <div className="onboarding-setup-controls">
+            <Picker label={t("Tom")} value={state.dictationWritingStyle ?? ""} options={writingStyleOptions(state.dictationWritingStyle ?? "")}
+              disabled={busy} onChange={value => void run("setDictationWritingStyle", value as WritingStyle | "")} />
+          </div>
+        </div>}
       </div> : <>
         {success && <div className="onboarding-confetti" aria-hidden="true">{Array.from({ length: 12 }, (_, index) => <i key={index} style={{ "--piece": index } as CSSProperties} />)}</div>}
         <div className={`onboarding-composer${recording ? " is-recording" : ""}`} tabIndex={0} role="group" aria-label={t("E-mail de prática")}>

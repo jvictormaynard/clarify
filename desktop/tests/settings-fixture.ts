@@ -89,7 +89,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
         }, 150);
       });
       await page.goto("/");
-      await expect(scenario.onboarding ? page.getByRole("heading", { name: locale === "en" ? "Welcome to Clarify" : locale === "es" ? "Te damos la bienvenida a Clarify" : "Boas-vindas ao Clarify" }) : page.getByRole("heading", { name: locale === "en" ? "Welcome back" : locale === "es" ? "Bienvenido de nuevo" : "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
+      await expect(scenario.onboarding ? page.getByRole("heading", { name: locale === "en" ? "Choose your language" : locale === "es" ? "Elige tu idioma" : "Escolha seu idioma" }) : page.getByRole("heading", { name: locale === "en" ? "Welcome back" : locale === "es" ? "Bienvenido de nuevo" : "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
       await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
       if (scenario.initialPage === "style") await navigate(page, locale === "en" ? "Style" : "Estilo");
       testInfo.setTimeout(actionTimeout + Math.ceil(performance.now() - setupStarted));
