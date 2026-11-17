@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, Mail, Mic } from "lucide-react";
+import { Check, Keyboard, Languages, Mail, Mic, Smartphone } from "lucide-react";
 import "../styles/onboarding.css";
+import "../styles/onboarding-practice.css";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Input, Picker, Row, Section, TextArea } from "./ui";
@@ -30,6 +31,12 @@ export function PracticeEntry({ controller }: SettingsPageProps) {
 
 function ShortcutKeys({ shortcut }: { shortcut?: string }) {
   return <span className="onboarding-keys">{(shortcut || t("Definir atalho")).split("+").map((key, index) => <kbd key={index}>{key.trim()}</kbd>)}</span>;
+}
+
+function PracticeProgress({ step }: { step: number }) {
+  return <div className="onboarding-practice-progress" aria-hidden="true">
+    {[0, 1, 2].map(index => <span key={index} data-active={index === step} data-complete={index < step} />)}
+  </div>;
 }
 
 export function DictationPractice({ controller }: SettingsPageProps) {
@@ -76,24 +83,27 @@ export function DictationPractice({ controller }: SettingsPageProps) {
   const configurationRequired = ["practice_microphone", "practice_configuration", "practice_model", "practice_session", "practice_quota", "account_allowance_exhausted", "account_allocation_waiting", "account_authentication_required", "provider_authentication", "provider_quota"].includes(status);
   const languages: Record<string, string> = { auto: t("Idioma original"), en: "English", pt: "Português", es: "Español", de: "Deutsch", ru: "Русский" };
 
-  if (phone) return <main className="onboarding onboarding-page onboarding-flow">
+  if (phone) return <main className="onboarding onboarding-page onboarding-flow onboarding-practice" data-phase="phone">
     <div className="onboarding-content">
+      <PracticeProgress step={2} />
       <div className="onboarding-heading">
+        <div className="onboarding-practice-symbol" aria-hidden="true"><Smartphone size={24} /></div>
         <h1 ref={heading} tabIndex={-1}>{t("setup_phone_title")}</h1>
         <p className="hint">{t("setup_phone_hint")}</p>
       </div>
-      <div className="onboarding-flow-actions">
-        <Button variant="text" onClick={() => setPhone(false)}>{t("Voltar")}</Button>
-        <Button variant="text" onClick={close}>{t("practice_skip")}</Button>
+      <div className="onboarding-flow-actions onboarding-practice-footer">
         <Button variant="primary" onClick={async () => {
           await run("practiceCommand", "close");
           await navigate("devices");
         }}>{t("setup_pair_phone")}</Button>
+        <Button variant="text" onClick={close}>{t("practice_skip")}</Button>
+        <Button variant="text" onClick={() => setPhone(false)}>{t("Voltar")}</Button>
       </div>
     </div>
   </main>;
-  return <main className="onboarding onboarding-page onboarding-flow" data-phase={phase}>
+  return <main className="onboarding onboarding-page onboarding-flow onboarding-practice" data-phase={phase}>
     <div className="onboarding-content" key={phase}>
+      <PracticeProgress step={phase === "setup" ? 0 : 1} />
       <div className="onboarding-heading">
         {success && <div className="onboarding-success-icon"><Check size={32} aria-hidden="true" /></div>}
         <h1 ref={heading} tabIndex={-1}>{t(phase === "setup" ? "Vamos preparar seu ditado" : success ? "Seu ditado está pronto" : "Fale em vez de digitar")}</h1>
@@ -101,7 +111,7 @@ export function DictationPractice({ controller }: SettingsPageProps) {
       </div>
       {phase === "setup" ? <div className="onboarding-setup">
         <div className="onboarding-setup-row">
-          <h2>{t("Microfone")}</h2>
+          <h2><Mic size={18} aria-hidden="true" />{t("Microfone")}</h2>
           <div className="onboarding-setup-controls">
             <div className="onboarding-microphone-controls">
               <Picker label={t("Microfone")} value={state.selectedMicrophoneId || ""} options={state.microphoneDevices}
@@ -118,14 +128,14 @@ export function DictationPractice({ controller }: SettingsPageProps) {
           </div>
         </div>
         <div className="onboarding-setup-row">
-          <h2>{t("Atalho de ditado")}</h2>
+          <h2><Keyboard size={18} aria-hidden="true" />{t("Atalho de ditado")}</h2>
           <div className="onboarding-setup-controls">
             <div className="onboarding-shortcut-row"><ShortcutKeys shortcut={shortcut} /><Button variant="text" disabled={busy} onClick={() => setCapture("recording_hotkey")}>{t("Alterar atalho")}</Button></div>
             <p className="hint">{t(state.hotkeyActivationMode === "push_to_talk" ? "Segure para falar. Solte para concluir." : "Pressione para falar. Pressione novamente para concluir.")}</p>
           </div>
         </div>
         <div className="onboarding-setup-row">
-          <h2>{t("Idioma do texto")}</h2>
+          <h2><Languages size={18} aria-hidden="true" />{t("Idioma do texto")}</h2>
           <div className="onboarding-setup-controls">
             <Picker label={t("Idioma do texto")} value={state.language} options={state.languages.map(id => ({ id, label: languages[id] || id }))}
               disabled={busy} onChange={value => void run("setLanguage", value)} />
@@ -157,10 +167,10 @@ export function DictationPractice({ controller }: SettingsPageProps) {
         <span>{error ? t(error) : t(statusKey)}</span>
         {!active && !success && configurationRequired && <> <a href={practice?.blocked === "practice_model" ? "#models" : "#settings"} onClick={event => { event.preventDefault(); void configure(); }}>{t(practice?.blocked === "practice_model" ? "Configurar modelo" : "practice_configure")}</a></>}
       </p>}
-      <div className="onboarding-flow-actions onboarding-practice-actions">
-        <Button variant="text" onClick={close}>{t("practice_skip")}</Button>
+      <div className="onboarding-flow-actions onboarding-practice-actions onboarding-practice-footer">
         <Button variant="primary" disabled={phase === "setup" ? busy || state.microphoneInventoryBusy || !shortcut : busy || !success}
           onClick={() => phase === "setup" ? void leaveSetup() : setPhone(true)}>{t("Continuar")}</Button>
+        <Button variant="text" onClick={close}>{t("practice_skip")}</Button>
       </div>
     </div>
   </main>;

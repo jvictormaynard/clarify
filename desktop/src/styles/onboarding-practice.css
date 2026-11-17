@@ -1,0 +1,180 @@
+/* Practice owns its layout; account and provider setup use onboarding.css. */
+.onboarding.onboarding-flow.onboarding-practice {
+  padding: 48px 24px;
+  background: var(--background);
+}
+
+.onboarding-practice.onboarding-flow .onboarding-content {
+  width: 100%;
+  max-width: 560px;
+  min-width: 0;
+  margin-block: auto;
+}
+
+.onboarding-practice .onboarding-practice-progress {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  height: 8px;
+  margin-bottom: 24px;
+}
+
+.onboarding-practice .onboarding-practice-progress span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.onboarding-practice .onboarding-practice-progress span[data-complete="true"] {
+  background: var(--muted-foreground);
+}
+
+.onboarding-practice .onboarding-practice-progress span[data-active="true"] {
+  width: 20px;
+  background: var(--foreground);
+}
+
+.onboarding-practice.onboarding-flow .onboarding-heading {
+  margin-bottom: 32px;
+}
+
+.onboarding-practice.onboarding-flow .onboarding-heading h1 {
+  margin: 0 0 12px;
+  font-size: clamp(28px, 3.6vw, 32px);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -.04em;
+  text-wrap: balance;
+}
+
+.onboarding-practice .onboarding-heading > .hint {
+  max-width: 440px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.onboarding-practice .onboarding-setup {
+  padding: 0 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.onboarding-practice .onboarding-setup-row {
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 0;
+}
+
+.onboarding-practice .onboarding-setup-row h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.onboarding-practice .onboarding-setup-row h2 svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+
+.onboarding-practice .onboarding-setup-controls { gap: 8px; }
+.onboarding-practice .onboarding-shortcut-row { gap: 8px; }
+.onboarding-practice .onboarding-shortcut-row .text-button { font-size: 12px; }
+.onboarding-practice .onboarding-keys { gap: 4px; }
+
+.onboarding-practice .onboarding-keys kbd {
+  padding: 6px 8px;
+  border-bottom-width: 1px;
+  border-radius: 6px;
+  background: var(--muted);
+}
+
+.onboarding-practice .onboarding-composer {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.onboarding-practice .onboarding-composer:focus-visible,
+.onboarding-practice .onboarding-composer:focus-within,
+.onboarding-practice .onboarding-composer.is-recording {
+  border-color: var(--ring);
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.onboarding-practice .onboarding-composer-header,
+.onboarding-practice .onboarding-composer-subject { padding-inline: 20px; }
+
+.onboarding-practice .onboarding-composer-body {
+  min-height: 200px;
+  padding: 24px;
+}
+
+.onboarding-practice .onboarding-reading {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.onboarding-practice .onboarding-feedback {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.onboarding-practice .onboarding-success-icon,
+.onboarding-practice .onboarding-practice-symbol {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 24px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.onboarding-practice .onboarding-success-icon { color: var(--success); }
+
+.onboarding-practice.onboarding-flow .onboarding-practice-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  max-width: 288px;
+  margin: 24px auto 0;
+}
+
+.onboarding-practice .onboarding-practice-footer > button {
+  width: 100%;
+  min-height: 44px;
+  height: auto;
+  margin-inline: 0;
+  padding: 12px 24px;
+  justify-content: center;
+  border-radius: 999px;
+  white-space: normal;
+}
+
+.onboarding-practice.onboarding-flow[data-phase="phone"] .onboarding-content { max-width: 440px; }
+
+@media (max-width: 559px) {
+  .onboarding.onboarding-flow.onboarding-practice { padding: 32px 20px; }
+  .onboarding-practice .onboarding-setup-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .onboarding-practice .onboarding-setup-row h2 { margin-top: 0; }
+  .onboarding-practice .onboarding-composer-body { padding: 20px; }
+}
+
+@media (max-height: 650px) {
+  .onboarding.onboarding-flow.onboarding-practice { padding-block: 24px; }
+  .onboarding-practice.onboarding-flow .onboarding-content { margin-block: 0; }
+  .onboarding-practice.onboarding-flow .onboarding-heading { margin-bottom: 24px; }
+  .onboarding-practice .onboarding-composer-body { min-height: 168px; }
+}
