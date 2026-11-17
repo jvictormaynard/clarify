@@ -21,22 +21,17 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
   const [endpointOpen, setEndpointOpen] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const browsedSpeech = useRef("");
   const recommendation = setup?.recommendation;
   const speechModel = speech || recommendation?.modelId || "";
+  const browsedSpeechMatches = speechIds[state.localProfileIndex] === speechModel;
+  const speechDescription = speechModel === recommendation?.modelId ? recommendation.description : browsedSpeechMatches ? state.localModelDescription : "";
+  const speechRequirements = speechModel === recommendation?.modelId ? recommendation.requirementsList || [] : browsedSpeechMatches ? state.localAsrRequirementsList : [];
   const selected = setup?.textOptions.find(option => option.id === provider);
   const textError = error || setup?.error || (provider === "chatgpt" && (state.chatgptState?.error || state.providerError)) || (provider === state.selectedProviderId && state.providerError) || "";
   useEffect(() => {
     if (["opencode", "chatgpt"].includes(provider) && !model && selected?.models?.length) setModel(selected.models[0].id);
   }, [provider, model, selected?.models]);
   const pending = busy || !!setup?.busy || saving || state.providerBusy || controller.validatingProvider;
-  useEffect(() => {
-    if (step !== "speech") { browsedSpeech.current = ""; return; }
-    if (speechModel && !pending && speechIds[state.localProfileIndex] !== speechModel && browsedSpeech.current !== speechModel) {
-      browsedSpeech.current = speechModel;
-      void run("selectLocalProfile", speechIds.indexOf(speechModel));
-    }
-  }, [step, speechModel, pending, speechIds, state.localProfileIndex, run]);
   const installed = state.localAsrStatus === "installed" && speechIds[state.localProfileIndex] === speechModel || (!speech && !!recommendation?.installed);
   const options = { language, speechModelId: speechModel, textProvider: provider, textModelId: model || selected?.modelId || "" };
   const textReady = provider === "none" || !!(selected?.connected && options.textModelId &&
@@ -94,11 +89,11 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
             <p>{t("setup_location")}</p>
             {speechModel === recommendation?.modelId && <p className="hint setup-model-download"><HardDrive aria-hidden="true" size={15} />{t("setup_download", { v0: Math.ceil((recommendation?.downloadBytes || 0) / 1024 / 1024) })}</p>}
           </div>
-          {state.localModelDescription && speechIds[state.localProfileIndex] === speechModel && <p className="hint">{t(state.localModelDescription)}</p>}
+          {speechDescription && <p className="hint">{t(speechDescription)}</p>}
           <SettingsDisclosure title={t("setup_alternatives")} className="setup-model-options">
             <Picker label={t("setup_speech_model")} value={speechModel} options={state.localProfiles.map((label, index) => ({ id: speechIds[index], label })).filter(option => !!option.id && !["ggml-small", "ggml-medium"].includes(option.id))} disabled={pending} onChange={async id => { setSpeech(id); await run("selectLocalProfile", speechIds.indexOf(id)); }} />
             <p className="hint">{recommendation?.reason}</p>
-            <p className="hint">{state.localAsrRequirementsList.join(" · ")}</p>
+            <p className="hint">{speechRequirements.join(" · ")}</p>
             <Button variant="text" disabled={pending} onClick={() => void command("recommend")}>{t("setup_check_again")}</Button>
           </SettingsDisclosure>
         </>}

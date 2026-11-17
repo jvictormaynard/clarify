@@ -48,6 +48,9 @@ class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
             self.wait_setup()
         recommendation = settings.personalSetupState["recommendation"]
         self.assertEqual(recommendation["modelId"], "ggml-base")
+        self.assertEqual(
+            recommendation["requirementsList"][0], "123 B maximum download"
+        )
         self.assertEqual(settings._config_repository.load(), before)
 
     def test_switching_setup_service_clears_error_without_changing_saved_choices(self):

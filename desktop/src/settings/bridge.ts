@@ -62,7 +62,7 @@ export type ComputerState = {
 };
 export type PersonalSetupState = {
   language: string; busy: boolean; error: string;
-  recommendation: { providerId: string; modelId: string; label: string; reason: string; executionDevice: string; downloadBytes: number; installed: boolean };
+  recommendation: { providerId: string; modelId: string; label: string; reason: string; executionDevice: string; downloadBytes: number; installed: boolean; requirementsList?: string[]; description?: string };
   textOptions: { id: string; label: string; available: boolean; runtimeInstalled?: boolean; connected: boolean; modelId: string; modelLabel: string; access: string; models?: Option[] }[];
 };
 export interface Settings {

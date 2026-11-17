@@ -386,6 +386,17 @@ def _format_local_requirements(requirements: dict[str, Any]) -> str:
     return f"{platform} · {download} download · {disk} disk · {memory} RAM{suffix}"
 
 
+def _local_requirement_lines(values):
+    return [
+        f"{format_requirement_bytes(values.get('download_bytes', 0))} maximum download",
+        f"{format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
+        f"{format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
+        str(values.get("platform", "Windows x64")),
+        str(values.get("compute", "")),
+        str(values.get("runtime", "")),
+    ]
+
+
 def _default_microphone_inventory_source() -> Any | None:
     """Build the optional PortAudio inventory without making it a hard import."""
 
@@ -3343,15 +3354,7 @@ class QmlSettingsController(QObject):
 
     @Property("QVariantList", notify=providerStateChanged)
     def localAsrRequirementsList(self) -> list[str]:
-        values = self._local_state.requirements or {}
-        return [
-            f"{format_requirement_bytes(values.get('download_bytes', 0))} maximum download",
-            f"{format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
-            f"{format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
-            str(values.get("platform", "Windows x64")),
-            str(values.get("compute", "")),
-            str(values.get("runtime", "")),
-        ]
+        return _local_requirement_lines(self._local_state.requirements or {})
 
     @Property(bool, notify=providerStateChanged)
     def localBenchmarkBusy(self):
@@ -4400,7 +4403,12 @@ class QmlSettingsController(QObject):
     @Slot(str, str, result=bool)
     def personalSetupCommand(self, action, value=""):
         import json
-        from local_asr_catalog import MODELS, PROFILE_LABELS, installer_for
+        from local_asr_catalog import (
+            MODELS,
+            PROFILE_LABELS,
+            PROFILE_DESCRIPTIONS,
+            installer_for,
+        )
 
         if self._account_shutdown:
             return False
@@ -4575,6 +4583,8 @@ class QmlSettingsController(QObject):
                         + "Small-memory fallback. New model candidates are available in Choose another; native acceptance is pending.",
                         "executionDevice": "cpu",
                         "downloadBytes": requirements.get("download_bytes", 0),
+                        "requirementsList": _local_requirement_lines(requirements),
+                        "description": PROFILE_DESCRIPTIONS[chosen],
                         "installed": installer.status().get("state") == "installed",
                     }
                 token.raise_if_cancelled()
