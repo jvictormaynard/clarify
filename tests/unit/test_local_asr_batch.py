@@ -225,7 +225,13 @@ class BatchTests(unittest.TestCase):
             result = Path(directory) / "result.json"
             audio.write_bytes(wav_bytes(b"\0\0" * 100))
             with patch("local_asr_batch.C.CDLL", return_value=Library()):
-                _granite_worker("unused", "unused", str(audio), "pt", str(result))
+                _granite_worker(
+                    str(Path(directory) / "fake.dll"),
+                    "unused",
+                    str(audio),
+                    "pt",
+                    str(result),
+                )
             self.assertIn("error", json.loads(result.read_text()))
         self.assertEqual(
             observed,

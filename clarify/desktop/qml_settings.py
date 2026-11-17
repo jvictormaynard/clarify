@@ -3417,12 +3417,11 @@ class QmlSettingsController(QObject):
         self._local_benchmark_detail = detail
         self.providerStateChanged.emit()
 
-    @Property("QStringList", notify=configChanged)
+    @Property("QStringList", constant=True)
     def localProfiles(self):
         from local_asr_catalog import PROFILE_LABELS
-        from shared.localization import translate
 
-        return [translate(label, self._config.ui.language) for label in PROFILE_LABELS]
+        return list(PROFILE_LABELS)
 
     @Property("QStringList", notify=providerStateChanged)
     def localModelIds(self):

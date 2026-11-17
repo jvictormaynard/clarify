@@ -86,7 +86,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           <div className="setup-recommendation setup-speech-card">
             <div className="setup-model-icon"><Mic aria-hidden="true" size={24} /></div>
             {speechModel === recommendation?.modelId && <span className="badge">{t("setup_recommended")}</span>}
-            <h2>{state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label}</h2>
+            <h2>{t(state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label || "")}</h2>
             <p>{t("setup_location")}</p>
             {speechModel === recommendation?.modelId && <p className="hint setup-model-download"><HardDrive aria-hidden="true" size={15} />{t("setup_download", { v0: Math.ceil((recommendation?.downloadBytes || 0) / 1024 / 1024) })}</p>}
           </div>
@@ -120,7 +120,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           </div>
         </>}
         {step === "install" && <>
-          <div className="setup-recommendation"><h2>{state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label}</h2><p>{t("setup_location")}</p><p className="hint">{provider === "none" ? t("setup_raw") : `${selected?.label} · ${options.textModelId}`}</p></div>
+          <div className="setup-recommendation"><h2>{t(state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label || "")}</h2><p>{t("setup_location")}</p><p className="hint">{provider === "none" ? t("setup_raw") : `${selected?.label} · ${options.textModelId}`}</p></div>
           <p role="status">{t(state.localAsrDetail || (installed ? "setup_ready" : "setup_needs_install"))}</p>
           {state.localAsrBusy && <progress aria-label={t("setup_install")} max={1} value={state.localAsrProgress > 1 ? state.localAsrProgress / 100 : state.localAsrProgress} />}
           {!pending && !installed && <Button variant="primary" onClick={() => void run("installLocalAsr")}>{t(setup?.error ? "setup_retry_install" : "setup_download_install")}</Button>}
