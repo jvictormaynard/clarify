@@ -426,7 +426,11 @@ def main():
             # Synthetic catalog only; never install or call a real text service.
             adapter = PROVIDER_REGISTRY.adapter("opencode")
             fixtures.enter_context(
-                patch.object(adapter, "available", return_value=True)
+                patch.object(
+                    adapter,
+                    "available",
+                    return_value="--opencode-runtime-missing" not in sys.argv,
+                )
             )
             fixtures.enter_context(patch.object(adapter, "install", return_value=None))
             fixtures.enter_context(

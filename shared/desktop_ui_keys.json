@@ -300,5 +300,6 @@
   "setup_search_providers",
   "setup_connecting",
   "setup_browser_connection",
-  "setup_rewriting_model"
+  "setup_rewriting_model",
+  "setup_provider_download"
 ]

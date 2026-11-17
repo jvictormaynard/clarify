@@ -9,6 +9,7 @@ export type SettingsScenario = {
   personalInstall?: boolean;
   personalCatalog?: boolean;
   personalConnected?: boolean;
+  personalRuntimeMissing?: boolean;
   personalCatalogError?: boolean;
   signedIn?: boolean;
   account?: boolean;
@@ -42,6 +43,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     const locale = scenario.locale ?? "pt";
     const args = ["-u", fixture];
     if (scenario.personalCatalog) args.push("--personal-catalog", "--chatgpt");
+    if (scenario.personalRuntimeMissing) args.push("--opencode-runtime-missing");
     if (scenario.personalConnected) args.push("--chatgpt-connected");
     if (scenario.personalCatalogError) args.push("--personal-catalog", "--personal-catalog-error", "--chatgpt");
     if (scenario.personalInstall) args.push("--personal-install");

@@ -383,9 +383,13 @@ horizontal scroll. Short windows scroll.
 
 Rewriting setup offers the supported ChatGPT subscription connection, OpenCode
 free models, personal API services and a compatible local endpoint. Keep raw
-transcription available. More providers opens a searchable dialog. Each provider
-row shows its current connection state and an explicit action. API keys and
-endpoint details use a connection dialog. ChatGPT uses the supported browser
+transcription available. In the provider group, show a selection control, the
+provider mark and its connection state. Place More providers below the group
+and open a searchable dialog. Use the primary action to connect the selected
+provider or continue after model selection. Put the connected provider's
+management action in its row. Offer the OpenCode download in its row when
+its runtime is missing. API keys and endpoint details use a connection
+dialog. ChatGPT uses the supported browser
 sign-in and cancellation flow. Do not show unsupported code-login methods.
 Show model selection after connection and catalog discovery. Rewriting and speech
 models have separate controls and saved routes. Changing a provider clears its

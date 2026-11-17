@@ -172,7 +172,7 @@ test.describe("installation", () => {
 
 
 test.describe("personal text catalogs", () => {
-  test.use({ settingsScenario: { onboarding: true, locale: "en", personalCatalog: true } });
+  test.use({ settingsScenario: { onboarding: true, locale: "en", personalCatalog: true, personalRuntimeMissing: true } });
   test("ChatGPT and OpenCode use discovered rewriting models and save a separate speech route", async ({ page }, testInfo) => {
     const evidence = process.env.CLARIFY_TEST_ARTIFACTS_DIR || testInfo.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
@@ -191,9 +191,8 @@ test.describe("personal text catalogs", () => {
     await page.keyboard.press("Escape");
     await expect(model).toBeFocused();
     await page.screenshot({ animations: "disabled", path: `${evidence}/chatgpt-connected.png` });
-    await page.getByRole("radio", { name: /OpenCode free models/ }).click();
-    await expect(model).toHaveCount(0);
-    await page.getByRole("button", { name: "Check free models", exact: true }).click();
+    await page.getByRole("button", { name: "Install and connect OpenCode", exact: true }).click();
+    await expect(page.getByRole("radio", { name: /OpenCode free models/ })).toHaveAttribute("aria-checked", "true");
     await model.click();
     await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
     await page.screenshot({ animations: "disabled", path: `${evidence}/rewriting-model-picker.png` });

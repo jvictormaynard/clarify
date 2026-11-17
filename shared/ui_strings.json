@@ -9373,5 +9373,10 @@
     "pt": "Modelo de reescrita",
     "en": "Rewriting model",
     "es": "Modelo de reescritura"
+  },
+  "setup_provider_download": {
+    "pt": "Baixar",
+    "en": "Download",
+    "es": "Descargar"
   }
 }
