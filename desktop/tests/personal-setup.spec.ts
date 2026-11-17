@@ -52,6 +52,18 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   }
   await model.click();
   await page.getByRole("option", { name: /Base/ }).click();
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+  let rejectedBrowse = false;
+  const rejectBusyBrowse = async (route: import("@playwright/test").Route) => {
+    if (route.request().postDataJSON().method !== "selectLocalProfile" || rejectedBrowse) return route.fallback();
+    rejectedBrowse = true;
+    return route.fulfill({ json: { error: "Model verification is still running." } });
+  };
+  await page.route("**/__test_rpc", rejectBusyBrowse);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Model verification is still running.");
+  await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", "speech");
+  await page.unroute("**/__test_rpc", rejectBusyBrowse);
   await advance(page);
   await page.getByRole("combobox", { name: "Text service", exact: true }).click();
   await expect(page.getByRole("option", { name: "ChatGPT subscription" })).toBeVisible();

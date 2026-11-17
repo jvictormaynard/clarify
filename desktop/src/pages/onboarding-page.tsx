@@ -31,7 +31,8 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   useEffect(() => {
     if (["opencode", "chatgpt"].includes(provider) && !model && selected?.models?.length) setModel(selected.models[0].id);
   }, [provider, model, selected?.models]);
-  const pending = busy || !!setup?.busy || saving || state.providerBusy || controller.validatingProvider;
+  const pending = busy || !!setup?.busy || saving || state.providerBusy || controller.validatingProvider ||
+    (step === "speech" && (state.localAsrBusy || state.localBenchmarkBusy));
   const installed = state.localAsrStatus === "installed" && speechIds[state.localProfileIndex] === speechModel || (!speech && !!recommendation?.installed);
   const options = { language, speechModelId: speechModel, textProvider: provider, textModelId: model || selected?.modelId || "" };
   const textReady = provider === "none" || !!(selected?.connected && options.textModelId &&
@@ -41,7 +42,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const next = async () => {
     if (pending) return;
     if (step === "language") { setSpeech(""); await command("recommend"); }
-    if (step === "speech") await run("selectLocalProfile", speechIds.indexOf(speechModel));
+    if (step === "speech" && !await run("selectLocalProfile", speechIds.indexOf(speechModel))) return;
     if (step === "install") {
       setSaving(true);
       try { await command("complete"); } finally { setSaving(false); }
