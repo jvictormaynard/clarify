@@ -88,6 +88,8 @@ PROPERTIES = (
     "providerSupportsCustomEndpoint",
     "localProfiles",
     "localModelIds",
+    "localModelDescription",
+    "localSupportsGpu",
     "localProfileIndex",
     "localDevices",
     "localDeviceIndex",

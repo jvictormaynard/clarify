@@ -3324,7 +3324,7 @@ class QmlSettingsController(QObject):
             "download:runtime": "1 of 5 · Downloading engine",
             "verify:runtime": "2 of 5 · Verifying engine",
             "extract:runtime": "3 of 5 · Installing engine",
-            "download:model": "4 of 5 · Downloading Whisper Small",
+            "download:model": "4 of 5 · Downloading speech model",
             "verify:model": "5 of 5 · Verifying model",
             "complete": "Ready to use",
         }
@@ -3372,6 +3372,7 @@ class QmlSettingsController(QObject):
             not self._processing_allowed()
             or self.localAsrBusy
             or self._local_benchmark_busy
+            or not self.localSupportsGpu
         ):
             return False
         from local_asr import default_manifest_path
@@ -3413,11 +3414,12 @@ class QmlSettingsController(QObject):
         self._local_benchmark_detail = detail
         self.providerStateChanged.emit()
 
-    @Property("QStringList", constant=True)
+    @Property("QStringList", notify=configChanged)
     def localProfiles(self):
         from local_asr_catalog import PROFILE_LABELS
+        from shared.localization import translate
 
-        return list(PROFILE_LABELS)
+        return [translate(label, self._config.ui.language) for label in PROFILE_LABELS]
 
     @Property("QStringList", notify=providerStateChanged)
     def localModelIds(self):
@@ -3431,16 +3433,35 @@ class QmlSettingsController(QObject):
 
         return MODELS.index(self._local_profile)
 
+    @Property(str, notify=providerStateChanged)
+    def localModelDescription(self):
+        from local_asr_catalog import PROFILE_DESCRIPTIONS
+
+        return PROFILE_DESCRIPTIONS[self._local_profile]
+
+    @Property(bool, notify=providerStateChanged)
+    def localSupportsGpu(self):
+        from local_asr_catalog import CPU_ONLY_MODELS
+
+        return self._local_profile not in CPU_ONLY_MODELS
+
+    def _available_local_devices(self):
+        return [
+            item
+            for item in self._local_devices
+            if self.localSupportsGpu or item["id"] == "cpu"
+        ]
+
     @Property("QStringList", notify=providerStateChanged)
     def localDevices(self):
-        return [item["label"] for item in self._local_devices]
+        return [item["label"] for item in self._available_local_devices()]
 
     @Property(int, notify=providerStateChanged)
     def localDeviceIndex(self):
         return next(
             (
                 i
-                for i, item in enumerate(self._local_devices)
+                for i, item in enumerate(self._available_local_devices())
                 if item["id"] == self._local_device
             ),
             1,
@@ -3477,20 +3498,22 @@ class QmlSettingsController(QObject):
 
     @Slot(int, result=bool)
     def selectLocalDevice(self, index):
+        devices = self._available_local_devices()
         if (
             self.localAsrBusy
             or self._local_benchmark_busy
-            or not 0 <= index < len(self._local_devices)
+            or not 0 <= index < len(devices)
         ):
             return False
-        return self._browse_local(self._local_profile, self._local_devices[index]["id"])
+        return self._browse_local(self._local_profile, devices[index]["id"])
 
     def _browse_local(self, model, device):
         if not self._processing_allowed():
             return False
         try:
-            from local_asr_catalog import ModelInstaller
+            from local_asr_catalog import ModelInstaller, model_device
 
+            device = model_device(model, device)
             adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
             backend = adapter.select_backend(model, "cpu")
             product = LocalASRProductController(
@@ -4540,11 +4563,8 @@ class QmlSettingsController(QObject):
                         else:
                             ram = 0
                     cores = os.cpu_count() or 1
-                    chosen = (
-                        "ggml-small"
-                        if ram >= 4 * 1024**3 and cores >= 4
-                        else "ggml-base"
-                    )
+                    # New candidates remain explicit choices until native acceptance.
+                    chosen = "ggml-base"
                     installer = installer_for(chosen, "cpu")
                     requirements = installer.requirements()
                     result = {
@@ -4552,11 +4572,7 @@ class QmlSettingsController(QObject):
                         "modelId": chosen,
                         "label": PROFILE_LABELS[MODELS.index(chosen)],
                         "reason": f"CPU: {cores} logical cores. Available RAM: {ram // 1024**2} MiB. Language: {language}. "
-                        + (
-                            "Multilingual model with more capacity."
-                            if language != "en"
-                            else "CPU speech recognition."
-                        ),
+                        + "Small-memory fallback. New model candidates are available in Choose another; native acceptance is pending.",
                         "executionDevice": "cpu",
                         "downloadBytes": requirements.get("download_bytes", 0),
                         "installed": installer.status().get("state") == "installed",

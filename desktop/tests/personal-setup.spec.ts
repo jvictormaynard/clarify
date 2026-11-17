@@ -24,12 +24,31 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await page.screenshot({ path: `${evidence}/recommendation.png` });
   await page.getByRole("button", { name: "Other speech models", exact: true }).click();
   const model = page.getByRole("combobox", { name: "Speech model", exact: true });
-  await model.click();
-  await page.getByRole("option", { name: /Nemotron/ }).click();
-  await expect.poll(async () => {
-    const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
-    return state.localModelIds[state.localProfileIndex];
-  }).toBe("nemotron-3.5-streaming");
+  for (const [name, id] of [
+    [/Parakeet/, "parakeet-v3-int8"],
+    [/Granite/, "granite-5-turboctc"],
+    [/Turbo q5/, "ggml-turbo-q5"],
+    [/Nemotron/, "nemotron-3.5-streaming"],
+  ] as const) {
+    await model.click();
+    await expect(page.getByRole("option", { name: /Whisper Small|Whisper Medium/ })).toHaveCount(0);
+    await page.getByRole("option", { name }).click();
+    await expect.poll(async () => {
+      const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+      return state.localModelIds[state.localProfileIndex];
+    }).toBe(id);
+    await expect(model).toBeEnabled();
+    await model.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("option", { name })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(model).toBeFocused();
+    for (const width of [1040, 820, 640]) {
+      await page.setViewportSize({ width, height: 760 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+      await page.screenshot({ path: `${evidence}/speech-${id}-${width}.png` });
+    }
+  }
   await model.click();
   await page.getByRole("option", { name: /Base/ }).click();
   await advance(page);

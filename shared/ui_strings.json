@@ -9208,5 +9208,65 @@
     "pt": "Nenhum modelo gratuito do OpenCode está disponível sem login.",
     "en": "No free OpenCode model is available without sign-in.",
     "es": "No hay modelos gratuitos de OpenCode disponibles sin iniciar sesión."
+  },
+  "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.": {
+    "pt": "Opção para pouca memória. A transcrição termina após parar a gravação; a precisão pode ser menor.",
+    "en": "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.",
+    "es": "Opción para poca memoria. La transcripción termina después de detener la grabación; la precisión puede ser menor."
+  },
+  "Accuracy-focused CPU candidate. Transcribes after recording stops. Native acceptance is pending.": {
+    "pt": "Modelo candidato para CPU, com foco na precisão. Transcreve após parar a gravação. A validação nativa está pendente.",
+    "en": "Accuracy-focused CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+    "es": "Modelo candidato para CPU, centrado en la precisión. Transcribe después de detener la grabación. La validación nativa está pendiente."
+  },
+  "Lower-memory multilingual CPU candidate. Transcribes after recording stops. Native acceptance is pending.": {
+    "pt": "Modelo candidato multilíngue para CPU, com menor uso de memória. Transcreve após parar a gravação. A validação nativa está pendente.",
+    "en": "Lower-memory multilingual CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+    "es": "Modelo candidato multilingüe para CPU, con menor uso de memoria. Transcribe después de detener la grabación. La validación nativa está pendiente."
+  },
+  "Quantized Whisper candidate for NVIDIA GPUs. Native acceptance is pending. Processing during recording is a separate experiment.": {
+    "pt": "Modelo Whisper quantizado, candidato para GPUs NVIDIA. A validação nativa está pendente. O processamento durante a gravação é um experimento separado.",
+    "en": "Quantized Whisper candidate for NVIDIA GPUs. Native acceptance is pending. Processing during recording is a separate experiment.",
+    "es": "Modelo Whisper cuantizado, candidato para GPU NVIDIA. La validación nativa está pendiente. El procesamiento durante la grabación es un experimento separado."
+  },
+  "Provisional native streaming on CPU. Shows text during recording. Native acceptance is pending.": {
+    "pt": "Transcrição nativa em tempo real na CPU, provisória. Mostra texto durante a gravação. A validação nativa está pendente.",
+    "en": "Provisional native streaming on CPU. Shows text during recording. Native acceptance is pending.",
+    "es": "Transcripción nativa en tiempo real en CPU, provisional. Muestra texto durante la grabación. La validación nativa está pendiente."
+  },
+  "Compatibility model. Existing selections remain available; this is no longer a main recommendation.": {
+    "pt": "Modelo de compatibilidade. As seleções existentes continuam disponíveis; este modelo não é mais uma recomendação principal.",
+    "en": "Compatibility model. Existing selections remain available; this is no longer a main recommendation.",
+    "es": "Modelo de compatibilidad. Las selecciones existentes siguen disponibles; este modelo ya no es una recomendación principal."
+  },
+  "Whisper Base (small-memory fallback)": {
+    "pt": "Whisper Base (opção para pouca memória)",
+    "en": "Whisper Base (small-memory fallback)",
+    "es": "Whisper Base (opción para poca memoria)"
+  },
+  "Parakeet v3 INT8 (CPU, provisional)": {
+    "pt": "Parakeet v3 INT8 (CPU, provisório)",
+    "en": "Parakeet v3 INT8 (CPU, provisional)",
+    "es": "Parakeet v3 INT8 (CPU, provisional)"
+  },
+  "Granite TurboCTC multilingual (CPU, provisional)": {
+    "pt": "Granite TurboCTC multilíngue (CPU, provisório)",
+    "en": "Granite TurboCTC multilingual (CPU, provisional)",
+    "es": "Granite TurboCTC multilingüe (CPU, provisional)"
+  },
+  "Whisper Turbo q5 (NVIDIA GPU candidate)": {
+    "pt": "Whisper Turbo q5 (candidato para GPU NVIDIA)",
+    "en": "Whisper Turbo q5 (NVIDIA GPU candidate)",
+    "es": "Whisper Turbo q5 (candidato para GPU NVIDIA)"
+  },
+  "Whisper Small (compatibility)": {
+    "pt": "Whisper Small (compatibilidade)",
+    "en": "Whisper Small (compatibility)",
+    "es": "Whisper Small (compatibilidad)"
+  },
+  "Whisper Medium (compatibility)": {
+    "pt": "Whisper Medium (compatibilidade)",
+    "en": "Whisper Medium (compatibility)",
+    "es": "Whisper Medium (compatibilidad)"
   }
 }

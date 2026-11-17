@@ -5,9 +5,29 @@ Applies to the Qt desktop runtime.
 
 ## Profiles
 
-Settings offers Fast (Whisper Base), Balanced (Small), and Quality (Medium).
-These names describe resource/quality goals, not measured accuracy guarantees.
-Models are multilingual and pinned to a Hugging Face revision with exact size and SHA-256. Each model/backend has its own removable installation. The original Small CPU installation remains usable. No model is downloaded during dictation or on settings selection.
+Settings offers Whisper Base as a small-memory fallback, with explicit candidate
+choices for Parakeet v3 INT8 on CPU, multilingual Granite Speech 5.0 TurboCTC on
+CPU, quantized Whisper large-v3-turbo q5_0 for NVIDIA GPUs, and Nemotron 3.5 native
+streaming on CPU. Candidate status is provisional until native acceptance passes.
+New setup uses Base as the conservative fallback during that validation period;
+users can select a candidate in Other speech models.
+
+Parakeet and Granite transcribe completed recordings in this integration.
+Granite's benchmark prefix adapter is not native streaming and is not enabled
+here. Nemotron supplies native partial text during capture. Turbo uses the
+existing Whisper recording path; processing during recording remains a separate
+GPU experiment. Do not infer live support from fast batch recognition.
+
+Whisper Small and Medium remain compatibility choices in Settings. Saved routes
+and installed assets remain valid. They are excluded from the new onboarding
+choices. No recommendation changes a saved route without an explicit setup action.
+
+Each model is pinned to a public revision with exact sizes and SHA-256 hashes.
+Installation and removal use separate guarded roots. No model downloads during
+dictation or selection. CPU-only models do not offer GPU setup or measurement.
+Parakeet and Granite start a separate process for each request so cancellation
+can stop native compute before audio cleanup. Model loading repeats; warm
+benchmark times do not describe this request path.
 
 CUDA uses the pinned whisper.cpp v1.9.1 Windows package plus the official NVIDIA cuBLAS 11.11.3.6 archive. Both archives and extracted files are verified. The upstream CUDA package alone omits cuBLAS. NVIDIA terms are linked before installation and the original cuBLAS license is retained. GPU libraries are downloaded only with explicit installation, not bundled in the app executable.
 
@@ -23,8 +43,9 @@ AMD, Intel GPU, and Apple GPU acceleration are not implemented. They must not be
 
 The option stays OFF by default and requires a selected NVIDIA CUDA backend.
 CPU recording still prepares the model in the background. Existing settings
-retain their explicit opt-in or opt-out. This uses Whisper requests during
-capture; it does not add a native streaming model or a cloud transcription call.
+retain their explicit opt-in or opt-out. This option uses Whisper requests during
+capture. It is independent of Nemotron's native streaming path and makes no cloud
+transcription call.
 
 The worker reads the recorder's original mono PCM16 16 kHz WAV. A low-energy
 pause of at least one second permits a snapshot after at least three seconds

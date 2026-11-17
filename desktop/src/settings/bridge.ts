@@ -151,6 +151,8 @@ export interface Settings {
   providerSupportsCustomEndpoint: boolean;
   localProfiles: string[];
   localModelIds?: string[];
+  localModelDescription?: string;
+  localSupportsGpu?: boolean;
   localProfileIndex: number;
   localDevices: string[];
   localDeviceIndex: number;

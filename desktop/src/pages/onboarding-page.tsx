@@ -12,7 +12,7 @@ type Step = typeof steps[number];
 export function OnboardingPage({ controller }: SettingsPageProps) {
   const { state, busy, error, run } = controller;
   const setup = state.personalSetupState;
-  const speechIds = state.localModelIds || ["ggml-base", "ggml-small", "ggml-medium"];
+  const speechIds = state.localModelIds || [];
   const [step, setStep] = useState<Step>("welcome");
   const [language, setLanguage] = useState(setup?.language || "auto");
   const [speech, setSpeech] = useState("");
@@ -86,8 +86,9 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
             <p>{t("setup_location")}</p>
             {speechModel === recommendation?.modelId && <p className="hint setup-model-download"><HardDrive aria-hidden="true" size={15} />{t("setup_download", { v0: Math.ceil((recommendation?.downloadBytes || 0) / 1024 / 1024) })}</p>}
           </div>
+          {state.localModelDescription && speechIds[state.localProfileIndex] === speechModel && <p className="hint">{t(state.localModelDescription)}</p>}
           <SettingsDisclosure title={t("setup_alternatives")} className="setup-model-options">
-            <Picker label={t("setup_speech_model")} value={speechModel} options={state.localProfiles.map((label, index) => ({ id: speechIds[index], label })).filter(option => !!option.id)} disabled={pending} onChange={async id => { setSpeech(id); await run("selectLocalProfile", speechIds.indexOf(id)); }} />
+            <Picker label={t("setup_speech_model")} value={speechModel} options={state.localProfiles.map((label, index) => ({ id: speechIds[index], label })).filter(option => !!option.id && !["ggml-small", "ggml-medium"].includes(option.id))} disabled={pending} onChange={async id => { setSpeech(id); await run("selectLocalProfile", speechIds.indexOf(id)); }} />
             <p className="hint">{recommendation?.reason}</p>
             <p className="hint">{state.localAsrRequirementsList.join(" · ")}</p>
             <Button variant="text" disabled={pending} onClick={() => void command("recommend")}>{t("setup_check_again")}</Button>

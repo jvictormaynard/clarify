@@ -13,13 +13,39 @@ import re
 import subprocess
 import threading
 
-MODELS = ("ggml-base", "ggml-small", "ggml-medium", "nemotron-3.5-streaming")
-PROFILE_LABELS = (
-    "Fast - Whisper Base",
-    "Balanced - Whisper Small",
-    "Quality - Whisper Medium",
-    "Nemotron 3.5 Streaming (provisional)",
+MODELS = (
+    "ggml-base",
+    "parakeet-v3-int8",
+    "granite-5-turboctc",
+    "ggml-turbo-q5",
+    "nemotron-3.5-streaming",
+    "ggml-small",
+    "ggml-medium",
 )
+PROFILE_LABELS = (
+    "Whisper Base (small-memory fallback)",
+    "Parakeet v3 INT8 (CPU, provisional)",
+    "Granite TurboCTC multilingual (CPU, provisional)",
+    "Whisper Turbo q5 (NVIDIA GPU candidate)",
+    "Nemotron 3.5 Streaming (provisional)",
+    "Whisper Small (compatibility)",
+    "Whisper Medium (compatibility)",
+)
+BATCH_MODELS = frozenset({"parakeet-v3-int8", "granite-5-turboctc"})
+CPU_ONLY_MODELS = BATCH_MODELS | {"nemotron-3.5-streaming"}
+PROFILE_DESCRIPTIONS = {
+    "ggml-base": "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.",
+    "parakeet-v3-int8": "Accuracy-focused CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+    "granite-5-turboctc": "Lower-memory multilingual CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+    "ggml-turbo-q5": "Quantized Whisper candidate for NVIDIA GPUs. Native acceptance is pending. Processing during recording is a separate experiment.",
+    "nemotron-3.5-streaming": "Provisional native streaming on CPU. Shows text during recording. Native acceptance is pending.",
+    "ggml-small": "Compatibility model. Existing selections remain available; this is no longer a main recommendation.",
+    "ggml-medium": "Compatibility model. Existing selections remain available; this is no longer a main recommendation.",
+}
+
+
+def model_device(model, device):
+    return "cpu" if model in CPU_ONLY_MODELS else normalize_device(device)
 
 
 def normalize_device(value):
@@ -72,6 +98,10 @@ def devices():
 def installer_for(model, device="cpu"):
     from local_asr import LocalASRInstaller, default_install_root, default_manifest_path
 
+    if model in BATCH_MODELS:
+        from local_asr_batch_assets import installer_for_batch
+
+        return installer_for_batch(model)
     if model == "nemotron-3.5-streaming":
         from local_asr_live_assets import installer_for_native
 
@@ -113,8 +143,10 @@ class ModelInstaller:
 
     def requirements(self):
         result = self.cpu.requirements()
+        if self.model in CPU_ONLY_MODELS:
+            return result
         gpu = len(self.inventory) > 2
-        if gpu and self.model != "nemotron-3.5-streaming":
+        if gpu and self.model not in CPU_ONLY_MODELS:
             extra = installer_for(self.model, "cuda:0").requirements()
             result["download_bytes"] += max(
                 0, extra.get("download_bytes", 0) - self.cpu.asset("model").size
@@ -133,7 +165,7 @@ class ModelInstaller:
     def status(self, **kwargs):
         self.inventory = devices()
         result = self.cpu.status(**kwargs)
-        if self.model == "nemotron-3.5-streaming":
+        if self.model in CPU_ONLY_MODELS:
             result["requirements"] = self.cpu.requirements()
             return result
         if result["state"] == "installed":
@@ -173,7 +205,7 @@ class ModelInstaller:
         self.inventory = devices()
         self.cpu.install(callback, event)
         warning = ""
-        if len(self.inventory) > 2 and self.model != "nemotron-3.5-streaming":
+        if len(self.inventory) > 2 and self.model not in CPU_ONLY_MODELS:
             token.raise_if_cancelled()
             try:
                 installer_for(self.model, "cuda:0").install(callback, event)
@@ -182,14 +214,14 @@ class ModelInstaller:
             except (LocalASRError, OSError):
                 warning = " GPU setup failed; CPU remains available. Use Optimize CPU/GPU to retry."
         token.raise_if_cancelled()
-        if callback:
-            callback("Measuring CPU/GPU speed", 0, 0)
-        if self.model == "nemotron-3.5-streaming":
+        if self.model in CPU_ONLY_MODELS:
             status = self.cpu.status()
             status["detail"] = (
-                "Installed provisional native streaming model. CPU only; no automatic default selection."
+                "Installed provisional CPU model. Native acceptance is pending; no automatic default selection."
             )
             return status
+        if callback:
+            callback("Measuring CPU/GPU speed", 0, 0)
         try:
             result = calibrate(
                 self.pool,
@@ -214,7 +246,7 @@ class ModelInstaller:
         # Each root retains its own guards. Removing one hard link leaves the other valid.
         self.pool.cancel()
         self.pool.shutdown()
-        if self.model != "nemotron-3.5-streaming":
+        if self.model not in CPU_ONLY_MODELS:
             installer_for(self.model, "cuda:0").remove(cancel_event)
         return self.cpu.remove(cancel_event)
 
@@ -237,9 +269,7 @@ class EnginePool:
                 raise LocalASRSidecarError(
                     "Local measurement is stopping. Try again shortly."
                 )
-        device = normalize_device(device)
-        if model == "nemotron-3.5-streaming":
-            device = "cpu"
+        device = model_device(model, device)
         if device == "auto":
             device = measured_device(model)
         key = (model, device)
@@ -256,7 +286,11 @@ class EnginePool:
                 key not in self._engines
                 or getattr(self._engines[key], "_closed", False) is True
             ):
-                if model == "nemotron-3.5-streaming":
+                if model in BATCH_MODELS:
+                    from local_asr_batch import create_engine
+
+                    self._engines[key] = create_engine(model, installer_for(model))
+                elif model == "nemotron-3.5-streaming":
                     from local_asr_live import NativeEngine
 
                     self._engines[key] = NativeEngine(installer_for(model))
@@ -300,6 +334,8 @@ def _fingerprint(model, inventory):
 
 
 def measured_device(model):
+    if model in CPU_ONLY_MODELS:
+        return "cpu"
     try:
         data = json.loads(_benchmark_path().read_text(encoding="utf8"))[model]
         if data["fingerprint"] != _fingerprint(model, devices()):
@@ -312,6 +348,10 @@ def measured_device(model):
 
 def _calibrate(pool, model, audio, cancel_token):
     """Measure installed engines on synthetic local audio. Never download assets."""
+    if model in CPU_ONLY_MODELS:
+        raise ValueError(
+            "This model uses CPU only; CPU/GPU measurement is not available."
+        )
     inventory = devices()
     scores = {}
     for item in inventory[1:]:

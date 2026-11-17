@@ -267,5 +267,17 @@
   "Aguarde a conexão com o provedor terminar para atualizar.",
   "Feche a janela do Clarify para aplicar a atualização.",
   "Conclua a gravação ou o processamento e feche o resultado para atualizar.",
-  "Instalar atualização {v0}"
+  "Instalar atualização {v0}",
+  "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.",
+  "Accuracy-focused CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+  "Lower-memory multilingual CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+  "Quantized Whisper candidate for NVIDIA GPUs. Native acceptance is pending. Processing during recording is a separate experiment.",
+  "Provisional native streaming on CPU. Shows text during recording. Native acceptance is pending.",
+  "Compatibility model. Existing selections remain available; this is no longer a main recommendation.",
+  "Whisper Base (small-memory fallback)",
+  "Parakeet v3 INT8 (CPU, provisional)",
+  "Granite TurboCTC multilingual (CPU, provisional)",
+  "Whisper Turbo q5 (NVIDIA GPU candidate)",
+  "Whisper Small (compatibility)",
+  "Whisper Medium (compatibility)"
 ]

@@ -9,6 +9,47 @@ from tests.support.qml_text_actions import QmlTextActionFixture
 
 
 class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
+    def test_cpu_only_models_cannot_select_gpu_or_run_gpu_measurement(self):
+        settings = self.settings
+        settings._local_devices = [
+            {"id": "auto", "label": "Automatic"},
+            {"id": "cpu", "label": "CPU"},
+            {"id": "cuda:0", "label": "Fixture GPU"},
+        ]
+        for model in (
+            "parakeet-v3-int8",
+            "granite-5-turboctc",
+            "nemotron-3.5-streaming",
+        ):
+            with self.subTest(model=model):
+                settings._local_profile = model
+                settings._local_device = "cpu"
+                self.assertEqual(settings.localDevices, ["CPU"])
+                self.assertEqual(settings.localDeviceIndex, 0)
+                self.assertFalse(settings.selectLocalDevice(1))
+                self.assertFalse(settings.measureLocalDevice())
+        settings._local_profile = "ggml-turbo-q5"
+        self.assertTrue(settings.localSupportsGpu)
+        self.assertEqual(settings.localDevices, ["Automatic", "CPU", "Fixture GPU"])
+
+    def test_recommendation_does_not_promote_unaccepted_models_or_rewrite_saved_route(
+        self,
+    ):
+        settings = self.settings
+        before = settings._config_repository.load()
+        installer = Mock()
+        installer.requirements.return_value = {"download_bytes": 123}
+        installer.status.return_value = {"state": "missing"}
+        with (
+            patch("local_asr_catalog.installer_for", return_value=installer),
+            patch("os.cpu_count", return_value=16),
+        ):
+            self.assertTrue(settings.personalSetupCommand("recommend"))
+            self.wait_setup()
+        recommendation = settings.personalSetupState["recommendation"]
+        self.assertEqual(recommendation["modelId"], "ggml-base")
+        self.assertEqual(settings._config_repository.load(), before)
+
     def test_switching_setup_service_clears_error_without_changing_saved_choices(self):
         settings = self.settings
         original = settings._config_repository.load()

@@ -354,6 +354,7 @@ def main():
         patch(
             "local_asr_catalog.installer_for",
             side_effect=lambda model, device="cpu": Mock(
+                manifest={"recommended_model": {"id": model}},
                 status=lambda: {
                     "state": "missing"
                     if "--personal-missing" in sys.argv
