@@ -139,7 +139,7 @@
 .personal-setup[data-step="language"] .onboarding-heading > .hint { font-size: 12px; }
 .setup-language-wheel { position: relative; width: min(100%, 360px); margin: 12px auto 24px; padding-inline: 40px; }
 .setup-language-options { height: 204px; position: relative; touch-action: none; user-select: none; cursor: grab; border-radius: 12px; outline-offset: 4px; }
-.setup-language-options:focus-visible, .setup-choice:focus-visible, .setup-provider-row > button:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.setup-language-options:focus-visible, .setup-choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .setup-language-options [role="option"] { position: absolute; top: 68px; inset-inline: 0; display: grid; place-items: center; height: 68px; font-size: 25px; font-weight: 500; border-radius: 12px; color: var(--foreground); transition: transform 180ms ease, opacity 180ms ease; }
 .setup-language-options [data-offset="-1"] { transform: translateY(-68px) scale(.85); opacity: .3; }
 .setup-language-options [data-offset="1"] { transform: translateY(68px) scale(.85); opacity: .3; }
@@ -150,23 +150,22 @@
 .setup-choice { width: 100%; padding: 18px; display: flex; align-items: center; gap: 14px; background: transparent; text-align: start; color: var(--foreground); cursor: pointer; }
 .setup-choice + .setup-choice, .setup-provider-row + .setup-provider-row { border-top: 1px solid var(--border); }
 .setup-choice > svg, .setup-provider-row svg { flex-shrink: 0; color: var(--muted-foreground); }
-.setup-choice > span:not(.setup-radio), .setup-provider-row > button > span:last-child { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.setup-choice > span:not(.setup-radio, .setup-provider-brand), .setup-provider-identity > span:last-child { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .setup-choice strong, .setup-provider-row strong { font-size: 14px; font-weight: 500; }
 .setup-choice small, .setup-provider-row small { font-size: 12px; line-height: 1.5; color: var(--muted-foreground); }
-.setup-choice:hover, .setup-provider-row > button:hover { background: var(--secondary); }
+.setup-choice:hover { background: var(--secondary); }
 .setup-choice:disabled { opacity: .6; cursor: default; }
 .setup-radio { width: 16px; height: 16px; border: 1px solid var(--input); border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; }
-[aria-checked="true"] .setup-radio { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
-[aria-checked="true"] .setup-radio svg { color: inherit; }
+:is([aria-checked="true"], .setup-provider-identity) .setup-radio { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+:is([aria-checked="true"], .setup-provider-identity) .setup-radio svg { color: inherit; }
 .setup-provider-row { display: flex; align-items: center; padding-inline-end: 10px; gap: 8px; min-width: 0; }
-.setup-provider-row > button[role="radio"] { display: flex; align-items: center; gap: 12px; padding: 9px 12px; text-align: start; flex: 1; min-width: 0; color: var(--foreground); cursor: pointer; }
+.setup-provider-identity { display: flex; align-items: center; gap: 12px; padding: 9px 12px; text-align: start; flex: 1; min-width: 0; color: var(--foreground); }
 .setup-provider-row > .button { flex-shrink: 0; font-size: 12px; padding-inline: 10px; }
 .setup-provider-section { display: grid; gap: 8px; }
 .setup-provider-brand { display: grid; place-items: center; width: 24px; flex-shrink: 0; }
 .setup-provider-brand svg { color: var(--foreground); }
 .setup-provider-row[data-selected="true"] { background: var(--secondary); }
 .setup-provider-row > .setup-provider-action { min-height: 30px; }
-.setup-provider-row > button[role="radio"]:focus-visible { outline-offset: -3px; }
 .setup-more { justify-self: end; font-size: 12px; }
 .setup-connection-status { display: grid; gap: 12px; font-size: 12px; color: var(--muted-foreground); }
 .setup-dialog { width: min(440px, calc(100vw - 32px)); }
@@ -178,6 +177,6 @@
 @media (max-width: 640px) {
   .setup-choice { padding: 16px; gap: 12px; }
   .setup-provider-row { flex-wrap: wrap; gap: 0; padding-inline-end: 6px; }
-  .setup-provider-row > button[role="radio"] { padding: 9px 10px; gap: 8px; }
+  .setup-provider-identity { padding: 9px 10px; gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .setup-language-options [role="option"] { transition: none; } }

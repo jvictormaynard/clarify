@@ -1,7 +1,7 @@
 import "../styles/onboarding.css";
 import { t } from "../i18n";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowLeft, Check, Cloud, HardDrive, KeyRound, Mic, MoreHorizontal, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, HardDrive, KeyRound, Mic, MoreHorizontal } from "lucide-react";
 import { ClarifyLogo } from "../components/clarify-logo";
 import { Button, Field, Input, Picker, SettingsDisclosure } from "../components/ui";
 import { LanguageWheel } from "../components/language-wheel";
@@ -87,9 +87,9 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     setProvider(value); setModel(""); setEndpointOpen(false);
     return true;
   };
-  const connectText = async (id = provider) => {
-    if (pending || (id !== provider && !await selectText(id))) return;
-    if (id === "opencode") await command("connect_opencode");
+  const connectText = async () => {
+    if (pending) return;
+    if (provider === "opencode") await command("connect_opencode");
     else setConnectionOpen(true);
   };
   const connectionAction = provider === "opencode"
@@ -103,7 +103,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     setProvider("none"); setModel("");
     if (await command("recommend")) setStep("speech");
   };
-  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", speech: "setup_speech", text: "setup_connect_plan", install: "setup_install" };
+  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", speech: "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
   return <main className="onboarding onboarding-page onboarding-flow personal-setup" data-step={step}>
     <div className="onboarding-content">
       <div className="setup-progress" role="progressbar" aria-label={t("setup_progress")}
@@ -113,19 +113,19 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
       <div className="onboarding-heading">
         {step === "language" && <div className="setup-brand"><ClarifyLogo size={36} /><span>Clarify</span></div>}
         <h1 ref={heading} tabIndex={-1}>{t(titles[step])}</h1>
-        <p className="hint">{t({ welcome: "setup_rewriting_hint", language: "setup_interface_hint", speech: "setup_speech_hint", text: "setup_connect_hint", install: "setup_install_hint" }[step])}</p>
+        <p className="hint">{t({ welcome: "setup_rewriting_hint", language: "setup_interface_hint", speech: "setup_speech_hint", text: provider === "opencode" ? "setup_free_models_hint" : provider === "chatgpt" ? "setup_subscription_hint" : "setup_connect_hint", install: "setup_install_hint" }[step])}</p>
       </div>
       <div className="setup-body">
         {step !== "text" && (error || setup?.error) && <p className="error setup-error" role="alert">{t(error || setup?.error || "")}</p>}
         {step === "language" && <LanguageWheel value={state.uiLanguage || "en"} disabled={pending} onChange={value => void run("personalSetupCommand", "interface_language", JSON.stringify({ interfaceLanguage: value }))} />}
         {step === "welcome" && <div className="setup-choice-list" role="radiogroup" onKeyDown={chooseRadio} aria-label={t("setup_choose_rewriting")}>
           {[
-            { id: "chatgpt", title: "ChatGPT subscription", hint: "setup_subscription", icon: Cloud },
-            { id: "opencode", title: "setup_free_choice", hint: "setup_free", icon: Sparkles },
-            { id: "openai", title: "setup_personal_choice", hint: "setup_key_hint", icon: KeyRound },
-            { id: "none", title: "setup_raw", hint: "setup_raw_hint", icon: Mic },
+            { id: "opencode", title: "setup_free_choice", hint: "setup_free", icon: () => <ProviderBrandIcon provider="OpenCode" /> },
+            { id: "chatgpt", title: "setup_subscription_choice", hint: "setup_subscription", icon: () => <ProviderBrandIcon provider="ChatGPT" /> },
+            { id: "openai", title: "setup_personal_choice", hint: "setup_key_hint", icon: () => <KeyRound aria-hidden="true" size={20} /> },
+            { id: "none", title: "setup_raw", hint: "setup_raw_hint", icon: () => <Mic aria-hidden="true" size={20} /> },
           ].map(({ id, title, hint, icon: Icon }) => <button key={id} type="button" role="radio" aria-checked={setupChoice === id} disabled={pending}
-            className="setup-choice" onClick={() => setProvider(id === "openai" && setupChoice === "openai" ? provider : id)}><Icon aria-hidden="true" size={20} /><span><strong>{t(title)}</strong><small>{t(hint)}</small></span><span className="setup-radio" aria-hidden="true">{setupChoice === id && <Check size={12} />}</span></button>)}
+            className="setup-choice" onClick={() => setProvider(id === "openai" && setupChoice === "openai" ? provider : id)}><span className="setup-provider-brand"><Icon /></span><span><strong>{t(title)}</strong><small>{t(hint)}</small></span><span className="setup-radio" aria-hidden="true">{setupChoice === id && <Check size={12} />}</span></button>)}
         </div>}
         {step === "speech" && <>
           <Picker label={t("setup_languages")} value={language} options={state.languages.map(id => ({ id, label: id === "auto" ? t("setup_auto_language") : new Intl.DisplayNames([state.uiLanguage || "en"], { type: "language" }).of(id) || id }))} onChange={setLanguage} disabled={pending} />
@@ -147,21 +147,21 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
         {step === "text" && <>
           <div className="setup-provider-section">
             <p className="setup-field-label" id="setup-provider-label">{t("setup_text_service")}</p>
-            <div className="setup-provider-list" role="radiogroup" onKeyDown={chooseRadio} aria-labelledby="setup-provider-label">
-              {(setup?.textOptions || []).filter(option => ["chatgpt", "opencode"].includes(option.id) || option.id === provider).map(option => <div className="setup-provider-row" key={option.id} data-selected={option.id === provider}>
-                <button type="button" role="radio" aria-checked={option.id === provider} disabled={pending} onClick={() => void selectText(option.id)}>
-                  <span className="setup-radio" aria-hidden="true">{option.id === provider && <Check size={12} />}</span>
+            <div className="setup-provider-list" role="group" aria-labelledby="setup-provider-label">
+              {(setup?.textOptions || []).filter(option => option.id === provider).map(option => <div className="setup-provider-row" key={option.id} data-selected="true">
+                <div className="setup-provider-identity">
+                  <span className="setup-radio" aria-hidden="true"><Check size={12} /></span>
                   <span className="setup-provider-brand" aria-hidden="true">
                     {option.id === "chatgpt" ? <ProviderBrandIcon provider="ChatGPT" /> : option.id === "opencode" ? <ProviderBrandIcon provider="OpenCode" /> : <KeyRound size={18} />}
                   </span>
                   <span><strong>{option.id === "openai" ? "OpenAI" : t(option.label)}</strong><small>{t(option.connected ? "setup_connected" : option.id === "opencode" && !option.runtimeInstalled ? "setup_runtime_needed" : "setup_not_connected")}</small></span>
-                </button>
+                </div>
                 {option.id === "opencode" && !option.runtimeInstalled && !option.connected
-                  ? <Button className="setup-provider-action" disabled={pending} aria-label={t("setup_install_opencode")} onClick={() => void connectText(option.id)}>{t("setup_provider_download")}</Button>
-                  : option.id === provider && option.connected && <Button className="setup-provider-action" disabled={pending} onClick={() => void connectText()}>{t(connectionAction)}</Button>}
+                  ? <Button className="setup-provider-action" disabled={pending} aria-label={t("setup_install_opencode")} onClick={() => void connectText()}>{t("setup_provider_download")}</Button>
+                  : option.connected && <Button className="setup-provider-action" disabled={pending} onClick={() => void connectText()}>{t(connectionAction)}</Button>}
               </div>)}
             </div>
-            <Button className="setup-more" variant="text" disabled={pending} onClick={() => { setSearch(""); setMoreOpen(true); }}><MoreHorizontal size={16} aria-hidden="true" />{t("setup_more_providers")}</Button>
+            {setupChoice === "openai" && <Button className="setup-more" variant="text" disabled={pending} onClick={() => { setSearch(""); setMoreOpen(true); }}><MoreHorizontal size={16} aria-hidden="true" />{t("setup_more_providers")}</Button>}
           </div>
           {setup?.busy && provider === "opencode" && <div className="setup-connection-status" role="status"><progress aria-label={t("setup_connecting")} /><span>{t("setup_connecting")}</span></div>}
           {textError && <p className="error setup-error" role="alert">{t(textError)}</p>}

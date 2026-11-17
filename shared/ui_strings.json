@@ -9305,9 +9305,9 @@
     "es": "Elige un servicio para revisar tu dictado o conserva la transcripción."
   },
   "setup_free_choice": {
-    "pt": "Experimentar modelos gratuitos",
-    "en": "Try free models",
-    "es": "Probar modelos gratuitos"
+    "en": "Use free models",
+    "pt": "Usar modelos gratuitos",
+    "es": "Usar modelos gratuitos"
   },
   "setup_personal_choice": {
     "pt": "Usar chave de API ou servidor local",
@@ -9378,5 +9378,30 @@
     "pt": "Baixar",
     "en": "Download",
     "es": "Descargar"
+  },
+  "setup_subscription_choice": {
+    "en": "Use my AI subscription",
+    "pt": "Usar minha assinatura de IA",
+    "es": "Usar mi suscripción de IA"
+  },
+  "setup_free_models_title": {
+    "en": "Choose a free rewriting model",
+    "pt": "Escolha um modelo de reescrita gratuito",
+    "es": "Elige un modelo de reescritura gratuito"
+  },
+  "setup_free_models_hint": {
+    "en": "Connect OpenCode to load its free models.",
+    "pt": "Conecte o OpenCode para carregar os modelos gratuitos.",
+    "es": "Conecta OpenCode para cargar los modelos gratuitos."
+  },
+  "setup_subscription_title": {
+    "en": "Connect your AI subscription",
+    "pt": "Conecte sua assinatura de IA",
+    "es": "Conecta tu suscripción de IA"
+  },
+  "setup_subscription_hint": {
+    "en": "Sign in to ChatGPT and choose a rewriting model.",
+    "pt": "Entre no ChatGPT e escolha um modelo de reescrita.",
+    "es": "Inicia sesión en ChatGPT y elige un modelo de reescritura."
   }
 }

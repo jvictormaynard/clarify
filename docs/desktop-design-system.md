@@ -381,8 +381,9 @@ The primary action is a centered pill with foreground/background colors. Use
 semantic tokens and shared controls. At 640 px, retain readable spacing without
 horizontal scroll. Short windows scroll.
 
-Rewriting setup offers the supported ChatGPT subscription connection, OpenCode
-free models, personal API services and a compatible local endpoint. Keep raw
+Rewriting setup offers separate choices for free models and a subscription.
+The free path shows OpenCode. The subscription path shows ChatGPT. Personal
+API services and compatible local endpoints have their own path. Keep raw
 transcription available. In the provider group, show a selection control, the
 provider mark and its connection state. Place More providers below the group
 and open a searchable dialog. Use the primary action to connect the selected

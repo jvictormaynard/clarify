@@ -301,5 +301,10 @@
   "setup_connecting",
   "setup_browser_connection",
   "setup_rewriting_model",
-  "setup_provider_download"
+  "setup_provider_download",
+  "setup_subscription_choice",
+  "setup_free_models_title",
+  "setup_free_models_hint",
+  "setup_subscription_title",
+  "setup_subscription_hint"
 ]
