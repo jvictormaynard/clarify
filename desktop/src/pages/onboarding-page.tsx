@@ -30,6 +30,8 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const [speech, setSpeech] = useState("");
   const [provider, setProvider] = useState("chatgpt");
   const [model, setModel] = useState("");
+  const preparedProvider = useRef<string | null>(null);
+  const setupChoice = ["openai", "groq", "gemini"].includes(provider) ? "openai" : provider;
   const [saving, setSaving] = useState(false);
   const [endpointOpen, setEndpointOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -73,12 +75,14 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     setStep(steps[steps.indexOf(step) + 1]);
   };
   const selectText = async (value: string) => {
+    if (preparedProvider.current === value) return true;
     if (!await command("reset_text_choice")) return false;
     controller.setApiKey(""); controller.setEndpoint(null);
     if (!["none", "opencode"].includes(value)) {
       if (!await run("selectProvider", value)) return false;
       if (!await run("selectWorkflow", "local_asr_refinement")) return false;
     }
+    preparedProvider.current = value;
     setProvider(value); setModel(""); setEndpointOpen(false);
     return true;
   };
@@ -86,6 +90,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     if (pending) return;
     if (!await command("reset_text_choice")) return;
     controller.setApiKey(""); controller.setEndpoint(null);
+    preparedProvider.current = "none";
     setProvider("none"); setModel("");
     if (await command("recommend")) setStep("speech");
   };
@@ -110,8 +115,8 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
             { id: "opencode", title: "setup_free_choice", hint: "setup_free", icon: Sparkles },
             { id: "openai", title: "setup_personal_choice", hint: "setup_key_hint", icon: KeyRound },
             { id: "none", title: "setup_raw", hint: "setup_raw_hint", icon: Mic },
-          ].map(({ id, title, hint, icon: Icon }) => <button key={id} type="button" role="radio" aria-checked={provider === id} disabled={pending}
-            className="setup-choice" onClick={() => setProvider(id)}><Icon aria-hidden="true" size={20} /><span><strong>{t(title)}</strong><small>{t(hint)}</small></span><span className="setup-radio" aria-hidden="true">{provider === id && <Check size={12} />}</span></button>)}
+          ].map(({ id, title, hint, icon: Icon }) => <button key={id} type="button" role="radio" aria-checked={setupChoice === id} disabled={pending}
+            className="setup-choice" onClick={() => setProvider(id === "openai" && setupChoice === "openai" ? provider : id)}><Icon aria-hidden="true" size={20} /><span><strong>{t(title)}</strong><small>{t(hint)}</small></span><span className="setup-radio" aria-hidden="true">{setupChoice === id && <Check size={12} />}</span></button>)}
         </div>}
         {step === "speech" && <>
           <Picker label={t("setup_languages")} value={language} options={state.languages.map(id => ({ id, label: id === "auto" ? t("setup_auto_language") : new Intl.DisplayNames([state.uiLanguage || "en"], { type: "language" }).of(id) || id }))} onChange={setLanguage} disabled={pending} />
@@ -142,7 +147,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
             </div>)}
           </div>
           <Button className="setup-more" variant="text" disabled={pending} onClick={() => { setSearch(""); setMoreOpen(true); }}><MoreHorizontal size={16} aria-hidden="true" />{t("setup_more_providers")}</Button>
-          {setup?.busy && provider === "opencode" && <div className="setup-connection-status" role="status"><progress aria-label={t("setup_connecting")} /><span>{t("setup_connecting")}</span><Button onClick={() => void command("cancel")}>{t("Cancelar")}</Button></div>}
+          {setup?.busy && provider === "opencode" && <div className="setup-connection-status" role="status"><progress aria-label={t("setup_connecting")} /><span>{t("setup_connecting")}</span></div>}
           {textError && <p className="error setup-error" role="alert">{t(textError)}</p>}
           <div className="setup-provider">
             {provider !== "none" && selected?.connected && (selected.models?.length ? <div className="setup-form-field"><p className="setup-field-label">{t("setup_rewriting_model")}</p><Picker label={t("setup_rewriting_model")} value={model || selected.modelId || ""} options={selected.models} disabled={pending} onChange={setModel} /></div> : !["chatgpt", "opencode"].includes(provider) && <Field title={t("setup_rewriting_model")} value={model || selected.modelId || ""} onChange={event => setModel(event.target.value)} />)}
@@ -160,7 +165,10 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
               <DialogHeader><DialogTitle>{provider === "openai" ? "OpenAI" : t(selected?.label || "")}</DialogTitle><DialogDescription>{t(provider === "chatgpt" ? "setup_browser_connection" : "setup_key_hint")}</DialogDescription></DialogHeader>
               <div className="setup-dialog-body setup-provider">
                 {textError && <p className="error setup-error" role="alert">{t(textError)}</p>}
-                {provider === "chatgpt" && <ChatGPTPlan controller={controller} setup />}
+                {provider === "chatgpt" && <>
+                  <ChatGPTPlan controller={controller} setup />
+                  {selected?.connected && <Button disabled={pending} loading={controller.validatingProvider} onClick={() => void controller.validateProvider()}>{t("Atualizar modelos ChatGPT")}</Button>}
+                </>}
                 {!["none", "chatgpt", "opencode"].includes(provider) && <>
               {provider === "openai" && state.providerSupportsCustomEndpoint && <SettingsDisclosure title={t("setup_custom_endpoint")} className="setup-endpoint" open={endpointOpen} onOpenChange={setEndpointOpen}>
                 <Field title={t("Endpoint")} value={controller.endpoint} onChange={event => controller.setEndpoint(event.target.value)} />

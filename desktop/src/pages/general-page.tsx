@@ -15,6 +15,11 @@ export function GeneralPage({ controller }: SettingsPageProps) {
   return (
     <>
       <Section title={t("Sistema")}>
+        <Row title={t("setup_interface_language")}>
+          <Picker literalLabels label={t("setup_interface_language")} value={state.uiLanguage || "en"}
+            options={[{ id: "en", label: "English" }, { id: "pt", label: "Português" }, { id: "es", label: "Español" }]}
+            disabled={controller.busy} onChange={value => void run("personalSetupCommand", "interface_language", JSON.stringify({ interfaceLanguage: value }))} />
+        </Row>
         <Toggle
           title={t("Iniciar com o Windows")}
           hint={t("Deixe o Clarify pronto quando você precisar.")}

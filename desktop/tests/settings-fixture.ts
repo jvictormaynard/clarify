@@ -8,6 +8,7 @@ export type SettingsScenario = {
   personalMissing?: boolean;
   personalInstall?: boolean;
   personalCatalog?: boolean;
+  personalConnected?: boolean;
   personalCatalogError?: boolean;
   signedIn?: boolean;
   account?: boolean;
@@ -41,6 +42,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     const locale = scenario.locale ?? "pt";
     const args = ["-u", fixture];
     if (scenario.personalCatalog) args.push("--personal-catalog", "--chatgpt");
+    if (scenario.personalConnected) args.push("--chatgpt-connected");
     if (scenario.personalCatalogError) args.push("--personal-catalog", "--personal-catalog-error", "--chatgpt");
     if (scenario.personalInstall) args.push("--personal-install");
     if (scenario.personalMissing) args.push("--personal-missing");

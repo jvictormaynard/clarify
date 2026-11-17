@@ -1,4 +1,5 @@
 import { test, expect } from "./settings-fixture";
+import { navigate } from "./settings-navigation";
 import { mkdir, writeFile } from "node:fs/promises";
 test.use({ settingsScenario: { onboarding: true, locale: "en" }, video: { mode: "on", size: { width: 1040, height: 760 } } });
 async function advance(page: import("@playwright/test").Page, label = "Continue") {
@@ -121,6 +122,14 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await advance(page);
   await expect(page.getByRole("heading", { name: "Use your PC models on iPhone" })).toBeVisible();
   await page.screenshot({ animations: "disabled", path: `${evidence}/phone.png` });
+  await page.getByRole("button", { name: "Skip practice", exact: true }).click();
+  await navigate(page, "System");
+  await page.getByRole("combobox", { name: "Interface language", exact: true }).click();
+  await page.getByRole("option", { name: "Português", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Idioma da interface", exact: true })).toContainText("Português");
+  const updated = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+  expect(updated.uiLanguage).toBe("pt");
+  expect(updated.language).toBe(state.language);
   await writeFile(`${evidence}/ui-timing.json`, JSON.stringify({ fixtureFlowMilliseconds: performance.now() - start, resources: await page.evaluate(() => performance.getEntriesByType("resource").map(entry => { const item = entry as PerformanceResourceTiming; return { path: new URL(item.name).pathname, durationMilliseconds: item.duration, transferBytes: item.transferSize }; })), viewport: [1040, 820, 640], note: "Fake audio, installed fixture assets, local Python controller. No provider or model latency claim." }, null, 2));
 });
 test.describe("missing assets", () => {
@@ -188,6 +197,9 @@ test.describe("personal text catalogs", () => {
     await model.click();
     await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
     await page.screenshot({ animations: "disabled", path: `${evidence}/rewriting-model-picker.png` });
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await advance(page);
+    await expect(model).toContainText("opencode/fixture-free-b");
     await advance(page);
     await advance(page);
     await expect(page.locator(".setup-recommendation")).toContainText("opencode/fixture-free-b");
@@ -213,6 +225,24 @@ test.describe("personal text catalogs", () => {
   });
 });
 
+test.describe("resumed subscription setup", () => {
+  test.use({ settingsScenario: { onboarding: true, locale: "en", personalCatalog: true, personalConnected: true } });
+  test("a connected subscription can load its catalog after restart without another sign-in", async ({ page }) => {
+    await advance(page);
+    await advance(page);
+    await expect(page.getByRole("combobox", { name: "Rewriting model", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Manage", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("button", { name: "Continue with ChatGPT", exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Refresh ChatGPT models", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Refresh ChatGPT models", exact: true })).toBeEnabled();
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("combobox", { name: "Rewriting model", exact: true })).toContainText("First account model");
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
+  });
+});
+
 test.describe("optional text setup recovery", () => {
   test.use({ settingsScenario: { onboarding: true, locale: "pt", personalCatalogError: true } });
   test("provider errors can be retried or skipped, and API drafts do not block plain dictation", async ({ page }, testInfo) => {
@@ -233,6 +263,19 @@ test.describe("optional text setup recovery", () => {
     await dialog.getByRole("textbox", { name: "Buscar provedores", exact: true }).fill("OpenAI");
     await expect(dialog.getByRole("button", { name: "Gemini", exact: true })).toHaveCount(0);
     await page.screenshot({ animations: "disabled", path: `${evidence}/more-providers.png` });
+    await dialog.getByRole("textbox", { name: "Buscar provedores", exact: true }).fill("Groq");
+    await dialog.getByRole("button", { name: "Groq", exact: true }).click();
+    await page.getByLabel("Chave de API", { exact: true }).fill("fixture-unsaved-groq-key");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Voltar", exact: true }).click();
+    await expect(page.getByRole("radio", { name: /Usar chave de API ou servidor local/ })).toHaveAttribute("aria-checked", "true");
+    await advance(page, "Continuar");
+    await page.getByRole("button", { name: "Conectar", exact: true }).click();
+    await expect(dialog.getByRole("heading", { name: "Groq", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Chave de API", { exact: true })).toHaveValue("fixture-unsaved-groq-key");
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Mais provedores", exact: true }).click();
+    await dialog.getByRole("textbox", { name: "Buscar provedores", exact: true }).fill("OpenAI");
     await dialog.getByRole("button", { name: "OpenAI", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Endpoint", exact: true })).toBeHidden();
     await page.getByRole("button", { name: "Usar um servidor local ou outro endereço", exact: true }).click();

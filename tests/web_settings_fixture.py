@@ -398,6 +398,9 @@ def main():
             from provider_registry import PROVIDER_REGISTRY
 
             chatgpt = FakeChatGPTSession()
+            if "--chatgpt-connected" in sys.argv:
+                chatgpt.sign_in(open_browser=Mock())
+                chatgpt.acknowledge_plan_notice()
             if "--chatgpt-no-plan" in sys.argv:
                 chatgpt.state.update(
                     connected=True,

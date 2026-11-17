@@ -371,6 +371,7 @@ with Clarify components and assets. Start with a centered interface-language
 wheel, then rewriting setup, speech setup, verified installation, practice and
 optional phone pairing. The interface preference is separate from spoken and
 output languages. The wheel supports keyboard arrows, wheel input and drag.
+The saved interface language can also be changed in System Settings.
 Back preserves choices; each step moves keyboard focus to its heading.
 
 Use one focused task per screen, a centered heading, small step dots and a compact
