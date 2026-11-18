@@ -308,5 +308,14 @@
   "setup_subscription_title",
   "setup_subscription_hint",
   "setup_clarify_account",
-  "setup_clarify_account_hint"
+  "setup_clarify_account_hint",
+  "setup_recommend_gpu",
+  "setup_recommend_parakeet",
+  "setup_recommend_granite",
+  "setup_recommend_base",
+  "setup_recommend_low_memory",
+  "setup_recommend_low_disk",
+  "setup_cpu_device",
+  "setup_cuda_unavailable",
+  "setup_cuda_license"
 ]

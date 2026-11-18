@@ -10,8 +10,11 @@ import time
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import threading
+
+from transcription_performance import memory_bytes
 
 MODELS = (
     "ggml-base",
@@ -32,6 +35,12 @@ PROFILE_LABELS = (
     "Whisper Medium (compatibility)",
 )
 BATCH_MODELS = frozenset({"parakeet-v3-int8", "granite-5-turboctc"})
+BATCH_LANGUAGES = {
+    "parakeet-v3-int8": frozenset(
+        "bg hr cs da nl en et fi fr de el hu it lv lt mt pl pt ro sk sl es sv ru uk".split()
+    ),
+    "granite-5-turboctc": frozenset("en fr de es pt it ja".split()),
+}
 CPU_ONLY_MODELS = BATCH_MODELS | {"nemotron-3.5-streaming"}
 PROFILE_DESCRIPTIONS = {
     "ggml-base": "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.",
@@ -127,15 +136,108 @@ def installer_for(model, device="cpu"):
     return installer
 
 
+def _free_install_disk():
+    from local_asr import default_install_root
+
+    root = default_install_root().parent
+    try:
+        while not root.exists() and root != root.parent:
+            root = root.parent
+        return shutil.disk_usage(root).free
+    except OSError:
+        return None
+
+
+def _turbo_gpu(inventory):
+    eligible = []
+    for gpu in inventory:
+        if not gpu["id"].startswith("cuda:") or gpu["memory_mb"] < 4096:
+            continue
+        # Driver shipped with CUDA 11.8 on Windows. Use this conservative
+        # threshold rather than relying on CUDA minor-version compatibility.
+        if re.fullmatch(r"\d+(?:\.\d+)+", gpu["driver"]) and tuple(
+            int(part) for part in gpu["driver"].split(".")
+        ) >= (522, 6):
+            eligible.append(gpu)
+    return max(eligible, key=lambda gpu: gpu["memory_mb"], default=None)
+
+
+def recommend_model(language, automatic_languages, token):
+    """Choose a candidate from local hardware and the pinned pack requirements."""
+    total, available = memory_bytes() or (0, 0)
+    free_disk = _free_install_disk()
+    cores = os.cpu_count() or 1
+    gib = 1024**3
+    gpu = _turbo_gpu(devices())
+    candidates = []
+    if gpu:
+        candidates.append(("ggml-turbo-q5", gpu["id"], "setup_recommend_gpu"))
+    if cores >= 4 and total >= 4 * gib:
+        candidates.append(("parakeet-v3-int8", "cpu", "setup_recommend_parakeet"))
+    candidates.append(("granite-5-turboctc", "cpu", "setup_recommend_granite"))
+    candidates.append(("ggml-base", "cpu", "setup_recommend_base"))
+    needed_languages = set(automatic_languages) if language == "auto" else {language}
+    for model, device, reason in candidates:
+        token.raise_if_cancelled()
+        # Fall back to Base with a resource warning if no candidate fits.
+        if model in BATCH_LANGUAGES and not needed_languages <= BATCH_LANGUAGES[model]:
+            continue
+        installer = installer_for(model, device)
+        requirements = installer.requirements()
+        memory = requirements.get("memory_bytes", 0)
+        disk = requirements.get("disk_bytes", 0)
+        if model != "ggml-base" and (
+            not installer.platform_supported()
+            or not memory
+            or total < memory
+            or not disk
+            or free_disk is None
+        ):
+            continue
+        installed = (
+            installer.status(cancel_check=lambda: token.cancelled).get("state")
+            == "installed"
+        )
+        shortage = disk and free_disk is not None and free_disk < disk and not installed
+        if model != "ggml-base" and shortage:
+            continue
+        # GPU process RAM was below 400 MiB in the comparison. Allow setup
+        # headroom while keeping the pinned 8 GiB total-system RAM requirement.
+        free_memory_needed = 2 * gib if device.startswith("cuda:") else memory
+        return {
+            "providerId": "local_asr",
+            "modelId": model,
+            "label": PROFILE_LABELS[MODELS.index(model)],
+            "reason": reason,
+            "reasonValues": {
+                "v0": gpu["label"] if device.startswith("cuda:") else cores,
+                "v1": gpu["memory_mb"] / 1024
+                if device.startswith("cuda:")
+                else round(total / gib, 1),
+            },
+            "availableRamMiB": available // 1024**2,
+            "lowMemory": bool(
+                free_memory_needed and total and available < free_memory_needed
+            ),
+            "lowDisk": bool(shortage),
+            "executionDevice": device,
+            "downloadBytes": requirements.get("download_bytes", 0),
+            "requirements": requirements,
+            "description": PROFILE_DESCRIPTIONS[model],
+            "installed": installed,
+        }
+
+
 class ModelInstaller:
     """One user installation prepares CPU and detected NVIDIA GPUs, then measures."""
 
-    def __init__(self, model, pool, inventory=None):
+    def __init__(self, model, pool, inventory=None, device="cpu"):
         self.inventory = (
             inventory if inventory is not None else [{"id": "auto"}, {"id": "cpu"}]
         )
         self.model = model
         self.pool = pool
+        self.device = model_device(model, device)
         self.cpu = installer_for(model, "cpu")
 
     def __getattr__(self, name):
@@ -168,6 +270,14 @@ class ModelInstaller:
         if self.model in CPU_ONLY_MODELS:
             result["requirements"] = self.cpu.requirements()
             return result
+        if result["state"] != "installed" and self.device.startswith("cuda:"):
+            selected = installer_for(self.model, self.device).status(**kwargs)
+            if selected["state"] == "installed":
+                selected["detail"] = (
+                    "CUDA pack installed. Optimize CPU/GPU to install the CPU pack and compare speeds."
+                )
+                selected["requirements"] = self.requirements()
+                return selected
         if result["state"] == "installed":
             gpu = installer_for(self.model, "cuda:0")
             if len(self.inventory) > 2 and not gpu.model_path.exists():

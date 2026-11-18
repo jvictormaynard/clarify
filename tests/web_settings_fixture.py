@@ -355,7 +355,7 @@ def main():
             "local_asr_catalog.installer_for",
             side_effect=lambda model, device="cpu": Mock(
                 manifest={"recommended_model": {"id": model}},
-                status=lambda: {
+                status=lambda **kwargs: {
                     "state": "missing"
                     if "--personal-missing" in sys.argv
                     else "installed"
@@ -471,27 +471,74 @@ def main():
             busy=False,
         )
         if "--personal-install" in sys.argv:
+            from local_asr import (
+                LocalASRInstaller,
+                LocalASRSidecarManager,
+                default_manifest_path,
+            )
             from tests.support.local_asr_product import FakeInstaller
             from local_asr_product import LocalASRProductController
 
             class SetupInstaller(FakeInstaller):
+                def platform_supported(self):
+                    return True
+
+                def status(self, cancel_check=None):
+                    return super().status()
+
                 def install(self, callback=None, cancel_event=None):
                     if self.install_calls:
                         threading.Timer(1.0, self.release.set).start()
                     return super().install(callback, cancel_event)
 
             setup_installer = SetupInstaller()
+            pack = LocalASRInstaller(
+                manifest_path=default_manifest_path().parent
+                / "local_asr_manifests/ggml-turbo-q5-cuda.json",
+            )
+            setup_installer.requirements_value = pack.requirements()
+            setup_installer.asset = pack.asset
+            missing = Mock(
+                requirements=pack.requirements,
+                asset=pack.asset,
+                status=lambda **kwargs: {"state": "not_installed"},
+            )
             fixtures.enter_context(
                 patch(
-                    "local_asr_catalog.installer_for",
-                    side_effect=lambda *args: setup_installer,
+                    "local_asr_catalog.memory_bytes",
+                    return_value=(15 * 1024**3, 1495 * 1024**2),
+                )
+            )
+            fixtures.enter_context(
+                patch("local_asr_catalog._free_install_disk", return_value=42 * 1024**3)
+            )
+            fixtures.enter_context(
+                patch(
+                    "local_asr_catalog.devices",
+                    return_value=[
+                        {"id": "auto", "label": "Automatic"},
+                        {"id": "cpu", "label": "CPU"},
+                        {
+                            "id": "cuda:0",
+                            "label": "GeForce RTX 3070 Ti Laptop GPU",
+                            "driver": "591.59",
+                            "memory_mb": 8192,
+                        },
+                    ],
                 )
             )
             fixtures.enter_context(
                 patch(
-                    "local_asr_catalog.ModelInstaller",
-                    side_effect=lambda *args: setup_installer,
+                    "local_asr_catalog.installer_for",
+                    side_effect=lambda model, device="cpu": (
+                        setup_installer
+                        if (model, device) == ("ggml-turbo-q5", "cuda:0")
+                        else missing
+                    ),
                 )
+            )
+            fixtures.enter_context(
+                patch.object(LocalASRSidecarManager, "start", return_value=0.0)
             )
             local_product = LocalASRProductController(installer=setup_installer)
         settings = QmlSettingsController(

@@ -9,8 +9,14 @@ Settings offers Whisper Base as a small-memory fallback, with explicit candidate
 choices for Parakeet v3 INT8 on CPU, multilingual Granite Speech 5.0 TurboCTC on
 CPU, quantized Whisper large-v3-turbo q5_0 for NVIDIA GPUs, and Nemotron 3.5 native
 streaming on CPU. Candidate status is provisional until native acceptance passes.
-New setup uses Base as the conservative fallback during that validation period;
-users can select a candidate in Other speech models.
+Onboarding checks the spoken language, supported platform, CPU threads, physical
+RAM, and disk space. It recommends Whisper Turbo q5 when a compatible NVIDIA
+GPU has at least 4 GiB of VRAM and the CUDA pack fits the system. On CPU, it
+prefers Parakeet on machines with at least four logical cores and 4 GiB of RAM,
+or Granite for a supported explicitly selected language on smaller machines.
+Automatic language detection recommends models that cover all five languages in
+the setup picker. Base remains a fallback. A separate warning reports low
+available memory at the time of the check. Users can choose another model.
 
 Parakeet and Granite transcribe completed recordings in this integration.
 Granite's benchmark prefix adapter is not native streaming and is not enabled
@@ -36,7 +42,12 @@ CUDA uses the pinned whisper.cpp v1.9.1 Windows package plus the official NVIDIA
 
 ## CPU and GPU
 
-CPU is available on supported Windows x64 hardware. NVIDIA devices are discovered with a bounded local query. CUDA startup must report actual CUDA backend use; merely finding a GPU or a healthy HTTP server is insufficient. CUDA failures fall back to the same installed model on CPU. Missing CPU assets produce an installation error; there is no automatic cloud fallback.
+CPU is available on supported Windows x64 hardware. NVIDIA devices are discovered
+with a bounded local query. Onboarding installs and verifies the selected device
+pack. CUDA startup must report actual CUDA backend use. The device check in
+onboarding precedes the first dictation. CUDA failures can use the same model on
+CPU when its CPU pack is installed. Missing CPU assets produce an installation
+error. There is no automatic cloud fallback.
 
 The Measure CPU/GPU speed button uses packaged synthetic English audio, a warmup, and three timed runs of each installed engine. Automatic chooses GPU only when its median is at least 10 percent faster. A local cache is invalidated by model/runtime hashes and CPU/GPU/driver identity. Without a valid measurement, Automatic selects CPU. Measurement is cancellable and sends no audio to the network. Measure while no dictation is in progress. Repeat after power-mode or system changes.
 

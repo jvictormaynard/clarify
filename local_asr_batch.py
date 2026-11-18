@@ -101,13 +101,10 @@ def _granite_worker(library, model, wav_path, language, result_path):
 
 
 def _language(model, language):
+    from local_asr_catalog import BATCH_LANGUAGES
+
     language = str(language or "auto").replace("_", "-").split("-")[0].lower()
-    supported = (
-        "en fr de es pt it ja"
-        if model == "granite-5-turboctc"
-        else "bg hr cs da nl en et fi fr de el hu it lv lt mt pl pt ro sk sl es sv ru uk"
-    ).split()
-    if language != "auto" and language not in supported:
+    if language != "auto" and language not in BATCH_LANGUAGES[model]:
         raise LocalASRSidecarError(
             "The selected batch model does not support this language"
         )

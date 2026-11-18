@@ -8974,6 +8974,51 @@
     "en": "Select a language or use automatic detection for multiple languages. This does not change the interface language.",
     "es": "Selecciona un idioma o usa la detección automática para varios idiomas. Esto no cambia el idioma de la interfaz."
   },
+  "setup_recommend_gpu": {
+    "pt": "Usa a placa {v0} com {v1} GiB de memória de vídeo.",
+    "en": "Uses your {v0} with {v1} GiB of video memory.",
+    "es": "Usa tu tarjeta {v0} con {v1} GiB de memoria de vídeo."
+  },
+  "setup_recommend_parakeet": {
+    "pt": "Seu processador de {v0} núcleos lógicos e {v1} GiB de RAM podem executar este modelo. Ele é compatível com os idiomas selecionados.",
+    "en": "Fits your {v0} logical CPU cores and {v1} GiB of RAM and supports the selected languages.",
+    "es": "Se ajusta a tus {v0} núcleos lógicos y {v1} GiB de RAM y admite los idiomas seleccionados."
+  },
+  "setup_recommend_granite": {
+    "pt": "Usa menos memória e é compatível com o idioma selecionado.",
+    "en": "Uses less memory and supports your selected language.",
+    "es": "Usa menos memoria y admite el idioma seleccionado."
+  },
+  "setup_recommend_base": {
+    "pt": "Modelo de download pequeno, adequado quando há poucos recursos disponíveis.",
+    "en": "A smaller download for computers with limited resources.",
+    "es": "Una descarga menor para equipos con recursos limitados."
+  },
+  "setup_recommend_low_memory": {
+    "pt": "Há {v0} MiB de RAM disponível. Feche alguns aplicativos antes de testar o ditado.",
+    "en": "{v0} MiB of RAM is free now. Close some apps before testing dictation.",
+    "es": "Quedan {v0} MiB de RAM libres. Cierra algunas aplicaciones antes de probar el dictado."
+  },
+  "setup_recommend_low_disk": {
+    "pt": "Libere espaço em disco antes de baixar um modelo de ditado.",
+    "en": "Free some disk space before downloading a dictation model.",
+    "es": "Libera espacio en disco antes de descargar un modelo de dictado."
+  },
+  "setup_cpu_device": {
+    "pt": "Executado no processador (CPU).",
+    "en": "Runs on the CPU.",
+    "es": "Se ejecuta en la CPU."
+  },
+  "setup_cuda_unavailable": {
+    "pt": "O Clarify não conseguiu iniciar o modelo na GPU NVIDIA. Volte e escolha outro modelo ou atualize o driver da NVIDIA e tente novamente.",
+    "en": "Clarify could not start the model on your NVIDIA GPU. Go back and choose another model, or update the NVIDIA driver and try again.",
+    "es": "Clarify no pudo iniciar el modelo en tu GPU NVIDIA. Vuelve atrás y elige otro modelo o actualiza el controlador de NVIDIA e inténtalo de nuevo."
+  },
+  "setup_cuda_license": {
+    "pt": "Termos da licença NVIDIA CUDA",
+    "en": "NVIDIA CUDA license terms",
+    "es": "Términos de licencia de NVIDIA CUDA"
+  },
   "setup_speech_hint": {
     "pt": "A recomendação considera os recursos disponíveis neste computador.",
     "en": "The recommendation uses the resources available on this computer.",

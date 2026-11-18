@@ -219,6 +219,42 @@
     "de": "Modell für Spracheingabe",
     "ru": "Модель распознавания речи"
   },
+  "setup_recommend_gpu": {
+    "de": "Nutzt Ihre Grafikkarte {v0} mit {v1} GiB Videospeicher.",
+    "ru": "Использует видеокарту {v0} с {v1} ГиБ видеопамяти."
+  },
+  "setup_recommend_parakeet": {
+    "de": "Passt zu Ihren {v0} logischen CPU-Kernen und {v1} GiB RAM und unterstützt die ausgewählten Sprachen.",
+    "ru": "Подходит для {v0} логических ядер и {v1} ГиБ ОЗУ и поддерживает выбранные языки."
+  },
+  "setup_recommend_granite": {
+    "de": "Benötigt weniger Speicher und unterstützt die ausgewählte Sprache.",
+    "ru": "Требует меньше памяти и поддерживает выбранный язык."
+  },
+  "setup_recommend_base": {
+    "de": "Kleiner Download für Computer mit begrenzten Ressourcen.",
+    "ru": "Небольшая загрузка для компьютеров с ограниченными ресурсами."
+  },
+  "setup_recommend_low_memory": {
+    "de": "Derzeit sind {v0} MiB RAM frei. Schließen Sie einige Apps vor dem Sprachtest.",
+    "ru": "Сейчас свободно {v0} МиБ ОЗУ. Закройте несколько приложений перед проверкой диктовки."
+  },
+  "setup_recommend_low_disk": {
+    "de": "Geben Sie Speicherplatz frei, bevor Sie ein Sprachmodell herunterladen.",
+    "ru": "Освободите место на диске перед загрузкой модели распознавания речи."
+  },
+  "setup_cpu_device": {
+    "de": "Wird auf der CPU ausgeführt.",
+    "ru": "Работает на процессоре (ЦП)."
+  },
+  "setup_cuda_unavailable": {
+    "de": "Clarify konnte das Modell auf Ihrer NVIDIA-GPU nicht starten. Gehen Sie zurück und wählen Sie ein anderes Modell oder aktualisieren Sie den NVIDIA-Treiber.",
+    "ru": "Clarify не удалось запустить модель на видеокарте NVIDIA. Вернитесь и выберите другую модель или обновите драйвер NVIDIA."
+  },
+  "setup_cuda_license": {
+    "de": "NVIDIA CUDA-Lizenzbedingungen",
+    "ru": "Условия лицензии NVIDIA CUDA"
+  },
   "setup_speech_hint": {
     "de": "Die Empfehlung berücksichtigt die Ressourcen dieses Computers.",
     "ru": "Рекомендация учитывает ресурсы этого компьютера."

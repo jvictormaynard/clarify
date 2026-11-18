@@ -698,6 +698,7 @@ class QmlSettingsController(QObject):
         self._local_state: LocalASRProductState = self._local_product.state
         self._local_profile = "ggml-small"
         self._local_device = "cpu"
+        self._local_exact_pack = False
         self._local_generation = 0
         self._local_benchmark_busy = False
         self._local_benchmark_detail = ""
@@ -3191,7 +3192,7 @@ class QmlSettingsController(QObject):
             state = self.chatgptState
             return (provider, state["accountId"], str(state["generation"]))
         if provider == LOCAL_ASR_PROVIDER_ID:
-            return (provider, "", "")
+            return (provider, self._config.local_asr_device, "")
         config = self._provider_config(provider)
         return (
             provider,
@@ -3284,12 +3285,18 @@ class QmlSettingsController(QObject):
         def discover() -> None:
             try:
                 if key[0] == LOCAL_ASR_PROVIDER_ID:
-                    from local_asr_catalog import MODELS, installer_for
+                    from local_asr_catalog import MODELS, installer_for, model_device
 
                     installed = []
                     for model in MODELS:
                         token.raise_if_cancelled()
-                        if installer_for(model, "cpu").status()["state"] == "installed":
+                        device = model_device(model, key[1])
+                        if (
+                            installer_for(model, "cpu").status()["state"] == "installed"
+                            or device.startswith("cuda:")
+                            and installer_for(model, device).status()["state"]
+                            == "installed"
+                        ):
                             installed.append(model)
                     catalog = ModelCatalog(audio_models=tuple(installed))
                 else:
@@ -3509,17 +3516,22 @@ class QmlSettingsController(QObject):
             return False
         return self._browse_local(self._local_profile, devices[index]["id"])
 
-    def _browse_local(self, model, device):
+    def _browse_local(self, model, device, *, exact_pack=False):
         if not self._processing_allowed():
             return False
         try:
-            from local_asr_catalog import ModelInstaller, model_device
+            from local_asr_catalog import ModelInstaller, installer_for, model_device
 
             device = model_device(model, device)
             adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
-            backend = adapter.select_backend(model, "cpu")
+            backend = adapter.select_backend(model, device if exact_pack else "cpu")
+            installer = (
+                installer_for(model, device)
+                if exact_pack
+                else ModelInstaller(model, adapter.engines, self._local_devices, device)
+            )
             product = LocalASRProductController(
-                installer=ModelInstaller(model, adapter.engines, self._local_devices),
+                installer=installer,
                 backend=backend,
             )
         except Exception as error:
@@ -3528,6 +3540,7 @@ class QmlSettingsController(QObject):
         self._local_generation += 1
         generation = self._local_generation
         self._local_profile, self._local_device = model, device
+        self._local_exact_pack = exact_pack
         self._unsubscribe_local_state()
         self._local_product.cancel()
         self._local_product = product
@@ -3806,7 +3819,8 @@ class QmlSettingsController(QObject):
             or self._local_benchmark_busy
         ):
             return False
-        self._local_device = "auto"
+        if not self._local_exact_pack:
+            self._local_device = "auto"
         try:
             self._local_product.install_async()
         except Exception as error:
@@ -4315,7 +4329,11 @@ class QmlSettingsController(QObject):
     def personalSetupState(self):
         state = self._personal_setup
         recommendation = dict(state["recommendation"])
-        if recommendation["modelId"] == self._local_profile:
+        if (
+            self._local_exact_pack
+            and recommendation["modelId"] == self._local_profile
+            and recommendation["executionDevice"] == self._local_device
+        ):
             recommendation["installed"] = self._local_state.status == "installed"
         chatgpt = self.chatgptState
         options = [
@@ -4407,15 +4425,20 @@ class QmlSettingsController(QObject):
     @Slot(str, str, result=bool)
     def personalSetupCommand(self, action, value=""):
         import json
+        from local_asr import LocalASRError
         from local_asr_catalog import (
+            BATCH_LANGUAGES,
             MODELS,
-            PROFILE_LABELS,
-            PROFILE_DESCRIPTIONS,
             installer_for,
+            recommend_model,
         )
 
         if self._account_shutdown:
             return False
+        if action == "cuda_license":
+            import webbrowser
+
+            return webbrowser.open("https://docs.nvidia.com/cuda/eula/index.html")
         if action == "interface_language":
             try:
                 payload = json.loads(value)
@@ -4476,8 +4499,41 @@ class QmlSettingsController(QObject):
             if language not in SUPPORTED_LANGUAGES:
                 raise ValueError("Select a supported language.")
             config_before = self._config_repository.load()
-            if action not in {"recommend", "configure", "connect_opencode", "complete"}:
+            if action not in {
+                "recommend",
+                "prepare_speech",
+                "configure",
+                "connect_opencode",
+                "complete",
+            }:
                 raise ValueError("Unknown personal setup command.")
+            if action in {"prepare_speech", "configure", "complete"}:
+                recommendation = self._personal_setup["recommendation"]
+                model = payload.get("speechModelId", recommendation["modelId"])
+                if model not in MODELS:
+                    raise ValueError("Select a supported speech model.")
+                if (
+                    model in BATCH_LANGUAGES
+                    and language != "auto"
+                    and language not in BATCH_LANGUAGES[model]
+                ):
+                    raise ValueError(
+                        "The selected batch model does not support this language"
+                    )
+                device = (
+                    recommendation["executionDevice"]
+                    if model == recommendation["modelId"]
+                    and language == recommendation.get("recognitionLanguage")
+                    else "cpu"
+                )
+                if action == "prepare_speech":
+                    if self._local_benchmark_busy:
+                        return False
+                    ready = self._browse_local(model, device, exact_pack=True)
+                    if ready and self._personal_setup["error"]:
+                        self._personal_setup["error"] = ""
+                        self.personalSetupStateChanged.emit()
+                    return ready
             if action in {"configure", "complete"}:
                 if (
                     not self._processing_allowed()
@@ -4486,11 +4542,6 @@ class QmlSettingsController(QObject):
                     or self.providerDirty
                 ):
                     raise ValueError("Finish the current operation before setup.")
-                model = payload.get(
-                    "speechModelId", self._personal_setup["recommendation"]["modelId"]
-                )
-                if model not in MODELS:
-                    raise ValueError("Select a supported speech model.")
                 provider = payload.get("textProvider", "none")
                 text_model = payload.get("textModelId", "")
                 if provider not in {
@@ -4521,7 +4572,7 @@ class QmlSettingsController(QObject):
                     raise ValueError("Connect the personal provider first.")
                 if action == "configure":
                     self._personal_setup["language"] = language
-                    if not self._browse_local(model, "cpu"):
+                    if not self._browse_local(model, device, exact_pack=True):
                         raise ValueError("Cannot prepare this speech model.")
                     setup_product = self._local_product
                     setup_local_generation = self._local_generation
@@ -4557,63 +4608,42 @@ class QmlSettingsController(QObject):
                     result = adapter.validate(ProviderConnection("", ""), token)
                 elif action == "complete":
                     token.raise_if_cancelled()
-                    if installer_for(model, "cpu").status().get("state") != "installed":
+                    if (
+                        installer_for(model, device)
+                        .status(cancel_check=lambda: token.cancelled)
+                        .get("state")
+                        != "installed"
+                    ):
                         raise ValueError(
                             "Install and verify the speech model before continuing."
                         )
-                    result = (payload, model, provider, text_model, config_before)
-                else:
-                    try:
-                        ram = os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
-                    except (AttributeError, ValueError, OSError):
-                        if os.name == "nt":
-                            import ctypes
-
-                            class Memory(ctypes.Structure):
-                                _fields_ = [
-                                    ("length", ctypes.c_ulong),
-                                    ("load", ctypes.c_ulong),
-                                ] + [
-                                    (k, ctypes.c_ulonglong)
-                                    for k in (
-                                        "total",
-                                        "available",
-                                        "page",
-                                        "page_available",
-                                        "virtual",
-                                        "virtual_available",
-                                        "extended",
-                                    )
-                                ]
-
-                            memory = Memory()
-                            memory.length = ctypes.sizeof(memory)
-                            ram = (
-                                memory.available
-                                if ctypes.windll.kernel32.GlobalMemoryStatusEx(
-                                    ctypes.byref(memory)
-                                )
-                                else 0
+                    if device.startswith("cuda:"):
+                        adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
+                        try:
+                            adapter.select_backend(model, device).start(
+                                cancel_event=token
                             )
-                        else:
-                            ram = 0
-                    cores = os.cpu_count() or 1
-                    # New candidates remain explicit choices until native acceptance.
-                    chosen = "ggml-base"
-                    installer = installer_for(chosen, "cpu")
-                    requirements = installer.requirements()
-                    result = {
-                        "providerId": "local_asr",
-                        "modelId": chosen,
-                        "label": PROFILE_LABELS[MODELS.index(chosen)],
-                        "reason": f"CPU: {cores} logical cores. Available RAM: {ram // 1024**2} MiB. Language: {language}. "
-                        + "Small-memory fallback. New model candidates are available in Choose another; native acceptance is pending.",
-                        "executionDevice": "cpu",
-                        "downloadBytes": requirements.get("download_bytes", 0),
-                        "requirementsList": _local_requirement_lines(requirements),
-                        "description": PROFILE_DESCRIPTIONS[chosen],
-                        "installed": installer.status().get("state") == "installed",
-                    }
+                        except (LocalASRError, OSError) as error:
+                            token.raise_if_cancelled()
+                            raise ValueError("setup_cuda_unavailable") from error
+                    result = (
+                        payload,
+                        model,
+                        device,
+                        provider,
+                        text_model,
+                        config_before,
+                    )
+                else:
+                    result = recommend_model(
+                        language,
+                        SUPPORTED_INTERFACE_LANGUAGES,
+                        token,
+                    )
+                    result["requirementsList"] = _local_requirement_lines(
+                        result.pop("requirements")
+                    )
+                    result["recognitionLanguage"] = language
                 token.raise_if_cancelled()
             except Exception as failure:
                 error = (
@@ -4655,7 +4685,7 @@ class QmlSettingsController(QObject):
                     }
                     self.providerStateChanged.emit()
                 elif action == "complete":
-                    options, model, provider, text_model, before = result
+                    options, model, device, provider, text_model, before = result
                     config = self._config_repository.load()
                     if (
                         config != before
@@ -4717,7 +4747,7 @@ class QmlSettingsController(QObject):
                         "workflows": routes,
                         "recognition_language": options.get("language", "auto"),
                         "local_asr": replace(config.local_asr, audio_model=model),
-                        "local_asr_device": "cpu",
+                        "local_asr_device": device,
                         "local_asr_cloud_refinement": provider != "none",
                         "onboarding_completed": True,
                     }
@@ -4731,6 +4761,8 @@ class QmlSettingsController(QObject):
                         updated = self._text_actions.without_after_action(updated)
                     persisted = self._config_repository.apply(updated)
                     self._replace_loaded_config(persisted)
+                    if self._local_exact_pack:
+                        self._browse_local(model, device)
                     self.saved.emit()
             except Exception as failure:
                 self._personal_setup["error"] = str(failure)
@@ -5649,7 +5681,9 @@ class QmlSettingsController(QObject):
                 return
         if isinstance(state, LocalASRProductState):
             self._local_state = state
-            self._model_catalogs.pop((LOCAL_ASR_PROVIDER_ID, "", ""), None)
+            for key in tuple(self._model_catalogs):
+                if key[0] == LOCAL_ASR_PROVIDER_ID:
+                    self._model_catalogs.pop(key)
             self.providerStateChanged.emit()
             self.personalSetupStateChanged.emit()
 

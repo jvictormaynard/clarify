@@ -62,26 +62,96 @@ class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
         self.assertTrue(settings.localSupportsGpu)
         self.assertEqual(settings.localDevices, ["Automatic", "CPU", "Fixture GPU"])
 
-    def test_recommendation_does_not_promote_unaccepted_models_or_rewrite_saved_route(
-        self,
-    ):
+    def test_recommendation_uses_hardware_and_language_without_saving_a_route(self):
         settings = self.settings
         before = settings._config_repository.load()
-        installer = Mock()
-        installer.requirements.return_value = {"download_bytes": 123}
-        installer.status.return_value = {"state": "missing"}
-        with (
-            patch("local_asr_catalog.installer_for", return_value=installer),
-            patch("os.cpu_count", return_value=16),
+        from local_asr_catalog import installer_for
+
+        gib = 1024**3
+        gpu = {
+            "id": "cuda:1",
+            "label": "RTX 3070 Ti",
+            "driver": "591.59",
+            "memory_mb": 8192,
+        }
+
+        def fake_installer(model, device):
+            pack = installer_for(model, device)
+            return Mock(
+                platform_supported=lambda: True,
+                requirements=pack.requirements,
+                status=lambda **kwargs: {"state": "missing"},
+            )
+
+        for language, cores, total, disk, inventory, model, device in (
+            ("pt", 16, 15 * gib, 42 * gib, [gpu], "ggml-turbo-q5", "cuda:1"),
+            ("auto", 16, 15 * gib, 3 * gib, [gpu], "parakeet-v3-int8", "cpu"),
+            ("pt", 2, 3 * gib, 3 * gib, [], "granite-5-turboctc", "cpu"),
+            ("ru", 2, 3 * gib, 3 * gib, [], "ggml-base", "cpu"),
         ):
-            self.assertTrue(settings.personalSetupCommand("recommend"))
-            self.wait_setup()
-        recommendation = settings.personalSetupState["recommendation"]
-        self.assertEqual(recommendation["modelId"], "ggml-base")
-        self.assertEqual(
-            recommendation["requirementsList"][0], "123 B maximum download"
+            with (
+                self.subTest(language=language, cores=cores, disk=disk),
+                patch("local_asr_catalog.installer_for", side_effect=fake_installer),
+                patch("local_asr_catalog.memory_bytes", return_value=(total, gib)),
+                patch("local_asr_catalog._free_install_disk", return_value=disk),
+                patch("local_asr_catalog.devices", return_value=inventory),
+                patch("local_asr_catalog.os.cpu_count", return_value=cores),
+            ):
+                self.assertTrue(
+                    settings.personalSetupCommand(
+                        "recommend", json.dumps({"language": language})
+                    )
+                )
+                self.wait_setup()
+                recommendation = settings.personalSetupState["recommendation"]
+                self.assertEqual(recommendation["modelId"], model)
+                self.assertEqual(recommendation["executionDevice"], device)
+                self.assertEqual(recommendation["recognitionLanguage"], language)
+                self.assertTrue(recommendation["lowMemory"])
+                self.assertEqual(recommendation["availableRamMiB"], 1024)
+                self.assertEqual(settings._config_repository.load(), before)
+
+    def test_completion_verifies_and_saves_the_recommended_gpu_pack(self):
+        from local_asr import LocalASRSidecarError
+        from provider_registry import PROVIDER_REGISTRY
+
+        settings = self.settings
+        before = settings._config_repository.load()
+        settings._personal_setup["recommendation"].update(
+            modelId="ggml-turbo-q5", executionDevice="cuda:1", recognitionLanguage="pt"
         )
-        self.assertEqual(settings._config_repository.load(), before)
+        options = json.dumps({"language": "pt", "speechModelId": "ggml-turbo-q5"})
+        installer = Mock()
+        installer.status.return_value = {"state": "missing"}
+        backend = Mock()
+        adapter = PROVIDER_REGISTRY.adapter("local_asr")
+        with (
+            patch("local_asr_catalog.installer_for", return_value=installer) as pack,
+            patch.object(adapter, "select_backend", return_value=backend) as select,
+        ):
+            self.assertTrue(settings.personalSetupCommand("complete", options))
+            self.wait_setup()
+            pack.assert_called_with("ggml-turbo-q5", "cuda:1")
+            self.assertEqual(settings._config_repository.load(), before)
+            backend.start.assert_not_called()
+
+            installer.status.return_value = {"state": "installed"}
+            backend.start.side_effect = LocalASRSidecarError("Fixture CUDA error")
+            self.assertTrue(settings.personalSetupCommand("complete", options))
+            self.wait_setup()
+            self.assertEqual(
+                settings.personalSetupState["error"], "setup_cuda_unavailable"
+            )
+            self.assertEqual(settings._config_repository.load(), before)
+
+            backend.start.side_effect = None
+            self.assertTrue(settings.personalSetupCommand("complete", options))
+            self.wait_setup()
+            select.assert_called_with("ggml-turbo-q5", "cuda:1")
+        saved = settings._config_repository.load()
+        self.assertEqual(saved.local_asr_device, "cuda:1")
+        self.assertEqual(saved.workflow("transcription").model_id, "ggml-turbo-q5")
+        self.assertEqual(saved.recognition_language, "pt")
 
     def test_switching_setup_service_clears_error_without_changing_saved_choices(self):
         settings = self.settings
@@ -185,7 +255,7 @@ class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
         product = Product()
         settings._local_product = product
 
-        def browse(*args):
+        def browse(*args, **kwargs):
             product.started = True
             return True
 

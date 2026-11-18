@@ -56,18 +56,13 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await expect(page.getByRole("heading", { name: "Sign in or create a Clarify account" })).toBeFocused();
   await page.screenshot({ animations: "disabled", path: `${evidence}/clarify-account.png` });
   await advance(page, "Continue without an account");
-  await page.getByRole("radio", { name: /Use my AI subscription/ }).focus();
-  await page.keyboard.press("End");
-  await expect(page.getByRole("radio", { name: /Keep the transcript/ })).toHaveAttribute("aria-checked", "true");
-  await page.screenshot({ animations: "disabled", path: `${evidence}/choice.png` });
-  await advance(page);
   await expect(page.getByRole("heading", { name: "A model for your voice" })).toBeFocused();
   await page.getByRole("combobox", { name: "Which languages do you speak?", exact: true }).click();
   await page.getByRole("option", { name: "Portuguese", exact: true }).click();
   await expect(page.getByText("Recommended", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2 })).toContainText("Whisper");
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
-  await expect(page.getByText(/Download:.*MiB/)).not.toContainText("NaN");
+  await expect(page.getByText("A smaller download for computers with limited resources.")).toBeVisible();
   await page.screenshot({ animations: "disabled", path: `${evidence}/recommendation.png` });
   await page.getByRole("button", { name: "Other speech models", exact: true }).click();
   const model = page.getByRole("combobox", { name: "Speech model", exact: true });
@@ -102,7 +97,8 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
   let rejectedBrowse = false;
   const rejectBusyBrowse = async (route: import("@playwright/test").Route) => {
-    if (route.request().postDataJSON().method !== "selectLocalProfile" || rejectedBrowse) return route.fallback();
+    const { method, args } = route.request().postDataJSON();
+    if (method !== "personalSetupCommand" || args[0] !== "prepare_speech" || rejectedBrowse) return route.fallback();
     rejectedBrowse = true;
     return route.fulfill({ json: { error: "Model verification is still running." } });
   };
@@ -115,6 +111,13 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByRole("button", { name: "Other speech models", exact: true }).click();
   await expect(model).toContainText("Base");
+  await advance(page);
+  const subscription = page.getByRole("radio", { name: /Use my AI subscription/ });
+  await expect(subscription).toBeEnabled();
+  await subscription.focus();
+  await page.keyboard.press("End");
+  await expect(page.getByRole("radio", { name: /Keep the transcript/ })).toHaveAttribute("aria-checked", "true");
+  await page.screenshot({ animations: "disabled", path: `${evidence}/choice.png` });
   await advance(page);
   for (const width of [1040, 820, 640]) {
     await page.setViewportSize({ width, height: 760 });
@@ -168,11 +171,14 @@ test.describe("installation", () => {
     await mkdir(evidence, { recursive: true });
     await advance(page);
     await advance(page, "Continue without an account");
+    await expect(page.getByRole("heading", { name: /Whisper Turbo q5/ })).toBeVisible();
+    await expect(page.getByText(/RTX 3070 Ti.*8 GiB/)).toBeVisible();
+    await expect(page.getByText(/1495 MiB of RAM is free now/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeInViewport();
+    await page.screenshot({ animations: "disabled", path: `${evidence}/jota-recommendation-fixture.png` });
+    await advance(page);
     await page.getByRole("radio", { name: /Keep the transcript/ }).click();
-    for (const step of ["welcome", "speech"]) {
-      await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", step);
-      await advance(page);
-    }
+    await advance(page);
     await page.getByRole("button", { name: "Download and install", exact: true }).click();
     await expect(page.getByRole("progressbar", { name: "Prepare your first dictation", exact: true })).toBeVisible();
     await page.screenshot({ animations: "disabled", path: `${evidence}/install-progress.png` });
@@ -183,6 +189,15 @@ test.describe("installation", () => {
     await expect(page.getByRole("progressbar", { name: "Prepare your first dictation", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Verify and try it", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Set up your dictation", exact: true })).toBeVisible();
+    const snapshot = () => page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+    await expect.poll(async () => (await snapshot()).localAsrStatus).toBe("installed");
+    await page.evaluate(async () => {
+      const rpc = (window as any).__testSettings;
+      await rpc({ method: "selectWorkflow", args: ["transcription"] });
+      await rpc({ method: "refreshRouteModels", args: [] });
+    });
+    await expect.poll(async () => (await snapshot()).routeModelOptions.map((item: { id: string }) => item.id))
+      .toEqual(["ggml-turbo-q5"]);
   });
 });
 
@@ -201,6 +216,8 @@ test.describe("personal text catalogs", () => {
     await expect(page.getByRole("status").filter({ hasText: "onboarding@example.test" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sign in or create a Clarify account" })).toBeFocused();
     await page.screenshot({ animations: "disabled", path: `${evidence}/clarify-account-signed-in.png` });
+    await advance(page);
+    await expect(page.getByRole("heading", { name: "A model for your voice" })).toBeFocused();
     await advance(page);
     await advance(page);
     await expect(page.getByRole("combobox", { name: "Rewriting model", exact: true })).toHaveCount(0);
@@ -234,7 +251,6 @@ test.describe("personal text catalogs", () => {
     await advance(page);
     await expect(model).toContainText("opencode/fixture-free-b");
     await advance(page);
-    await advance(page);
     await expect(page.locator(".setup-recommendation")).toContainText("opencode/fixture-free-b");
     await page.getByRole("button", { name: "Verify and try it", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Set up your dictation" })).toBeVisible();
@@ -265,6 +281,7 @@ test.describe("resumed subscription setup", () => {
     await advance(page);
     await advance(page, "Continue without an account");
     await advance(page);
+    await advance(page);
     await expect(page.getByRole("combobox", { name: "Rewriting model", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Manage", exact: true }).click();
     const dialog = page.getByRole("dialog");
@@ -286,6 +303,7 @@ test.describe("optional text setup recovery", () => {
     await page.setViewportSize({ width: 720, height: 640 });
     await advance(page, "Continuar");
     await advance(page, "Continuar sem conta");
+    await advance(page, "Continuar");
     await page.getByRole("radio", { name: /Usar modelos gratuitos/ }).click();
     await advance(page, "Continuar");
     await page.getByRole("button", { name: "Consultar modelos gratuitos", exact: true }).click();
@@ -328,8 +346,7 @@ test.describe("optional text setup recovery", () => {
     await expect(dialog.getByRole("alert")).toContainText("Invalid API key.");
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Agora não", exact: true }).click();
-    await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", "speech");
-    await advance(page, "Continuar");
+    await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", "install");
     await expect(page.locator(".setup-recommendation")).toContainText("Manter a transcrição");
     await page.getByRole("button", { name: "Verificar e experimentar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado", exact: true })).toBeVisible();
