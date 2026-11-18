@@ -15,6 +15,7 @@ import signal
 import sys
 import subprocess
 import tempfile
+import threading
 import time
 
 import opencode_runtime
@@ -31,6 +32,25 @@ from provider_types import (
     RewriteResult,
     TranslationResult,
 )
+
+_FREE_CATALOG_TTL = 60
+
+
+def _runtime_identity(executable):
+    if not executable:
+        return None
+    try:
+        stat = Path(executable).stat()
+    except OSError:
+        return None
+    return (
+        str(executable),
+        stat.st_dev,
+        stat.st_ino,
+        stat.st_size,
+        stat.st_mtime_ns,
+        stat.st_ctime_ns,
+    )
 
 
 @contextmanager
@@ -184,6 +204,11 @@ class OpenCodeAdapter(ProviderAdapter):
         )
         self.executable = executable
         self.timeout = timeout
+        self._verified_runtime = None
+        self._catalog_lock = threading.Lock()
+        self._catalog_started = 0
+        self._catalog_completed = 0
+        self._free_catalog = None
 
     def available(self):
         return bool(self.executable or opencode_runtime.available())
@@ -191,12 +216,26 @@ class OpenCodeAdapter(ProviderAdapter):
     def install(self, cancel_token=None):
         return opencode_runtime.install(cancel_token)
 
-    def _run(self, args, prompt="", cancel_token=None, *, model=None):
+    def _run(
+        self,
+        args,
+        prompt="",
+        cancel_token=None,
+        *,
+        model=None,
+        expected_runtime=None,
+        authorize_prompt=None,
+    ):
         acp = args == ["acp"]
         executable = self.executable or opencode_runtime.executable()
         if not executable:
             raise ProviderConfigurationError(
                 "opencode", "Select Connect to install the verified OpenCode runtime."
+            )
+        runtime = _runtime_identity(executable)
+        if expected_runtime is not None and runtime != expected_runtime:
+            raise ProviderConfigurationError(
+                "opencode", "The OpenCode runtime changed. Retry the request."
             )
         # Each command gets a private home, data store and working directory.
         # Do not inherit provider keys, OAuth stores, plugins or CLI overrides.
@@ -250,22 +289,24 @@ class OpenCodeAdapter(ProviderAdapter):
                     "opencode",
                     "Managed OpenCode configuration prevents an isolated text session.",
                 )
-            version = subprocess.run(
-                [str(executable), "--version"],
-                cwd=base,
-                env=env,
-                capture_output=True,
-                timeout=10,
-                check=False,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
-            )
-            match = re.fullmatch(
-                rb"(?:opencode v)?2\.\d+\.\d+(?:[-+][^\s]+)?\s*", version.stdout.strip()
-            )
-            if version.returncode or not match:
-                raise ProviderConfigurationError(
-                    "opencode", "This OpenCode CLI version is not supported."
+            if runtime is None or runtime != self._verified_runtime:
+                version = subprocess.run(
+                    [str(executable), "--version"],
+                    cwd=base,
+                    env=env,
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
+                match = re.fullmatch(
+                    rb"(?:opencode v)?2\.\d+\.\d+(?:[-+][^\s]+)?\s*",
+                    version.stdout.strip(),
+                )
+                if version.returncode or not match:
+                    raise ProviderConfigurationError(
+                        "opencode", "This OpenCode CLI version is not supported."
+                    )
             config = {
                 "permissions": [{"action": "*", "resource": "*", "effect": "deny"}],
                 "policies": [
@@ -325,6 +366,11 @@ class OpenCodeAdapter(ProviderAdapter):
             ):
                 stdin.write(b"" if acp else prompt.encode("utf-8"))
                 stdin.seek(0)
+                if runtime is not None and _runtime_identity(executable) != runtime:
+                    raise ProviderConfigurationError(
+                        "opencode", "The OpenCode runtime changed. Retry the request."
+                    )
+                self._verified_runtime = runtime
                 process = subprocess.Popen(
                     [str(executable), "acp", "--log-level", "error"]
                     if acp
@@ -356,7 +402,9 @@ class OpenCodeAdapter(ProviderAdapter):
                             client = TextSession(
                                 process, protocol, stderr, self.timeout, cancel_token
                             )
-                            return client.generate(work, model, prompt)
+                            return client.generate(
+                                work, model, prompt, authorize_prompt
+                            )
                     started = time.monotonic()
                     while process.poll() is None:
                         if cancel_token is not None:
@@ -416,7 +464,36 @@ class OpenCodeAdapter(ProviderAdapter):
                         client.close()
 
     def discover_models(self, connection, cancel_token=None):
-        output = self._run(["api", "model.list"], cancel_token=cancel_token)
+        runtime = _runtime_identity(self.executable or opencode_runtime.executable())
+        started = time.monotonic()
+        with self._catalog_lock:
+            self._catalog_started += 1
+            generation = self._catalog_started
+        cached = None
+        try:
+            output = self._run(
+                ["api", "model.list"],
+                cancel_token=cancel_token,
+                expected_runtime=runtime,
+            )
+            catalog = self._free_text_models(output)
+            if runtime is not None and catalog.text_models:
+                cached = (
+                    runtime,
+                    started + _FREE_CATALOG_TTL,
+                    frozenset(catalog.text_models),
+                )
+            return catalog
+        finally:
+            with self._catalog_lock:
+                # Only a completed check can replace the last result. Ignore
+                # completions from lookups started before a newer result.
+                if generation > self._catalog_completed:
+                    self._catalog_completed = generation
+                    self._free_catalog = cached
+
+    @staticmethod
+    def _free_text_models(output):
         models, names = [], {}
         try:
             payload = json.loads(output)
@@ -471,20 +548,59 @@ class OpenCodeAdapter(ProviderAdapter):
             )
         return catalog
 
-    def _generate(self, request, connection, cancel_token):
-        if (
-            request.model
-            not in self.discover_models(connection, cancel_token).text_models
-        ):
-            raise ProviderConfigurationError(
-                "opencode", "The selected free OpenCode model is unavailable."
-            )
-        return self._run(
-            ["acp"],
-            request.instruction + "\n\n" + request.source_message,
-            cancel_token,
-            model=request.model,
+    def _catalog_allows(self, runtime, model, *, startup_time=0):
+        """Call with the catalog lock held."""
+        catalog = self._free_catalog
+        return (
+            catalog is not None
+            and catalog[0] == runtime
+            and time.monotonic() + startup_time < catalog[1]
+            and model in catalog[2]
         )
+
+    @contextmanager
+    def _authorize_prompt(self, runtime, model):
+        with self._catalog_lock:
+            if not self._catalog_allows(runtime, model):
+                raise ProviderConfigurationError(
+                    "opencode",
+                    "The selected free OpenCode model could not be verified. Retry or choose another free model.",
+                )
+            yield self._catalog_completed
+
+    def _generate(self, request, connection, cancel_token):
+        if cancel_token is not None:
+            cancel_token.raise_if_cancelled()
+        runtime = _runtime_identity(self.executable or opencode_runtime.executable())
+        with self._catalog_lock:
+            # Refresh a nearly expired catalog before starting the private session.
+            recently_verified = self._catalog_allows(
+                runtime, request.model, startup_time=5
+            )
+        if not recently_verified:
+            self.discover_models(connection, cancel_token)
+        with self._authorize_prompt(runtime, request.model) as catalog_generation:
+            pass
+        try:
+            return self._run(
+                ["acp"],
+                request.instruction + "\n\n" + request.source_message,
+                cancel_token,
+                model=request.model,
+                expected_runtime=runtime,
+                authorize_prompt=lambda: self._authorize_prompt(runtime, request.model),
+            )
+        except (
+            ProviderConfigurationError,
+            ProviderResponseError,
+            ProviderTimeoutError,
+        ):
+            # Do not resend text automatically. Refresh availability before the
+            # next request after a rejection or incomplete response.
+            with self._catalog_lock:
+                if self._catalog_completed == catalog_generation:
+                    self._free_catalog = None
+            raise
 
     def rewrite(self, request, connection, cancel_token=None):
         return RewriteResult(

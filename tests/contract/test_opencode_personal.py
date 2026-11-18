@@ -1,5 +1,6 @@
 """Personal inference cannot borrow account authority or run provider tools."""
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -49,6 +50,19 @@ class OpenCodePersonalTests(unittest.TestCase):
         self.connection = ProviderConnection("", "")
         self.request = RewriteRequest(
             "Hello", "opencode/example-free", "en", "Rewrite", "Hello"
+        )
+        self.free_catalog = json.dumps(
+            {
+                "data": [
+                    {
+                        "id": "example-free",
+                        "providerID": "opencode",
+                        "type": "chat",
+                        "enabled": True,
+                        "cost": [{"input": 0, "output": 0}],
+                    }
+                ]
+            }
         )
 
     def test_discovery_excludes_paid_and_unrelated_models_and_roundtrips_config(self):
@@ -111,31 +125,173 @@ class OpenCodePersonalTests(unittest.TestCase):
                 self.adapter.discover_models(self.connection)
 
     def test_generation_requires_selected_model_completion_and_no_tools(self):
-        catalog = json.dumps(
-            {
-                "data": [
-                    {
-                        "id": "example-free",
-                        "providerID": "opencode",
-                        "type": "chat",
-                        "enabled": True,
-                        "cost": [{"input": 0, "output": 0}],
-                    }
-                ]
-            }
-        )
-        with patch.object(self.adapter, "_run", side_effect=[catalog, "Hello."]) as run:
+        with (
+            patch("opencode_provider._runtime_identity", return_value=("fixture",)),
+            patch.object(
+                self.adapter, "_run", side_effect=[self.free_catalog, "Hello."]
+            ) as run,
+        ):
             self.assertEqual(
                 self.adapter.rewrite(self.request, self.connection).text, "Hello."
             )
         self.assertEqual(run.call_args.args[0], ["acp"])
         self.assertEqual(run.call_args.kwargs["model"], self.request.model)
-        with patch.object(
-            self.adapter, "_run", return_value="opencode/different-free"
-        ) as run:
+        with (
+            patch(
+                "opencode_provider._runtime_identity", return_value=("other-runtime",)
+            ),
+            patch.object(
+                self.adapter, "_run", return_value="opencode/different-free"
+            ) as run,
+        ):
             with self.assertRaises(ProviderConfigurationError):
                 self.adapter.rewrite(self.request, self.connection)
             self.assertEqual(run.call_count, 1)
+
+    def test_rewrite_reuses_only_recent_free_catalog_for_the_same_runtime(self):
+        catalog = self.free_catalog
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "opencode"
+            executable.write_bytes(b"version one")
+            adapter = OpenCodeAdapter(executable=executable)
+            clock = Mock(return_value=100)
+            phases = []
+            catalog_output = catalog
+            refusal = None
+
+            def run(args, *rest, **options):
+                phases.append(args[0])
+                if args[0] == "api":
+                    return catalog_output
+                with options["authorize_prompt"]():
+                    if refusal is not None:
+                        raise refusal
+                    return "Hello."
+
+            with (
+                patch.object(adapter, "_run", side_effect=run),
+                patch("opencode_provider.time.monotonic", clock),
+            ):
+                # Connecting or opening the explicit picker refreshes the catalog.
+                adapter.validate(self.connection)
+                for _ in range(2):
+                    adapter.rewrite(self.request, self.connection)
+                self.assertEqual(phases, ["api", "acp", "acp"])
+
+                clock.return_value += 120
+                adapter.rewrite(self.request, self.connection)
+                self.assertEqual(phases[-2:], ["api", "acp"])
+
+                executable.write_bytes(b"replacement runtime on disk")
+                adapter.rewrite(self.request, self.connection)
+                self.assertEqual(phases[-2:], ["api", "acp"])
+
+                refusal = ProviderResponseError("opencode", "Model unavailable")
+                prior_calls = len(phases)
+                with self.assertRaises(ProviderResponseError):
+                    adapter.rewrite(self.request, self.connection)
+                self.assertEqual(phases[prior_calls:], ["acp"])
+
+                catalog_output = catalog.replace('"output": 0', '"output": 1')
+                with self.assertRaises(ProviderConfigurationError):
+                    adapter.rewrite(self.request, self.connection)
+                self.assertEqual(phases[-1], "api")
+
+                catalog_output = catalog
+                adapter.validate(self.connection)
+                approvals = []
+                repriced = catalog.replace('"output": 0', '"output": 1')
+
+                def rewrite_then_reprice(args, *rest, **options):
+                    if args[0] == "api":
+                        return repriced
+                    adapter.discover_models(self.connection)
+                    with options["authorize_prompt"]():
+                        approvals.append("prompt sent")
+                    return "Hello."
+
+                adapter._run.side_effect = rewrite_then_reprice
+                with self.assertRaises(ProviderConfigurationError):
+                    adapter.rewrite(self.request, self.connection)
+                self.assertEqual(approvals, [])
+
+                overlap = False
+
+                def superseded_lookup(args, *rest, **options):
+                    nonlocal overlap
+                    if args[0] == "acp":
+                        self.fail("A superseded catalog must not authorize ACP")
+                    if overlap:
+                        return repriced
+                    overlap = True
+                    adapter.discover_models(self.connection)
+                    return catalog
+
+                adapter._run.side_effect = superseded_lookup
+                with self.assertRaises(ProviderConfigurationError):
+                    adapter.rewrite(self.request, self.connection)
+                self.assertTrue(overlap)
+
+    def test_pending_refresh_preserves_recent_completed_check(self):
+        ready = threading.Event()
+        release = threading.Event()
+
+        def run(args, *rest, **options):
+            if args[0] == "api":
+                ready.set()
+                self.assertTrue(release.wait(timeout=3))
+                return self.free_catalog
+            with options["authorize_prompt"]():
+                return "Hello."
+
+        adapter = self.adapter
+        with (
+            patch("opencode_provider._runtime_identity", return_value=("fixture",)),
+            patch.object(adapter, "_run", return_value=self.free_catalog) as fake,
+            ThreadPoolExecutor(max_workers=1) as worker,
+        ):
+            adapter.discover_models(self.connection)
+            fake.side_effect = run
+            refreshing = worker.submit(adapter.discover_models, self.connection)
+            try:
+                self.assertTrue(ready.wait(timeout=3))
+                self.assertEqual(
+                    adapter.rewrite(self.request, self.connection).text, "Hello."
+                )
+            finally:
+                release.set()
+            self.assertEqual(
+                refreshing.result(timeout=3).text_models, (self.request.model,)
+            )
+
+    def test_supported_version_probe_is_reused_until_binary_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "opencode"
+            executable.write_bytes(b"version two")
+            adapter = OpenCodeAdapter(executable=executable)
+            process = Mock(pid=12345, returncode=0)
+            process.poll.return_value = 0
+            with (
+                patch(
+                    "opencode_provider.subprocess.Popen", return_value=process
+                ) as launch,
+                patch("opencode_provider.os.killpg", create=True),
+                patch("opencode_provider._windows_job", return_value=Mock()),
+                patch(
+                    "opencode_provider.subprocess.run",
+                    return_value=Mock(stdout=b"opencode v2.3.0", returncode=0),
+                ) as version,
+            ):
+                adapter.discover_models(self.connection)
+                adapter.discover_models(self.connection)
+                version.assert_called_once()
+                self.assertEqual(launch.call_count, 2)
+                executable.write_bytes(b"unsupported replacement")
+                version.return_value.stdout = b"opencode v1.19.5"
+                with self.assertRaises(ProviderConfigurationError):
+                    adapter.discover_models(self.connection)
+                self.assertEqual(version.call_count, 2)
+                self.assertEqual(launch.call_count, 2)
 
     def test_cancel_terminates_private_process_and_never_inherits_credentials(self):
         token = CancellationToken()
@@ -255,7 +411,10 @@ for line in sys.stdin:
         send({"id": identity, "result": {}})
     elif method == "session/set_config_option":
         model = "opencode/other-free" if scenario == "wrong-model" else message["params"]["value"]
-        send({"id": identity, "result": {"configOptions": [{"id": "model", "currentValue": model}]}})
+        options = [{"name": "Test model", "value": "opencode/other-free" if scenario == "unlisted-model" else model}]
+        if scenario == "grouped-models":
+            options = [{"group": "free", "name": "Free models", "options": options}]
+        send({"id": identity, "result": {"configOptions": [{"id": "model", "currentValue": model, "options": options}]}})
     elif method == "session/prompt":
         if scenario == "timeout":
             time.sleep(30)
@@ -369,7 +528,14 @@ for line in sys.stdin:
                 "value": "opencode/example-free",
             },
         )
-        for scenario in ("stopped", "incomplete", "tool", "wrong-model"):
+        self.assertEqual(self.acp_peer("grouped-models")[0], "OK")
+        for scenario in (
+            "stopped",
+            "incomplete",
+            "tool",
+            "wrong-model",
+            "unlisted-model",
+        ):
             with (
                 self.subTest(scenario=scenario),
                 self.assertRaises(ProviderResponseError),
@@ -403,8 +569,8 @@ for line in sys.stdin:
             self.acp_peer(token=token)
         original_send = TextSession._send
 
-        def cancel_in_flight(client, message):
-            original_send(client, message)
+        def cancel_in_flight(client, message, authorization=None):
+            original_send(client, message, authorization)
             if message.get("method") == "session/prompt":
                 active_token.cancel()
 

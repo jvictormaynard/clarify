@@ -177,6 +177,11 @@ catalog; free availability is limited by its provider. After explicit Connect,
 setup can copy a supported Windows executable into Clarify's runtime folder
 after verifying its checksum. If no verified runtime is available, setup can
 download the pinned CLI. A refusal never selects a paid route.
+OpenCode rewrites can reuse a zero-price model check for up to one minute for
+the same executable. An explicit catalog refresh always queries OpenCode.
+Each rewrite starts a separate credential-free session and confirms that the
+chosen model is still offered before sending text. The current zero-price check
+must still be valid at that point. A refusal clears the check and ends the request.
 The existing ChatGPT subscription connection is a separate text-only route.
 A keyless OpenAI-compatible endpoint must be literal loopback; its requests do
 not follow redirects. A missing optional text service preserves the transcript.

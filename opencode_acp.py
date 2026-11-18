@@ -6,6 +6,7 @@ OpenCode 2.3 selects models through session/set_config_option.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 import json
 import os
 import queue
@@ -14,6 +15,22 @@ import time
 
 from provider_http import ProviderTimeoutError
 from provider_types import ProviderResponseError
+
+
+def _offers_model(choices, model):
+    if not isinstance(choices, list):
+        return False
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        if choice.get("value") == model:
+            return True
+        group = choice.get("options")
+        if isinstance(group, list) and any(
+            isinstance(item, dict) and item.get("value") == model for item in group
+        ):
+            return True
+    return False
 
 
 class TextSession:
@@ -78,14 +95,15 @@ class TextSession:
         if self.process.poll() is not None:
             self._error("OpenCode closed before confirmed completion.")
 
-    def _send(self, message):
+    def _send(self, message, authorization=None):
         self._check()
         data = (json.dumps({"jsonrpc": "2.0", **message}) + "\n").encode("utf-8")
         if len(data) > 4 * 1024 * 1024:
             self._error("OpenCode input exceeded the limit.")
         try:
             sent = threading.Event()
-            self.writes.put_nowait((data, sent))
+            with authorization() if authorization is not None else nullcontext():
+                self.writes.put_nowait((data, sent))
         except queue.Full:
             self._error()
         while not sent.wait(0.01):
@@ -112,10 +130,10 @@ class TextSession:
             else:
                 time.sleep(0.01)
 
-    def call(self, method, params):
+    def call(self, method, params, authorization=None):
         self.sequence += 1
         identity = self.sequence
-        self._send({"id": identity, "method": method, "params": params})
+        self._send({"id": identity, "method": method, "params": params}, authorization)
         while True:
             message = self._next()
             if "method" in message and "id" in message:
@@ -176,7 +194,7 @@ class TextSession:
             else:
                 self._error()
 
-    def generate(self, work, model, prompt):
+    def generate(self, work, model, prompt, authorization=None):
         initialized = self.call(
             "initialize",
             {
@@ -202,12 +220,14 @@ class TextSession:
             isinstance(option, dict)
             and option.get("id") == "model"
             and option.get("currentValue") == model
+            and _offers_model(option.get("options"), model)
             for option in options
         ):
             self._error("OpenCode did not confirm the selected free model.")
         result = self.call(
             "session/prompt",
             {"sessionId": self.session, "prompt": [{"type": "text", "text": prompt}]},
+            authorization,
         )
         text = "".join(self.parts).strip()
         if result.get("stopReason") != "end_turn" or not text:
