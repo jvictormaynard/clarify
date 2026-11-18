@@ -1717,7 +1717,6 @@ class QmlSettingsController(QObject):
             or self._provider_tokens
             or self.localAsrBusy
             or self.localBenchmarkBusy
-            or self._account.snapshot().get("signedIn")
         ):
             self._set_error(
                 ValueError("Finalize a operação antes de alterar a conta ChatGPT.")

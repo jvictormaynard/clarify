@@ -7,10 +7,11 @@ import { Button, Field, Input, Picker, SettingsDisclosure } from "../components/
 import { LanguageWheel } from "../components/language-wheel";
 import { Dialog, DialogPopup, DialogHeader, DialogTitle, DialogDescription } from "../components/primitives/dialog";
 import { ProviderBrandIcon } from "../components/provider-brand-icon";
+import { AccountSignIn, type SignInStep } from "../components/account-sign-in";
 import { ChatGPTPlan } from "../components/chatgpt-plan";
 import type { SettingsPageProps } from "../settings/use-settings";
 
-const steps = ["language", "welcome", "text", "speech", "install"] as const;
+const steps = ["language", "account", "welcome", "text", "speech", "install"] as const;
 type Step = typeof steps[number];
 function chooseRadio(event: KeyboardEvent<HTMLDivElement>) {
   if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -26,6 +27,13 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const { state, busy, error, run } = controller;
   const setup = state.personalSetupState;
   const speechIds = state.localModelIds || [];
+  const account = state.accountState;
+  const accountBusy = !!account?.busy || controller.accountPending;
+  const [accountStep, setAccountStep] = useState<SignInStep>("methods");
+  const accountCommand = (action: string, value = "") => {
+    if (action === "cancel-social" ? account?.socialPending && !controller.accountPending : !accountBusy)
+      void run("accountCommand", action, value);
+  };
   const [step, setStep] = useState<Step>("language");
   const [language, setLanguage] = useState(setup?.language || "auto");
   const [speech, setSpeech] = useState("");
@@ -53,12 +61,14 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     if (selected?.models?.length && !selected.models.some(item => item.id === model)) setModel(selected.models.find(item => item.id === selected.modelId)?.id || selected.models[0].id);
   }, [catalogKey, model, selected?.models]);
   const pending = busy || !!setup?.busy || saving || state.providerBusy || controller.validatingProvider ||
+    (step === "account" && accountBusy) ||
     (step === "speech" && (state.localAsrBusy || state.localBenchmarkBusy));
   const installed = state.localAsrStatus === "installed" && speechIds[state.localProfileIndex] === speechModel || (!speech && !!recommendation?.installed);
   const options = { language, speechModelId: speechModel, textProvider: provider, textModelId: model || selected?.modelId || "" };
   const textReady = provider === "none" || !!(selected?.connected && options.textModelId &&
     (!["chatgpt", "opencode"].includes(provider) || selected.models?.some(item => item.id === options.textModelId)));
-  useEffect(() => { heading.current?.focus(); heading.current?.closest("main")?.scrollTo({ top: 0 }); }, [step]);
+  const accountAccepted = step === "account" && !!account?.signedIn;
+  useEffect(() => { heading.current?.focus(); heading.current?.closest("main")?.scrollTo({ top: 0 }); }, [step, accountAccepted]);
   const command = (action: "recommend" | "configure" | "complete" | "connect_opencode" | "cancel" | "reset_text_choice") => run("personalSetupCommand", action, JSON.stringify(options));
   const next = async () => {
     if (pending) return;
@@ -103,7 +113,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
     setProvider("none"); setModel("");
     if (await command("recommend")) setStep("speech");
   };
-  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", speech: "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
+  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", account: "setup_clarify_account", speech: "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
   return <main className="onboarding onboarding-page onboarding-flow personal-setup" data-step={step}>
     <div className="onboarding-content">
       <div className="setup-progress" role="progressbar" aria-label={t("setup_progress")}
@@ -113,11 +123,21 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
       <div className="onboarding-heading">
         {step === "language" && <div className="setup-brand"><ClarifyLogo size={36} /><span>Clarify</span></div>}
         <h1 ref={heading} tabIndex={-1}>{t(titles[step])}</h1>
-        <p className="hint">{t({ welcome: "setup_rewriting_hint", language: "setup_interface_hint", speech: "setup_speech_hint", text: provider === "opencode" ? "setup_free_models_hint" : provider === "chatgpt" ? "setup_subscription_hint" : "setup_connect_hint", install: "setup_install_hint" }[step])}</p>
+        <p className="hint">{t({ welcome: "setup_rewriting_hint", language: "setup_interface_hint", account: "setup_clarify_account_hint", speech: "setup_speech_hint", text: provider === "opencode" ? "setup_free_models_hint" : provider === "chatgpt" ? "setup_subscription_hint" : "setup_connect_hint", install: "setup_install_hint" }[step])}</p>
       </div>
       <div className="setup-body">
         {step !== "text" && (error || setup?.error) && <p className="error setup-error" role="alert">{t(error || setup?.error || "")}</p>}
         {step === "language" && <LanguageWheel value={state.uiLanguage || "en"} disabled={pending} onChange={value => void run("personalSetupCommand", "interface_language", JSON.stringify({ interfaceLanguage: value }))} />}
+        {step === "account" && <div className="setup-account-form">
+          {account?.error && <p className="error setup-error" role="alert">{t(account.error)}</p>}
+          {account?.signedIn ? <p className="hint" role="status">{account.email}</p> : account ? <>
+            {!account.endpoint && <p className="hint">{t("O serviço ainda não está configurado nesta versão. Os modos locais e com chave própria continuam disponíveis.")}</p>}
+            <AccountSignIn account={account} command={accountCommand} busy={accountBusy}
+              onStepChange={setAccountStep} onContinueWithoutAccount={() => setStep("welcome")} />
+            {account.socialPending && <Button disabled={controller.accountPending}
+              onClick={() => accountCommand("cancel-social")}>{t("Cancelar")}</Button>}
+          </> : <Button onClick={() => setStep("welcome")}>{t("Continuar sem conta")}</Button>}
+        </div>}
         {step === "welcome" && <div className="setup-choice-list" role="radiogroup" onKeyDown={chooseRadio} aria-label={t("setup_choose_rewriting")}>
           {[
             { id: "opencode", title: "setup_free_choice", hint: "setup_free", icon: () => <ProviderBrandIcon provider="OpenCode" /> },
@@ -208,8 +228,8 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
       <div className="onboarding-flow-actions setup-footer">
         {setup?.busy ? <Button onClick={() => state.chatgptState?.busy ? void run("chatgptCommand", "cancel", "") : void command("cancel")}>{t("Cancelar")}</Button> : step === "text" && selected && !selected.connected
           ? <Button variant="primary" disabled={pending} onClick={() => void connectText()}>{t(provider === "opencode" && !selected.runtimeInstalled ? "setup_connect" : connectionAction)}</Button>
-          : (step !== "install" || installed) && (step !== "text" || textReady) && <Button variant="primary" disabled={pending || !setup} onClick={() => void next()}>{t(step === "install" ? "setup_practice" : "Continuar")}</Button>}
-        {step !== "language" && <Button variant={step === "text" ? "default" : "text"} disabled={pending} onClick={() => setStep(step === "speech" && provider === "none" ? "welcome" : steps[steps.indexOf(step) - 1])}>{step !== "text" && <ArrowLeft size={16} />}{t("Voltar")}</Button>}
+          : (step !== "account" || account?.signedIn) && (step !== "install" || installed) && (step !== "text" || textReady) && <Button variant="primary" disabled={pending || !setup} onClick={() => void next()}>{t(step === "install" ? "setup_practice" : "Continuar")}</Button>}
+        {step !== "language" && (step !== "account" || account?.signedIn || accountStep === "methods") && <Button variant={step === "text" ? "default" : "text"} disabled={pending} onClick={() => setStep(step === "speech" && provider === "none" ? "welcome" : steps[steps.indexOf(step) - 1])}>{step !== "text" && <ArrowLeft size={16} />}{t("Voltar")}</Button>}
         {step === "text" && provider !== "none" && !setup?.busy && <Button variant="text" disabled={pending} onClick={() => void skipText()}>{t("setup_skip_text")}</Button>}
       </div>
     </div>

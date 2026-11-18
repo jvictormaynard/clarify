@@ -418,5 +418,61 @@
   "As tarefas de texto que você configurar com ChatGPT usarão seu plano. Gerencie os limites nas configurações do ChatGPT. A conexão não altera os serviços dos seus fluxos.": {
     "de": "Textaufgaben, für die Sie ChatGPT auswählen, verwenden Ihr Abonnement. Verwalten Sie die Limits in den ChatGPT-Einstellungen. Ihre eingerichteten Dienste bleiben beim Verbinden unverändert.",
     "ru": "Задачи, для которых вы выберете ChatGPT, будут использовать вашу подписку. Управляйте лимитами в настройках ChatGPT. Подключение не меняет сервисы, выбранные для ваших задач."
+  },
+  "setup_clarify_account": {
+    "de": "Bei Clarify anmelden oder Konto erstellen",
+    "ru": "Войдите или создайте аккаунт Clarify"
+  },
+  "setup_clarify_account_hint": {
+    "de": "Melden Sie sich an, um Wörterbuch und Textbausteine zu synchronisieren, oder fahren Sie ohne Konto fort.",
+    "ru": "Войдите, чтобы синхронизировать словарь и текстовые фрагменты, или продолжите без аккаунта."
+  },
+  "E-mail": {
+    "de": "E-Mail",
+    "ru": "Электронная почта"
+  },
+  "Continuar com {v0}": {
+    "de": "Mit {v0} fortfahren",
+    "ru": "Продолжить с {v0}"
+  },
+  "Continuar com e-mail": {
+    "de": "Mit E-Mail fortfahren",
+    "ru": "Продолжить с электронной почтой"
+  },
+  "Entrar com outra conta": {
+    "de": "Mit einem anderen Konto anmelden",
+    "ru": "Войти через другой аккаунт"
+  },
+  "Ou continue sem conta": {
+    "de": "Oder ohne Konto fortfahren",
+    "ru": "Или продолжите без аккаунта"
+  },
+  "Continuar sem conta": {
+    "de": "Ohne Konto fortfahren",
+    "ru": "Продолжить без аккаунта"
+  },
+  "Enviaremos um código para entrar ou criar sua conta. Você não precisa de senha.": {
+    "de": "Wir senden Ihnen einen Code, mit dem Sie sich anmelden oder ein Konto erstellen können. Sie benötigen kein Passwort.",
+    "ru": "Мы отправим код для входа или создания аккаунта. Пароль не нужен."
+  },
+  "Digite o código enviado para {v0}. O código vale por 10 minutos.": {
+    "de": "Geben Sie den Code ein, den wir an {v0} gesendet haben. Der Code ist 10 Minuten gültig.",
+    "ru": "Введите код, отправленный на {v0}. Код действует 10 минут."
+  },
+  "Código recebido por e-mail": {
+    "de": "Code aus der E-Mail",
+    "ru": "Код из письма"
+  },
+  "Confirmar código": {
+    "de": "Code bestätigen",
+    "ru": "Подтвердить код"
+  },
+  "Conclua o login no navegador e volte ao Clarify.": {
+    "de": "Schließen Sie die Anmeldung im Browser ab und kehren Sie zu Clarify zurück.",
+    "ru": "Завершите вход в браузере и вернитесь в Clarify."
+  },
+  "O serviço ainda não está configurado nesta versão. Os modos locais e com chave própria continuam disponíveis.": {
+    "de": "Der Kontodienst ist in dieser Version nicht konfiguriert. Sie können lokale Modelle oder Ihren eigenen API-Schlüssel verwenden.",
+    "ru": "Сервис аккаунтов не настроен в этой версии. Можно использовать локальные модели или свой ключ API."
   }
 }

@@ -9403,5 +9403,15 @@
     "en": "Sign in to ChatGPT and choose a rewriting model.",
     "pt": "Entre no ChatGPT e escolha um modelo de reescrita.",
     "es": "Inicia sesión en ChatGPT y elige un modelo de reescritura."
+  },
+  "setup_clarify_account": {
+    "en": "Sign in or create a Clarify account",
+    "pt": "Entre ou crie uma conta Clarify",
+    "es": "Inicia sesión o crea una cuenta de Clarify"
+  },
+  "setup_clarify_account_hint": {
+    "en": "Sign in to sync your dictionary and snippets, or continue without an account.",
+    "pt": "Entre para sincronizar seu dicionário e seus snippets ou continue sem conta.",
+    "es": "Inicia sesión para sincronizar tu diccionario y tus fragmentos, o continúa sin cuenta."
   }
 }

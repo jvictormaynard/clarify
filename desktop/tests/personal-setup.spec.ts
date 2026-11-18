@@ -45,7 +45,7 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
   await page.screenshot({ animations: "disabled", path: `${evidence}/language-flags.png` });
   await advance(page, "Продолжить");
-  await expect(page.getByRole("heading", { name: "Как Clarify должен редактировать текст?" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Войдите или создайте аккаунт Clarify" })).toBeFocused();
   await page.getByRole("button", { name: "Назад", exact: true }).click();
   await page.getByRole("option", { name: "English", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Choose your language" })).toBeVisible();
@@ -53,6 +53,9 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await expect(page.getByRole("option", { name: "English", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.screenshot({ animations: "disabled", path: `${evidence}/language.png` });
   await advance(page);
+  await expect(page.getByRole("heading", { name: "Sign in or create a Clarify account" })).toBeFocused();
+  await page.screenshot({ animations: "disabled", path: `${evidence}/clarify-account.png` });
+  await advance(page, "Continue without an account");
   await page.getByRole("radio", { name: /Use my AI subscription/ }).focus();
   await page.keyboard.press("End");
   await expect(page.getByRole("radio", { name: /Keep the transcript/ })).toHaveAttribute("aria-checked", "true");
@@ -164,6 +167,7 @@ test.describe("installation", () => {
     const evidence = process.env.CLARIFY_TEST_ARTIFACTS_DIR || testInfo.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
     await advance(page);
+    await advance(page, "Continue without an account");
     await page.getByRole("radio", { name: /Keep the transcript/ }).click();
     for (const step of ["welcome", "speech"]) {
       await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", step);
@@ -188,6 +192,15 @@ test.describe("personal text catalogs", () => {
   test("ChatGPT and OpenCode use discovered rewriting models and save a separate speech route", async ({ page }, testInfo) => {
     const evidence = process.env.CLARIFY_TEST_ARTIFACTS_DIR || testInfo.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
+    await advance(page);
+    await page.getByRole("button", { name: "Continue with email", exact: true }).click();
+    await page.getByRole("textbox", { name: "Email", exact: true }).fill("onboarding@example.test");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("textbox", { name: "Code received by email", exact: true }).fill("123456");
+    await page.getByRole("button", { name: "Confirm code", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "onboarding@example.test" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sign in or create a Clarify account" })).toBeFocused();
+    await page.screenshot({ animations: "disabled", path: `${evidence}/clarify-account-signed-in.png` });
     await advance(page);
     await advance(page);
     await expect(page.getByRole("combobox", { name: "Rewriting model", exact: true })).toHaveCount(0);
@@ -234,6 +247,7 @@ test.describe("personal text catalogs", () => {
     const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
     expect(state.onboardingRequired).toBe(false);
     expect(state.dictationWritingStyle).toBe("formal");
+    expect(state.accountState.signedIn).toBe(true);
     const saved = state.personalSetupState.textOptions.find((option: any) => option.id === "opencode");
     expect(saved.modelId).toBe("opencode/fixture-free-b");
     await page.evaluate(() => (window as any).__testSettings({ method: "selectWorkflow", args: ["rewrite"] }));
@@ -249,6 +263,7 @@ test.describe("resumed subscription setup", () => {
   test.use({ settingsScenario: { onboarding: true, locale: "en", personalCatalog: true, personalConnected: true } });
   test("a connected subscription can load its catalog after restart without another sign-in", async ({ page }) => {
     await advance(page);
+    await advance(page, "Continue without an account");
     await advance(page);
     await expect(page.getByRole("combobox", { name: "Rewriting model", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Manage", exact: true }).click();
@@ -270,6 +285,7 @@ test.describe("optional text setup recovery", () => {
     await mkdir(evidence, { recursive: true });
     await page.setViewportSize({ width: 720, height: 640 });
     await advance(page, "Continuar");
+    await advance(page, "Continuar sem conta");
     await page.getByRole("radio", { name: /Usar modelos gratuitos/ }).click();
     await advance(page, "Continuar");
     await page.getByRole("button", { name: "Consultar modelos gratuitos", exact: true }).click();

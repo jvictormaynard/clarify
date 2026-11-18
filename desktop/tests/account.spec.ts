@@ -5,6 +5,7 @@ import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog,
 
 async function finishPersonalSetup(page: Page) {
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await page.getByRole("radio", { name: /Manter a transcrição/ }).click();
   for (const step of ["welcome", "speech"]) {
     await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", step);

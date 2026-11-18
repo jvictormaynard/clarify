@@ -306,5 +306,7 @@
   "setup_free_models_title",
   "setup_free_models_hint",
   "setup_subscription_title",
-  "setup_subscription_hint"
+  "setup_subscription_hint",
+  "setup_clarify_account",
+  "setup_clarify_account_hint"
 ]

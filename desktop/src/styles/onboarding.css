@@ -164,6 +164,7 @@
 .setup-provider-row { display: flex; align-items: center; padding-inline-end: 10px; gap: 8px; min-width: 0; }
 .setup-provider-identity { display: flex; align-items: center; gap: 12px; padding: 9px 12px; text-align: start; flex: 1; min-width: 0; color: var(--foreground); }
 .setup-provider-row > .button { flex-shrink: 0; font-size: 12px; padding-inline: 10px; }
+.setup-account-form { display: grid; gap: 16px; width: 100%; max-width: 400px; margin-inline: auto; }
 .setup-provider-section { display: grid; gap: 8px; }
 .setup-provider-brand { display: grid; place-items: center; width: 24px; flex-shrink: 0; }
 .setup-provider-brand svg { color: var(--foreground); }

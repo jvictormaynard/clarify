@@ -368,8 +368,10 @@ authentication request.
 
 Personal onboarding follows the approved OpenBot reference layout, implemented
 with Clarify components and assets. Start with a centered interface-language
-wheel, then rewriting setup, speech setup, verified installation, practice and
-optional phone pairing. The interface preference is separate from spoken and
+wheel, then optional Clarify account sign-in or sign-up, rewriting setup,
+speech setup, verified installation, practice and optional phone pairing.
+Reuse the account sign-in form and offer Continue without an account.
+Signing in to Clarify leaves personal rewriting services available. The interface preference is separate from spoken and
 output languages. The wheel uses local flag marks for English (US), Portuguese
 (Brazil), Spanish (Spain), German and Russian. It supports keyboard arrows,
 wheel input and drag. German and Russian onboarding copy uses English for
