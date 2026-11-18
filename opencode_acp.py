@@ -58,14 +58,20 @@ class TextSession:
         self._stdout_left = _OUTPUT_LIMIT
         self._stderr_left = _DIAGNOSTIC_LIMIT
         self.workers = (
-            threading.Thread(target=self._write, name="clarify-acp-writer"),
             threading.Thread(target=self._read, name="clarify-acp-reader", daemon=True),
             threading.Thread(
                 target=self._drain_stderr, name="clarify-acp-stderr", daemon=True
             ),
+            threading.Thread(
+                target=self._write, name="clarify-acp-writer", daemon=False
+            ),
         )
-        for worker in self.workers:
-            worker.start()
+        try:
+            for worker in self.workers:
+                worker.start()
+        except RuntimeError:
+            self.stopping.set()
+            raise
 
     def _write(self):
         try:
