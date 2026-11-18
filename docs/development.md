@@ -360,10 +360,15 @@ native build and inventory. Browser success does not establish Electron native f
 native window acceptance. Desktop dependency audits run for their changed
 inputs, daily, and before Desktop publication.
 
-`scripts/dependency_audit.py` audits the locked set with `pip-audit`. The
-reviewed-exception policy lives in `dependency-audit.json`; it is intentionally
-empty today. Any future exception must include a maintainer-approved rationale
-in that file and should be removed as soon as the dependency can be upgraded.
+`scripts/dependency_audit.py` audits the locked Python set with `pip-audit`.
+`scripts/javascript_dependency_audit.py` runs npm audit, including development
+dependencies, and blocks unapproved high and critical advisories. Both use
+`dependency-audit.json` for reviewed exceptions. Each JavaScript exception is
+limited to an advisory, package, component, locked versions and UTC expiry.
+Expired exceptions fail the gate, including dependent package findings.
+Any exception requires a maintainer-approved rationale and must be removed as
+soon as the dependency can be upgraded. Registry errors and incomplete advisory
+graphs fail the audit; an exception does not disable the audit command.
 
 Tagged releases also publish `Clarify.sbom.json` (CycloneDX) from the
 runtime-only `requirements-lock-runtime-windows.txt` lock, include it in the

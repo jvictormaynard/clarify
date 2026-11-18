@@ -1,4 +1,21 @@
 {
   "policy_version": 1,
-  "ignored_vulnerabilities": {}
+  "ignored_vulnerabilities": {},
+  "javascript_exceptions": {
+    "https://github.com/advisories/GHSA-fc5q-39xc-vjpf": {
+      "package": "picomatch",
+      "versions": {
+        "desktop": [
+          "4.0.7"
+        ],
+        "mobile": [
+          "2.3.2",
+          "4.0.7"
+        ]
+      },
+      "expires_utc": "2026-12-01T00:00:00Z",
+      "approved_by": "João Victor, PR #347 task approval, 2026-11-17",
+      "rationale": "Temporary acceptance of repeated-extglob denial of service in desktop build/test and mobile Expo/Metro tooling. No fixed published version was available at review. No direct Clarify application imports were found; this does not prove absence of indirect exposure. Only this advisory and parents caused solely by it are excepted at the existing high/critical threshold. Remove when a compatible fix is available, and no later than expiry."
+    }
+  }
 }

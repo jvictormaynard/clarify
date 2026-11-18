@@ -52,5 +52,4 @@ jobs:
           cache-dependency-path: ${{ matrix.component }}/package-lock.json
       - run: npm ci --ignore-scripts --no-fund
         working-directory: ${{ matrix.component }}
-      - run: npm audit --include=dev --audit-level=high
-        working-directory: ${{ matrix.component }}
+      - run: python3 scripts/javascript_dependency_audit.py --component ${{ matrix.component }}
