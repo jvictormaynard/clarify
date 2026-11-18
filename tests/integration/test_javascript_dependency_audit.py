@@ -143,7 +143,7 @@ class JavaScriptAuditTests(unittest.TestCase):
                     clock.now.return_value = NOW
                     self.assertEqual(audit.main(), expected)
                     self.assertEqual(
-                        process.call_args.args[0][:2], ["node.exe", str(cli)]
+                        process.call_args.args[0][:2], ["node.exe", str(cli.resolve())]
                     )
 
     def test_windows_uses_node_cli_and_rejects_missing_cli(self):
@@ -162,4 +162,4 @@ class JavaScriptAuditTests(unittest.TestCase):
                     audit._npm_command()
                 cli.parent.mkdir(parents=True)
                 cli.write_text("// fake CLI")
-                self.assertEqual(audit._npm_command(), ["node.exe", str(cli)])
+                self.assertEqual(audit._npm_command(), ["node.exe", str(cli.resolve())])
