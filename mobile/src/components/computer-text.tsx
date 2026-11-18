@@ -41,6 +41,7 @@ export function ComputerText() {
   const choice = choices.find(item => item.key === model.selected);
   const own = ownsTextOperation(model.operation, state, context);
   const result = composerResult(model, state, context);
+  const running = model.starting || (own && isBusy(state));
   const busy = model.starting || model.cancelling || model.languagePending || !outputReady || isBusy(state);
   const catalog = account?.mode === 'computer' ? account.computer : account;
   const catalogMessage = catalog?.textActionsStatus === 'loading' ? 'Carregando ações…'
@@ -82,12 +83,13 @@ export function ComputerText() {
       {choice && (!choice.enabled || !choice.ready) && <Text style={[ui.small, { color: c.muted }]}>{t(!choice.enabled ? 'Esta ação está desativada.' : 'Esta ação não está pronta neste destino.')}</Text>}
       {!!catalogMessage && <Text testID="actions.catalog-status" accessibilityLiveRegion="polite" style={[ui.small, { color: c.muted }]}>{t(catalogMessage)}</Text>}
     </Card>
-    <Button testID="actions.run" primary disabled={busy || refreshing || accountBusy || !choice?.enabled || !choice?.ready || !model.draft.trim() || !context}
-      onPress={() => { setNotice(''); if (choice) void session.start(choice).then(refresh).catch(report); }}>{t('Executar ação')}</Button>
-    {(model.starting || (own && isBusy(state))) && <View style={{ gap: 12 }}>
+    {running
+      ? <Button testID="actions.cancel" loading={model.cancelling} onPress={() => void session.cancel().then(refresh).catch(report)}>{t('Cancelar')}</Button>
+      : <Button testID="actions.run" primary disabled={busy || refreshing || accountBusy || !choice?.enabled || !choice?.ready || !model.draft.trim() || !context}
+          onPress={() => { setNotice(''); if (choice) void session.start(choice).then(refresh).catch(report); }}>{t('Executar ação')}</Button>}
+    {running && <View style={{ gap: 12 }}>
       <ActivityIndicator accessibilityLabel={t('Processando texto…')} color={c.text} />
       <Text testID={`actions.operation.${model.operation?.id ?? 'starting'}`} accessibilityLiveRegion="polite" style={[ui.body, { color: c.muted }]}>{t('Processando texto…')}</Text>
-      <Button testID="actions.cancel" loading={model.cancelling} onPress={() => void session.cancel().then(refresh).catch(report)}>{t('Cancelar')}</Button>
     </View>}
     {!!(model.error || (own && state.phase === 'error' && state.message)) && <Text testID="actions.error" accessibilityRole="alert" style={[ui.body, { color: c.danger }]}>{t(model.error || state.message!)}</Text>}
     {own && state.phase === 'error' && state.errorRecovery === 'refresh_actions' && <Button

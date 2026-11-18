@@ -436,7 +436,12 @@ final class AppFlowUITests: XCTestCase {
     press("actions.run")
     waitForCatalogDiscovery()
     capture("compact-cancel-ready")
-    press("actions.cancel"); absent(app.buttons["actions.cancel"])
+    press("actions.cancel", allowScroll: false)
+    let cancel = app.buttons["actions.cancel"]
+    let cancelled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: cancel)
+    guard XCTWaiter.wait(for: [cancelled], timeout: 15) == .completed else {
+      diagnose("compact-cancel-remains"); XCTFail("Cancel did not end the action"); return
+    }
     _ = fixture("/__fixture/control", values: ["release": true])
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, draft)
