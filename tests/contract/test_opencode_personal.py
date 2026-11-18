@@ -163,6 +163,10 @@ class OpenCodePersonalTests(unittest.TestCase):
                 phases.append(args[0])
                 if args[0] == "api":
                     return catalog_output
+                if refusal is not None:
+                    # A valid refresh can finish while ACP starts, before
+                    # the rewrite obtains prompt authorization.
+                    adapter.discover_models(self.connection)
                 with options["authorize_prompt"]():
                     if refusal is not None:
                         raise refusal
@@ -190,12 +194,13 @@ class OpenCodePersonalTests(unittest.TestCase):
                 prior_calls = len(phases)
                 with self.assertRaises(ProviderResponseError):
                     adapter.rewrite(self.request, self.connection)
-                self.assertEqual(phases[prior_calls:], ["acp"])
+                self.assertEqual(phases[prior_calls:], ["acp", "api"])
 
                 catalog_output = catalog.replace('"output": 0', '"output": 1')
+                prior_calls = len(phases)
                 with self.assertRaises(ProviderConfigurationError):
                     adapter.rewrite(self.request, self.connection)
-                self.assertEqual(phases[-1], "api")
+                self.assertEqual(phases[prior_calls:], ["api"])
 
                 catalog_output = catalog
                 adapter.validate(self.connection)
@@ -240,6 +245,8 @@ class OpenCodePersonalTests(unittest.TestCase):
             if args[0] == "api":
                 ready.set()
                 self.assertTrue(release.wait(timeout=3))
+                if options.get("cancel_token") is not None:
+                    options["cancel_token"].raise_if_cancelled()
                 return self.free_catalog
             with options["authorize_prompt"]():
                 return "Hello."
@@ -263,6 +270,14 @@ class OpenCodePersonalTests(unittest.TestCase):
             self.assertEqual(
                 refreshing.result(timeout=3).text_models, (self.request.model,)
             )
+            token = CancellationToken()
+            token.cancel()
+            with self.assertRaises(ProviderCancelledError):
+                adapter.discover_models(self.connection, token)
+            phases = fake.call_count
+            adapter.rewrite(self.request, self.connection)
+            self.assertEqual(fake.call_count - phases, 1)
+            self.assertEqual(fake.call_args.args[0], ["acp"])
 
     def test_supported_version_probe_is_reused_until_binary_changes(self):
         with tempfile.TemporaryDirectory() as directory:

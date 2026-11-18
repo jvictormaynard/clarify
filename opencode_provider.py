@@ -22,7 +22,7 @@ import opencode_runtime
 from opencode_acp import TextSession
 
 from provider_adapters import ProviderAdapter
-from provider_http import ProviderTimeoutError
+from provider_http import ProviderCancelledError, ProviderTimeoutError
 from provider_types import (
     ModelCatalog,
     ProviderCapability,
@@ -470,6 +470,7 @@ class OpenCodeAdapter(ProviderAdapter):
             self._catalog_started += 1
             generation = self._catalog_started
         cached = None
+        cancelled = False
         try:
             output = self._run(
                 ["api", "model.list"],
@@ -484,11 +485,14 @@ class OpenCodeAdapter(ProviderAdapter):
                     frozenset(catalog.text_models),
                 )
             return catalog
+        except ProviderCancelledError:
+            cancelled = True
+            raise
         finally:
             with self._catalog_lock:
                 # Only a completed check can replace the last result. Ignore
                 # completions from lookups started before a newer result.
-                if generation > self._catalog_completed:
+                if not cancelled and generation > self._catalog_completed:
                     self._catalog_completed = generation
                     self._free_catalog = cached
 
@@ -581,6 +585,14 @@ class OpenCodeAdapter(ProviderAdapter):
             self.discover_models(connection, cancel_token)
         with self._authorize_prompt(runtime, request.model) as catalog_generation:
             pass
+
+        @contextmanager
+        def authorize_prompt():
+            nonlocal catalog_generation
+            with self._authorize_prompt(runtime, request.model) as generation:
+                catalog_generation = generation
+                yield
+
         try:
             return self._run(
                 ["acp"],
@@ -588,7 +600,7 @@ class OpenCodeAdapter(ProviderAdapter):
                 cancel_token,
                 model=request.model,
                 expected_runtime=runtime,
-                authorize_prompt=lambda: self._authorize_prompt(runtime, request.model),
+                authorize_prompt=authorize_prompt,
             )
         except (
             ProviderConfigurationError,
