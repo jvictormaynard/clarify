@@ -1693,8 +1693,12 @@ class LocalASRSidecarManager:
                             )
                         elapsed = time.perf_counter() - started
                         with self._lock:
-                            self._raise_if_cancelled(startup_cancel)
-                            self._raise_if_cancelled(cancel_event)
+                            try:
+                                self._raise_if_cancelled(startup_cancel)
+                                self._raise_if_cancelled(cancel_event)
+                            except LocalASRCancelledError:
+                                self._stop_locked(expected_process=process)
+                                raise
                             if self._process is not process:
                                 raise LocalASRCancelledError(
                                     "Local ASR startup was cancelled"

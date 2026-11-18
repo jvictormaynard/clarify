@@ -49,6 +49,9 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const heading = useRef<HTMLHeadingElement>(null);
   const recommendation = setup?.recommendation;
   const speechModel = speech || recommendation?.modelId || "";
+  const speechLabel = speechModel === "ggml-turbo-q5"
+    ? "Whisper Turbo q5"
+    : t(state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label || "");
   const usesRecommendation = speechModel === recommendation?.modelId && language === recommendation?.recognitionLanguage;
   const gpuSpeech = usesRecommendation && recommendation.executionDevice.startsWith("cuda:");
   const browsedSpeechMatches = speechIds[state.localProfileIndex] === speechModel;
@@ -156,7 +159,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
             onChange={async id => { if (id !== language && await command("recommend", { language: id })) setLanguage(id); }} disabled={pending} />
           <div className="setup-recommendation setup-speech-card">
             {usesRecommendation && !recommendation.lowDisk && <span className="badge">{t("setup_recommended")}</span>}
-            <h2>{t(state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label || "")}</h2>
+            <h2>{speechLabel}</h2>
             <p>{t("setup_location")}</p>
             {usesRecommendation && <p>{t(recommendation.reason, recommendation.reasonValues)}</p>}
             {usesRecommendation && !recommendation.installed && <p className="hint setup-model-download"><HardDrive aria-hidden="true" size={15} />{t("setup_download", { v0: Math.ceil(recommendation.downloadBytes / 1024 / 1024) })}</p>}
@@ -226,7 +229,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           </Dialog>
         </>}
         {step === "install" && <>
-          <div className="setup-recommendation"><h2>{t(state.localProfiles[speechIds.indexOf(speechModel)] || recommendation?.label || "")}</h2><p>{gpuSpeech ? t(recommendation.reason, recommendation.reasonValues) : t("setup_cpu_device")}</p><p className="hint">{provider === "none" ? t("setup_raw") : `${selected?.label} · ${options.textModelId}`}</p></div>
+          <div className="setup-recommendation"><h2>{speechLabel}</h2><p>{gpuSpeech ? t(recommendation.reason, recommendation.reasonValues) : t("setup_cpu_device")}</p><p className="hint">{provider === "none" ? t("setup_raw") : `${selected?.label} · ${options.textModelId}`}</p></div>
           <p role="status">{t(state.localAsrDetail || (installed ? "setup_ready" : "setup_needs_install"))}</p>
           {gpuSpeech && !installed && <Button variant="text" onClick={() => void command("cuda_license")}>{t("setup_cuda_license")}</Button>}
           {state.localAsrBusy && <progress aria-label={t("setup_install")} max={1} value={state.localAsrProgress > 1 ? state.localAsrProgress / 100 : state.localAsrProgress} />}
