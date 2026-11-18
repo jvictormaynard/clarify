@@ -186,7 +186,7 @@ class OpenCodeAdapter(ProviderAdapter):
         self.timeout = timeout
 
     def available(self):
-        return bool(self.executable or opencode_runtime.executable())
+        return bool(self.executable or opencode_runtime.available())
 
     def install(self, cancel_token=None):
         return opencode_runtime.install(cancel_token)

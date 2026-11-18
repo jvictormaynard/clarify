@@ -173,8 +173,10 @@ text service, verified installation and practice. Model names remain visible.
 `AppConfig.recognition_language` is separate from the interface and output language.
 Personal provider controls remain available when signed in. OpenCode runs on the
 user's computer with an isolated CLI configuration and a discovered zero-price
-catalog; free availability is limited by its provider. Setup can install the
-pinned CLI after explicit Connect. A refusal never selects a paid route.
+catalog; free availability is limited by its provider. After explicit Connect,
+setup can copy a supported Windows executable into Clarify's runtime folder
+after verifying its checksum. If no verified runtime is available, setup can
+download the pinned CLI. A refusal never selects a paid route.
 The existing ChatGPT subscription connection is a separate text-only route.
 A keyless OpenAI-compatible endpoint must be literal loopback; its requests do
 not follow redirects. A missing optional text service preserves the transcript.

@@ -425,6 +425,53 @@ for line in sys.stdin:
 
 
 class ManagedRuntimeTests(unittest.TestCase):
+    def test_reuses_verified_windows_install_outside_scoped_runtime_without_download(
+        self,
+    ):
+        import hashlib
+        from pathlib import Path
+        import tempfile
+        import opencode_runtime as runtime
+
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            home = base / "user"
+            scoped_local = base / "isolated-local"
+            external = home / "AppData/Local/Programs/OpenCode/bin/opencode.exe"
+            external.parent.mkdir(parents=True)
+            external.write_bytes(b"verified binary")
+            digest = hashlib.sha256(external.read_bytes()).hexdigest()
+            with (
+                patch.object(runtime.sys, "platform", "win32"),
+                patch.object(runtime, "supported", return_value=True),
+                patch.object(
+                    runtime, "runtime_root", return_value=scoped_local / "runtime"
+                ),
+                patch.object(runtime.Path, "home", return_value=home),
+                patch.dict(os.environ, {"LOCALAPPDATA": str(scoped_local), "PATH": ""}),
+                patch.object(runtime, "_WINDOWS_INSTALL_SHA256", digest),
+                patch.object(runtime.urllib.request, "urlopen") as download,
+            ):
+                self.assertTrue(OpenCodeAdapter().available())
+                self.assertIsNone(runtime.executable())
+                external.write_bytes(b"unverified binary")
+                self.assertFalse(OpenCodeAdapter().available())
+                with patch.object(
+                    runtime, "_verified_windows_install", return_value=external
+                ):
+                    with self.assertRaisesRegex(
+                        ProviderConfigurationError, "Could not reuse"
+                    ):
+                        runtime.install()
+                self.assertIsNone(runtime.executable())
+                external.write_bytes(b"verified binary")
+                adopted = scoped_local / "2.3.2" / "opencode.exe"
+                self.assertEqual(runtime.install(), str(adopted))
+                self.assertEqual(adopted.read_bytes(), b"verified binary")
+                external.unlink()
+                self.assertEqual(runtime.executable(), str(adopted))
+                download.assert_not_called()
+
     def test_install_verifies_archive_before_publishing_and_retains_notice(self):
         import base64
         import hashlib

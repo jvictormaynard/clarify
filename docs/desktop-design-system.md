@@ -392,7 +392,8 @@ provider mark and its connection state. Place More providers below the group
 and open a searchable dialog. Use the primary action to connect the selected
 provider or continue after model selection. Put the connected provider's
 management action in its row. Offer the OpenCode download in its row when
-its runtime is missing. API keys and endpoint details use a connection
+a verified runtime is missing. On Windows, a verified native OpenCode install
+in the user Programs folder can supply the runtime. API keys and endpoint details use a connection
 dialog. ChatGPT uses the supported browser
 sign-in and cancellation flow. Do not show unsupported code-login methods.
 Show model selection after connection and catalog discovery. Rewriting and speech
