@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from opencode_acp import TextSession
-from opencode_provider import OpenCodeAdapter, _private_directory
+from opencode_provider import OpenCodeAdapter, _private_directory, _runtime_identity
 from provider_http import (
     CancellationToken,
     ProviderCancelledError,
@@ -406,11 +406,22 @@ class OpenCodePersonalTests(unittest.TestCase):
         isolate.assert_called_once_with(process)
         isolate.return_value.assert_called_once()
 
-    def acp_peer(self, scenario="success", *, token=None, timeout=2):
+    def acp_peer(
+        self,
+        scenario="success",
+        *,
+        token=None,
+        timeout=2,
+        turns=1,
+        launches=1,
+        free_mib=4096,
+        expire=False,
+    ):
         """Run the production transport against a bounded fake ACP process."""
         peer = r"""import json, sys, time
 scenario = sys.argv[1]
-record = open(sys.argv[2], "w", encoding="utf-8")
+record = open(sys.argv[2], "a", encoding="utf-8")
+session_count = 0
 def send(message):
     print(json.dumps({"jsonrpc": "2.0", **message}), flush=True)
 for line in sys.stdin:
@@ -419,9 +430,17 @@ for line in sys.stdin:
     method = message.get("method")
     identity = message.get("id")
     if method == "initialize":
-        send({"id": identity, "result": {"protocolVersion": 1}})
+        capabilities = {} if scenario == "no-delete" else {"sessionCapabilities": {"delete": {}}}
+        send({"id": identity, "result": {"protocolVersion": 1, "agentCapabilities": capabilities}})
     elif method == "session/new":
-        send({"id": identity, "result": {"sessionId": "private-session"}})
+        session_count += 1
+        session = "private-session" if session_count == 1 else f"private-session-{session_count}"
+        send({"id": identity, "result": {"sessionId": session}})
+    elif method == "session/delete":
+        if scenario == "delete-fails":
+            send({"id": identity, "error": {"code": -32603, "message": "Could not delete session"}})
+        else:
+            send({"id": identity, "result": {}})
     elif method == "session/set_mode":
         send({"id": identity, "result": {}})
     elif method == "session/set_config_option":
@@ -441,6 +460,8 @@ for line in sys.stdin:
         if scenario == "stderr":
             sys.stderr.write("x" * (1024 * 1024 + 1)); sys.stderr.flush()
             continue
+        if scenario == "large":
+            sys.stderr.write("x" * (600 * 1024)); sys.stderr.flush()
         if scenario == "permission":
             for request_id, operation in enumerate([
                 "session/request_permission", "session/request_permission",
@@ -452,10 +473,10 @@ for line in sys.stdin:
                 reply = json.loads(sys.stdin.readline())
                 record.write(json.dumps(reply) + "\n"); record.flush()
         if scenario == "error":
-            send({"method": "session/update", "params": {"sessionId": "private-session", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "Must not publish"}}}})
+            send({"method": "session/update", "params": {"sessionId": session, "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "Must not publish"}}}})
             send({"id": identity, "error": {"code": -32603, "message": "private-input secret-key", "data": {"errorName": "provider.free-limit"}}})
             continue
-        send({"method": "session/update", "params": {"sessionId": "private-session", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "OK"}}}})
+        send({"method": "session/update", "params": {"sessionId": session, "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "x" * (2200 * 1024) if scenario == "large" else "OK"}}}})
         if scenario == "tool":
             send({"method": "session/update", "params": {"sessionId": "private-session", "update": {"sessionUpdate": "tool_call_update", "status": "completed"}}})
         if scenario == "incomplete":
@@ -465,10 +486,19 @@ for line in sys.stdin:
         real_popen = subprocess.Popen
         with tempfile.TemporaryDirectory(prefix="clarify-acp-test-") as directory:
             record = Path(directory) / "messages"
+            runtime = Path(directory) / "fake-opencode"
+            runtime.touch()
+            adapter = OpenCodeAdapter(executable=runtime, timeout=timeout)
             launched = []
 
+            def wait_for_cleanup(reaper):
+                if reaper is not None:
+                    reaper.join(timeout=5)
+                    self.assertFalse(reaper.is_alive())
+
             def launch(args, **kwargs):
-                self.assertEqual(args[1:], ["acp", "--log-level", "error"])
+                self.assertEqual(args[1:], ["acp", "--log-level", "none"])
+                self.assertEqual(kwargs["env"]["OPENCODE_DB"], ":memory:")
                 self.assertNotIn("OPENAI_API_KEY", kwargs["env"])
                 config = json.loads(kwargs["env"]["OPENCODE_CONFIG_CONTENT"])
                 self.assertEqual(
@@ -498,13 +528,35 @@ for line in sys.stdin:
                         return_value=Mock(stdout=b"2.3.0", returncode=0),
                     ),
                     patch("opencode_provider.subprocess.Popen", side_effect=launch),
+                    patch(
+                        "opencode_provider.memory_bytes",
+                        return_value=(8 << 30, free_mib << 20),
+                    ),
+                    patch("opencode_provider._reject_managed_configuration") as policy,
                 ):
-                    text = OpenCodeAdapter(executable="fake", timeout=timeout)._run(
-                        ["acp"],
-                        "Public test",
-                        token,
-                        model="opencode/example-free",
-                    )
+                    try:
+                        for turn in range(turns):
+                            text = adapter._run(
+                                ["acp"],
+                                f"Public test {turn + 1}",
+                                token,
+                                model="opencode/example-free",
+                                expected_runtime=_runtime_identity(runtime),
+                                reuse=turns > 1,
+                            )
+                            if expire and turn + 1 < turns:
+                                self.assertIsNotNone(adapter._idle_acp)
+                                wait_for_cleanup(
+                                    adapter._retire_idle(adapter._idle_acp)
+                                )
+                            if scenario == "managed-added":
+                                policy.side_effect = ProviderConfigurationError(
+                                    "opencode",
+                                    "Managed OpenCode configuration changed.",
+                                )
+                    finally:
+                        wait_for_cleanup(adapter.shutdown())
+                self.assertEqual(len(launched), launches)
                 messages = [
                     json.loads(line) for line in record.read_text().splitlines()
                 ]
@@ -515,8 +567,44 @@ for line in sys.stdin:
                     self.assertIsNotNone(child.poll())
                     self.assertFalse(root.exists())
                 self.assertFalse(
-                    any(t.name == "clarify-acp-writer" for t in threading.enumerate())
+                    any(
+                        t.name.startswith("clarify-acp-") for t in threading.enumerate()
+                    )
                 )
+
+    def test_reuse_deletes_each_turn_and_requires_confirmed_cleanup(self):
+        text, messages = self.acp_peer(turns=2)
+        self.assertEqual(text, "OK")
+        calls = [message for message in messages if "method" in message]
+        self.assertEqual(sum(call["method"] == "initialize" for call in calls), 1)
+        for turn, session in enumerate(("private-session", "private-session-2"), 1):
+            prompt, deletion = [
+                call
+                for call in calls
+                if call["method"] in {"session/prompt", "session/delete"}
+                and call["params"]["sessionId"] == session
+            ]
+            self.assertEqual(prompt["method"], "session/prompt")
+            self.assertEqual(
+                prompt["params"]["prompt"],
+                [{"type": "text", "text": f"Public test {turn}"}],
+            )
+            self.assertEqual(deletion["method"], "session/delete")
+        for scenario in ("no-delete", "delete-fails"):
+            with self.subTest(scenario=scenario):
+                self.assertEqual(self.acp_peer(scenario, turns=2, launches=2)[0], "OK")
+
+    def test_idle_expiry_and_low_memory_start_a_fresh_worker(self):
+        for options in ({"expire": True}, {"free_mib": 512}):
+            with self.subTest(options=options):
+                self.assertEqual(self.acp_peer(turns=2, launches=2, **options)[0], "OK")
+
+    def test_reuse_preserves_the_full_output_limit_for_each_turn(self):
+        self.assertEqual(len(self.acp_peer("large", turns=2)[0]), 2200 * 1024)
+
+    def test_a_new_managed_configuration_retires_the_idle_worker(self):
+        with self.assertRaisesRegex(ProviderConfigurationError, "Managed OpenCode"):
+            self.acp_peer("managed-added", turns=2)
 
     def test_acp_pins_model_and_accepts_only_completed_text(self):
         text, messages = self.acp_peer()

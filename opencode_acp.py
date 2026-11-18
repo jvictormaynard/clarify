@@ -1,4 +1,4 @@
-"""One private ACP v1 text turn. No client file or terminal capabilities.
+"""Isolated ACP v1 text turns. No client file or terminal capabilities.
 
 Wire contract: https://agentclientprotocol.com/protocol/v1/prompt-turn
 OpenCode 2.3 selects models through session/set_config_option.
@@ -13,8 +13,11 @@ import queue
 import threading
 import time
 
-from provider_http import ProviderTimeoutError
+from provider_http import ProviderCancelledError, ProviderTimeoutError
 from provider_types import ProviderResponseError
+
+_OUTPUT_LIMIT = 4 * 1024 * 1024
+_DIAGNOSTIC_LIMIT = 1024 * 1024
 
 
 def _offers_model(choices, model):
@@ -36,22 +39,33 @@ def _offers_model(choices, model):
 class TextSession:
     """The caller owns the child tree and must stop it before closing this client."""
 
-    def __init__(self, process, stdout, stderr, timeout, cancel_token):
+    def __init__(self, process, stopping):
         self.process = process
-        self.stdout = stdout
-        self.stderr = stderr
-        self.deadline = time.monotonic() + timeout
-        self.cancel_token = cancel_token
-        self.pending = b""
-        self.total = 0
+        self.owner_stopping = stopping
+        self.deadline = 0
+        self.cancel_token = None
         self.sequence = 0
         self.session = None
         self.parts = []
+        self.initialized = False
+        self.can_delete = False
+        self.reusable = False
         self.writes = queue.Queue(maxsize=8)
+        self.reads = queue.Queue(maxsize=64)
         self.stopping = threading.Event()
-        self.failed = threading.Event()
-        self.writer = threading.Thread(target=self._write, name="clarify-acp-writer")
-        self.writer.start()
+        self.failure = ""
+        self._budget_lock = threading.Lock()
+        self._stdout_left = _OUTPUT_LIMIT
+        self._stderr_left = _DIAGNOSTIC_LIMIT
+        self.workers = (
+            threading.Thread(target=self._write, name="clarify-acp-writer"),
+            threading.Thread(target=self._read, name="clarify-acp-reader", daemon=True),
+            threading.Thread(
+                target=self._drain_stderr, name="clarify-acp-stderr", daemon=True
+            ),
+        )
+        for worker in self.workers:
+            worker.start()
 
     def _write(self):
         try:
@@ -64,15 +78,53 @@ class TextSession:
                 self.process.stdin.flush()
                 sent.set()
         except (OSError, ValueError):
-            self.failed.set()
+            self.failure = "OpenCode stopped receiving requests."
+
+    def _read(self):
+        try:
+            while not self.stopping.is_set():
+                line = self.process.stdout.readline(_OUTPUT_LIMIT + 1)
+                if not line:
+                    return
+                with self._budget_lock:
+                    self._stdout_left -= len(line)
+                    if self._stdout_left < 0:
+                        self.failure = "OpenCode output exceeded the limit."
+                        return
+                while not self.stopping.is_set():
+                    try:
+                        self.reads.put(line, timeout=0.025)
+                        break
+                    except queue.Full:
+                        continue
+        except (OSError, ValueError):
+            self.failure = "OpenCode output could not be read."
+
+    def _drain_stderr(self):
+        try:
+            with self.process.stderr as stream:
+                while not self.stopping.is_set():
+                    block = os.read(stream.fileno(), 65536)
+                    if not block:
+                        return
+                    with self._budget_lock:
+                        self._stderr_left -= len(block)
+                        if self._stderr_left < 0:
+                            self.failure = "OpenCode output exceeded the limit."
+                            return
+        except (OSError, ValueError):
+            self.failure = "OpenCode diagnostics could not be read."
 
     def close(self):
         self.stopping.set()
         # The owner has killed and reaped the tree, so blocked writes now fail.
-        self.writer.join(timeout=5)
-        self.process.stdin.close()
-        if self.writer.is_alive():
+        for worker in self.workers:
+            worker.join(timeout=1)
+        if any(worker.is_alive() for worker in self.workers):
             raise ProviderResponseError("opencode", "OpenCode client did not stop.")
+        self.process.stdin.close()
+        self.process.stdout.close()
+        self.process.stderr.close()
 
     def _error(
         self,
@@ -83,15 +135,12 @@ class TextSession:
     def _check(self):
         if self.cancel_token is not None:
             self.cancel_token.raise_if_cancelled()
+        if self.owner_stopping.is_set():
+            raise ProviderCancelledError(provider="opencode")
         if time.monotonic() >= self.deadline:
             raise ProviderTimeoutError(provider="opencode", operation="text_generation")
-        if self.failed.is_set():
-            self._error()
-        if (
-            os.fstat(self.stdout.fileno()).st_size > 4 * 1024 * 1024
-            or os.fstat(self.stderr.fileno()).st_size > 1024 * 1024
-        ):
-            self._error("OpenCode output exceeded the limit.")
+        if self.failure:
+            self._error(self.failure)
         if self.process.poll() is not None:
             self._error("OpenCode closed before confirmed completion.")
 
@@ -112,23 +161,17 @@ class TextSession:
     def _next(self):
         while True:
             self._check()
-            if b"\n" in self.pending:
-                line, self.pending = self.pending.split(b"\n", 1)
-                try:
-                    message = json.loads(line)
-                except (ValueError, UnicodeError):
-                    self._error()
-                if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
-                    self._error()
-                return message
-            block = self.stdout.read(65536)
-            if block:
-                self.total += len(block)
-                if self.total > 4 * 1024 * 1024:
-                    self._error("OpenCode output exceeded the limit.")
-                self.pending += block
-            else:
-                time.sleep(0.01)
+            try:
+                line = self.reads.get(timeout=0.01)
+            except queue.Empty:
+                continue
+            try:
+                message = json.loads(line)
+            except (ValueError, UnicodeError):
+                self._error()
+            if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
+                self._error()
+            return message
 
     def call(self, method, params, authorization=None):
         self.sequence += 1
@@ -194,7 +237,7 @@ class TextSession:
             else:
                 self._error()
 
-    def generate(self, work, model, prompt, authorization=None):
+    def _initialize(self):
         initialized = self.call(
             "initialize",
             {
@@ -205,6 +248,44 @@ class TextSession:
         )
         if initialized.get("protocolVersion") != 1:
             self._error()
+        agent = initialized.get("agentCapabilities")
+        capabilities = (
+            agent.get("sessionCapabilities") if isinstance(agent, dict) else None
+        )
+        self.can_delete = isinstance(capabilities, dict) and isinstance(
+            capabilities.get("delete"), dict
+        )
+        self.initialized = True
+
+    def generate(
+        self, work, model, prompt, authorization=None, *, timeout, cancel_token, reuse
+    ):
+        self.deadline = time.monotonic() + timeout
+        self.cancel_token = cancel_token
+        self.reusable = False
+        with self._budget_lock:
+            self._stdout_left = _OUTPUT_LIMIT
+            self._stderr_left = _DIAGNOSTIC_LIMIT
+        try:
+            if not self.initialized:
+                self._initialize()
+            text = self._turn(work, model, prompt, authorization)
+            if reuse and self.can_delete:
+                # Cleanup may retire a worker, but cannot delay an already complete turn.
+                self.deadline = min(self.deadline, time.monotonic() + 0.35)
+                try:
+                    self.call("session/delete", {"sessionId": self.session})
+                except (ProviderResponseError, ProviderTimeoutError):
+                    pass
+                else:
+                    self.reusable = True
+            return text
+        finally:
+            self.parts.clear()
+            self.session = None
+            self.cancel_token = None
+
+    def _turn(self, work, model, prompt, authorization):
         self.session = self.call(
             "session/new", {"cwd": str(work), "mcpServers": []}
         ).get("sessionId")

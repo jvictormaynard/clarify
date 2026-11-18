@@ -182,6 +182,10 @@ the same executable. An explicit catalog refresh always queries OpenCode.
 Each rewrite starts a separate credential-free session and confirms that the
 chosen model is still offered before sending text. The current zero-price check
 must still be valid at that point. A refusal clears the check and ends the request.
+OpenCode uses a private memory database and pipes for rewrite input and output.
+After successful session deletion, Clarify can keep one process for up to
+25 seconds between turns. It retires the process after six turns, when available
+RAM falls below 768 MiB at the end of a turn, or when session cleanup fails.
 The existing ChatGPT subscription connection is a separate text-only route.
 A keyless OpenAI-compatible endpoint must be literal loopback; its requests do
 not follow redirects. A missing optional text service preserves the transcript.

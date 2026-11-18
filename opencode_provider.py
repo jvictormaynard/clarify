@@ -6,7 +6,8 @@ Free model availability is discovered, never inferred from a successful login.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ from opencode_acp import TextSession
 
 from provider_adapters import ProviderAdapter
 from provider_http import ProviderCancelledError, ProviderTimeoutError
+from transcription_performance import memory_bytes
 from provider_types import (
     ModelCatalog,
     ProviderCapability,
@@ -34,6 +36,25 @@ from provider_types import (
 )
 
 _FREE_CATALOG_TTL = 60
+_ACP_IDLE_SECONDS = 25
+_ACP_MAX_TURNS = 6
+_ACP_RAM_RESERVE = 768 * 1024**2
+
+
+@dataclass
+class _IdleACP:
+    runtime: tuple
+    resources: ExitStack
+    client: TextSession
+    work: Path
+    turns: int
+    expires: float
+    timer: threading.Timer | None = None
+
+    def close(self):
+        if self.timer is not None:
+            self.timer.cancel()
+        self.resources.close()
 
 
 def _runtime_identity(executable):
@@ -51,6 +72,26 @@ def _runtime_identity(executable):
         stat.st_mtime_ns,
         stat.st_ctime_ns,
     )
+
+
+def _reject_managed_configuration():
+    # Refuse host-managed configuration: it can override tool denials.
+    managed = (
+        Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "opencode"
+        if os.name == "nt"
+        else Path(
+            "/Library/Application Support/opencode"
+            if sys.platform == "darwin"
+            else "/etc/opencode"
+        )
+    )
+    if managed.exists() or (
+        sys.platform == "darwin" and Path("/Library/Managed Preferences").exists()
+    ):
+        raise ProviderConfigurationError(
+            "opencode",
+            "Managed OpenCode configuration prevents an isolated text session.",
+        )
 
 
 @contextmanager
@@ -209,6 +250,34 @@ class OpenCodeAdapter(ProviderAdapter):
         self._catalog_started = 0
         self._catalog_completed = 0
         self._free_catalog = None
+        self._acp_lock = threading.Lock()
+        self._idle_lock = threading.Lock()
+        self._idle_acp = None
+        self._stopping = threading.Event()
+
+    @staticmethod
+    def _reap_idle(worker):
+        """Keep process cleanup owned after the Qt window has closed."""
+        reaper = threading.Thread(
+            target=worker.close, name="clarify-opencode-reaper", daemon=False
+        )
+        reaper.start()
+        return reaper
+
+    def _retire_idle(self, worker):
+        with self._idle_lock:
+            if self._idle_acp is worker:
+                self._idle_acp = None
+                return self._reap_idle(worker)
+
+    def cancel(self):
+        self._stopping.set()
+        with self._idle_lock:
+            if self._idle_acp is not None:
+                worker, self._idle_acp = self._idle_acp, None
+                return self._reap_idle(worker)
+
+    shutdown = cancel
 
     def available(self):
         return bool(self.executable or opencode_runtime.available())
@@ -216,16 +285,8 @@ class OpenCodeAdapter(ProviderAdapter):
     def install(self, cancel_token=None):
         return opencode_runtime.install(cancel_token)
 
-    def _run(
-        self,
-        args,
-        prompt="",
-        cancel_token=None,
-        *,
-        model=None,
-        expected_runtime=None,
-        authorize_prompt=None,
-    ):
+    @contextmanager
+    def _launch(self, args, prompt, expected_runtime):
         acp = args == ["acp"]
         executable = self.executable or opencode_runtime.executable()
         if not executable:
@@ -271,24 +332,7 @@ class OpenCodeAdapter(ProviderAdapter):
                 path = base / folder
                 path.mkdir(exist_ok=True)
                 env[key] = str(path)
-            # Refuse host-managed configuration: it can override tool denials.
-            managed = (
-                Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "opencode"
-                if os.name == "nt"
-                else Path(
-                    "/Library/Application Support/opencode"
-                    if sys.platform == "darwin"
-                    else "/etc/opencode"
-                )
-            )
-            if managed.exists() or (
-                sys.platform == "darwin"
-                and Path("/Library/Managed Preferences").exists()
-            ):
-                raise ProviderConfigurationError(
-                    "opencode",
-                    "Managed OpenCode configuration prevents an isolated text session.",
-                )
+            _reject_managed_configuration()
             if runtime is None or runtime != self._verified_runtime:
                 version = subprocess.run(
                     [str(executable), "--version"],
@@ -336,6 +380,7 @@ class OpenCodeAdapter(ProviderAdapter):
                 },
             }
             if acp:
+                env["OPENCODE_DB"] = ":memory:"
                 # Ask keeps these tools in the catalog. ACP cancels all requests.
                 # A tool.use deny policy or agent-level deny would hide them.
                 config.pop("permissions")
@@ -359,20 +404,22 @@ class OpenCodeAdapter(ProviderAdapter):
             work.mkdir()
             # ACP owns its stdio context; only catalog CLI accepts --standalone.
             (work / "opencode.json").write_text(json.dumps(config), encoding="utf-8")
-            with (
-                (base / "stdout").open("w+b") as stdout,
-                (base / "stderr").open("w+b") as stderr,
-                tempfile.TemporaryFile() as stdin,
-            ):
-                stdin.write(b"" if acp else prompt.encode("utf-8"))
-                stdin.seek(0)
+            with ExitStack() as streams:
+                if acp:
+                    stdin = stdout = stderr = subprocess.PIPE
+                else:
+                    stdout = streams.enter_context((base / "stdout").open("w+b"))
+                    stderr = streams.enter_context((base / "stderr").open("w+b"))
+                    stdin = streams.enter_context(tempfile.TemporaryFile())
+                    stdin.write(prompt.encode("utf-8"))
+                    stdin.seek(0)
                 if runtime is not None and _runtime_identity(executable) != runtime:
                     raise ProviderConfigurationError(
                         "opencode", "The OpenCode runtime changed. Retry the request."
                     )
                 self._verified_runtime = runtime
                 process = subprocess.Popen(
-                    [str(executable), "acp", "--log-level", "error"]
+                    [str(executable), "acp", "--log-level", "none"]
                     if acp
                     else [
                         str(executable),
@@ -384,7 +431,7 @@ class OpenCodeAdapter(ProviderAdapter):
                     ],
                     cwd=work,
                     env=env,
-                    stdin=subprocess.PIPE if acp else stdin,
+                    stdin=stdin,
                     stdout=stdout,
                     stderr=stderr,
                     start_new_session=os.name != "nt",
@@ -395,61 +442,8 @@ class OpenCodeAdapter(ProviderAdapter):
                     else 0,
                 )
                 close_job = _windows_job(process) if os.name == "nt" else None
-                client = None
                 try:
-                    if acp:
-                        with (base / "stdout").open("rb") as protocol:
-                            client = TextSession(
-                                process, protocol, stderr, self.timeout, cancel_token
-                            )
-                            return client.generate(
-                                work, model, prompt, authorize_prompt
-                            )
-                    started = time.monotonic()
-                    while process.poll() is None:
-                        if cancel_token is not None:
-                            cancel_token.raise_if_cancelled()
-                        if time.monotonic() - started > self.timeout:
-                            raise ProviderTimeoutError(
-                                provider="opencode", operation="text_generation"
-                            )
-                        # The CLI can retry a rejected request without emitting
-                        # a JSON error. Inspect only known refusal markers and
-                        # never expose raw stderr, keys, or prompt contents.
-                        with (base / "stderr").open("rb") as diagnostics:
-                            refusal = diagnostics.read(1024 * 1024).lower()
-                        if b"free usage limit reached" in refusal:
-                            raise ProviderResponseError(
-                                "opencode",
-                                "OpenCode free usage limit reached. Retry later or explicitly select another service. No fallback was used.",
-                            )
-                        if (
-                            stdout.tell() > 4 * 1024 * 1024
-                            or stderr.tell() > 1024 * 1024
-                        ):
-                            raise ProviderResponseError(
-                                "opencode", "OpenCode output exceeded the limit."
-                            )
-                        time.sleep(0.025)
-                    if cancel_token is not None:
-                        cancel_token.raise_if_cancelled()
-                    if process.returncode:
-                        if args[:2] == ["api", "model.list"]:
-                            raise ProviderConfigurationError(
-                                "opencode",
-                                "Could not load OpenCode's free models. Check your connection and try again.",
-                            )
-                        raise ProviderResponseError(
-                            "opencode",
-                            "OpenCode refused or could not complete this free request. Retry later or select another free model explicitly.",
-                        )
-                    stdout.seek(0)
-                    output = stdout.read(4 * 1024 * 1024 + 1)
-                    if len(output) > 4 * 1024 * 1024:
-                        raise ProviderResponseError(
-                            "opencode", "OpenCode output exceeded the limit."
-                        )
-                    return output.decode("utf-8")
+                    yield process, work, stdout, stderr
                 finally:
                     # Terminate the private server too, including after normal CLI exit.
                     if os.name != "nt":
@@ -460,8 +454,145 @@ class OpenCodeAdapter(ProviderAdapter):
                     elif close_job is not None:
                         close_job()
                     process.wait()
-                    if client is not None:
-                        client.close()
+
+    @contextmanager
+    def _open_acp(self, runtime):
+        client = None
+        try:
+            with self._launch(["acp"], "", runtime) as (process, work, _, _):
+                client = TextSession(process, self._stopping)
+                yield client, work
+        finally:
+            if client is not None:
+                client.close()
+
+    def _run_acp(self, prompt, model, runtime, token, authorize, reuse):
+        options = {"timeout": self.timeout, "cancel_token": token}
+        if not reuse or runtime is None or not self._acp_lock.acquire(blocking=False):
+            with self._open_acp(runtime) as (client, work):
+                return client.generate(
+                    work, model, prompt, authorize, reuse=False, **options
+                )
+        try:
+            with self._idle_lock:
+                previous, self._idle_acp = self._idle_acp, None
+            if previous is not None:
+                previous.timer.cancel()
+                if (
+                    previous.runtime != runtime
+                    or time.monotonic() >= previous.expires
+                    or previous.client.process.poll() is not None
+                    or previous.client.failure
+                ):
+                    previous.close()
+                    previous = None
+            with (
+                previous.resources if previous is not None else ExitStack() as resources
+            ):
+                if previous is None:
+                    turns = 0
+                    client, work = resources.enter_context(self._open_acp(runtime))
+                else:
+                    turns, client, work = previous.turns, previous.client, previous.work
+                    _reject_managed_configuration()
+                text = client.generate(
+                    work, model, prompt, authorize, reuse=True, **options
+                )
+                memory = memory_bytes()
+                with self._idle_lock:
+                    if (
+                        client.reusable
+                        and turns + 1 < _ACP_MAX_TURNS
+                        and not self._stopping.is_set()
+                        and memory is not None
+                        and memory[1] >= _ACP_RAM_RESERVE
+                    ):
+                        idle = _IdleACP(
+                            runtime,
+                            resources.pop_all(),
+                            client,
+                            work,
+                            turns + 1,
+                            time.monotonic() + _ACP_IDLE_SECONDS,
+                        )
+                        timer = threading.Timer(
+                            _ACP_IDLE_SECONDS, self._retire_idle, args=(idle,)
+                        )
+                        timer.daemon = True
+                        idle.timer = timer
+                        self._idle_acp = idle
+                        timer.start()
+                return text
+        finally:
+            self._acp_lock.release()
+
+    def _run(
+        self,
+        args,
+        prompt="",
+        cancel_token=None,
+        *,
+        model=None,
+        expected_runtime=None,
+        authorize_prompt=None,
+        reuse=False,
+    ):
+        if self._stopping.is_set():
+            raise ProviderCancelledError(provider="opencode")
+        if args == ["acp"]:
+            return self._run_acp(
+                prompt, model, expected_runtime, cancel_token, authorize_prompt, reuse
+            )
+        with self._launch(args, prompt, expected_runtime) as (
+            process,
+            work,
+            stdout,
+            stderr,
+        ):
+            started = time.monotonic()
+            while process.poll() is None:
+                if self._stopping.is_set():
+                    raise ProviderCancelledError(provider="opencode")
+                if cancel_token is not None:
+                    cancel_token.raise_if_cancelled()
+                if time.monotonic() - started > self.timeout:
+                    raise ProviderTimeoutError(
+                        provider="opencode", operation="text_generation"
+                    )
+                # The CLI can retry a rejected request without emitting
+                # a JSON error. Inspect only known refusal markers and
+                # never expose raw stderr, keys, or prompt contents.
+                with (work.parent / "stderr").open("rb") as diagnostics:
+                    refusal = diagnostics.read(1024 * 1024).lower()
+                if b"free usage limit reached" in refusal:
+                    raise ProviderResponseError(
+                        "opencode",
+                        "OpenCode free usage limit reached. Retry later or explicitly select another service. No fallback was used.",
+                    )
+                if stdout.tell() > 4 * 1024 * 1024 or stderr.tell() > 1024 * 1024:
+                    raise ProviderResponseError(
+                        "opencode", "OpenCode output exceeded the limit."
+                    )
+                time.sleep(0.025)
+            if cancel_token is not None:
+                cancel_token.raise_if_cancelled()
+            if process.returncode:
+                if args[:2] == ["api", "model.list"]:
+                    raise ProviderConfigurationError(
+                        "opencode",
+                        "Could not load OpenCode's free models. Check your connection and try again.",
+                    )
+                raise ProviderResponseError(
+                    "opencode",
+                    "OpenCode refused or could not complete this free request. Retry later or select another free model explicitly.",
+                )
+            stdout.seek(0)
+            output = stdout.read(4 * 1024 * 1024 + 1)
+            if len(output) > 4 * 1024 * 1024:
+                raise ProviderResponseError(
+                    "opencode", "OpenCode output exceeded the limit."
+                )
+            return output.decode("utf-8")
 
     def discover_models(self, connection, cancel_token=None):
         runtime = _runtime_identity(self.executable or opencode_runtime.executable())
@@ -589,6 +720,7 @@ class OpenCodeAdapter(ProviderAdapter):
         @contextmanager
         def authorize_prompt():
             nonlocal catalog_generation
+            _reject_managed_configuration()
             with self._authorize_prompt(runtime, request.model) as generation:
                 catalog_generation = generation
                 yield
@@ -601,6 +733,7 @@ class OpenCodeAdapter(ProviderAdapter):
                 model=request.model,
                 expected_runtime=runtime,
                 authorize_prompt=authorize_prompt,
+                reuse=True,
             )
         except (
             ProviderConfigurationError,
