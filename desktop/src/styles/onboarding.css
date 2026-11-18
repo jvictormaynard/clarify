@@ -138,11 +138,14 @@
 .personal-setup[data-step="language"] .onboarding-heading h1 { font-size: 18px; letter-spacing: -.02em; }
 .personal-setup[data-step="language"] .onboarding-heading > .hint { font-size: 12px; }
 .setup-language-wheel { position: relative; width: min(100%, 360px); margin: 12px auto 24px; padding-inline: 40px; }
-.setup-language-options { height: 204px; position: relative; touch-action: none; user-select: none; cursor: grab; border-radius: 12px; outline-offset: 4px; }
+.setup-language-options { height: 286px; position: relative; touch-action: none; user-select: none; cursor: grab; border-radius: 12px; outline-offset: 4px; }
 .setup-language-options:focus-visible, .setup-choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
-.setup-language-options [role="option"] { position: absolute; top: 68px; inset-inline: 0; display: grid; place-items: center; height: 68px; font-size: 25px; font-weight: 500; border-radius: 12px; color: var(--foreground); transition: transform 180ms ease, opacity 180ms ease; }
-.setup-language-options [data-offset="-1"] { transform: translateY(-68px) scale(.85); opacity: .3; }
-.setup-language-options [data-offset="1"] { transform: translateY(68px) scale(.85); opacity: .3; }
+.setup-language-options [role="option"] { position: absolute; top: 109px; inset-inline: 0; display: flex; justify-content: center; align-items: center; gap: 12px; height: 68px; font-size: 25px; font-weight: 500; border-radius: 12px; color: var(--foreground); transition: transform 180ms ease, opacity 180ms ease; }
+.setup-language-options .language-mark { width: 24px; height: 18px; flex-shrink: 0; }
+.setup-language-options [data-offset="-2"] { transform: translateY(-116px) scale(.68); opacity: .45; }
+.setup-language-options [data-offset="2"] { transform: translateY(116px) scale(.68); opacity: .45; }
+.setup-language-options [data-offset="-1"] { transform: translateY(-64px) scale(.83); opacity: .65; }
+.setup-language-options [data-offset="1"] { transform: translateY(64px) scale(.83); opacity: .65; }
 .setup-language-options [aria-selected="true"] { background: var(--secondary); }
 .setup-language-arrows { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: grid; gap: 8px; }
 .setup-language-arrows .button { min-width: 32px; padding: 8px; }

@@ -35,6 +35,18 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   await page.mouse.up();
   await expect(page.getByRole("heading", { name: "Elige tu idioma" })).toBeVisible();
   await expect(options).toHaveAttribute("aria-disabled", "false");
+  await page.getByRole("option", { name: "Deutsch", exact: true }).locator("svg").click();
+  await expect(page.getByRole("heading", { name: "Sprache auswählen" })).toBeVisible();
+  await page.getByRole("button", { name: "Nächste Sprache" }).click();
+  await expect(page.getByRole("heading", { name: "Выберите язык" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("option", { name: "Русский", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.setViewportSize({ width: 640, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
+  await page.screenshot({ animations: "disabled", path: `${evidence}/language-flags.png` });
+  await advance(page, "Продолжить");
+  await expect(page.getByRole("heading", { name: "Как Clarify должен редактировать текст?" })).toBeFocused();
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
   await page.getByRole("option", { name: "English", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Choose your language" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();

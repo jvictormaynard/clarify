@@ -80,6 +80,7 @@ from repositories import (
     AppConfig,
     ApplicationRepositories,
     ConfigRepository,
+    SUPPORTED_INTERFACE_LANGUAGES,
     SUPPORTED_LANGUAGES,
     SUPPORTED_UI_MODES,
 )
@@ -4422,7 +4423,7 @@ class QmlSettingsController(QObject):
                 if (
                     not isinstance(payload, dict)
                     or set(payload) != {"interfaceLanguage"}
-                    or payload["interfaceLanguage"] not in {"en", "pt", "es"}
+                    or payload["interfaceLanguage"] not in SUPPORTED_INTERFACE_LANGUAGES
                 ):
                     raise ValueError("Select a supported interface language.")
                 if self.dirty or self.providerDirty or self.personalSetupState["busy"]:

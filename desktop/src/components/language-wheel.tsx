@@ -3,7 +3,8 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { t } from "../i18n";
 import { Button } from "./ui";
 
-const languages = [{ id: "en", label: "English" }, { id: "pt", label: "Português" }, { id: "es", label: "Español" }];
+import { interfaceLanguages as languages } from "../settings/interface-languages";
+import { LanguageMark } from "./language-mark";
 
 /** Interface language only. Spoken and output languages have separate controls. */
 export function LanguageWheel({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) {
@@ -36,16 +37,16 @@ export function LanguageWheel({ value, onChange, disabled }: { value: string; on
       onKeyDown={event => {
         if (["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
           event.preventDefault();
-          if (!disabled) event.key === "Home" ? onChange("en") : event.key === "End" ? onChange("es") : move(event.key === "ArrowDown" ? 1 : -1);
+          if (!disabled) event.key === "Home" ? onChange(languages[0].id) : event.key === "End" ? onChange(languages[languages.length - 1].id) : move(event.key === "ArrowDown" ? 1 : -1);
         }
       }}
-      onPointerDown={event => { if (!disabled) { drag.current = { y: event.clientY, id: (event.target as HTMLElement).closest<HTMLElement>("[data-language]")?.dataset.language }; event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.focus(); } }}
+      onPointerDown={event => { if (!disabled) { drag.current = { y: event.clientY, id: (event.target as HTMLElement).closest<HTMLElement>('[role="option"]')?.dataset.language }; event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.focus(); } }}
       onPointerUp={event => { if (drag.current !== null) { if (Math.abs(event.clientY - drag.current.y) > 25) move(event.clientY < drag.current.y ? 1 : -1); else if (!disabled && drag.current.id) onChange(drag.current.id); } drag.current = null; }}
       onPointerCancel={() => { drag.current = null; }}>
       {languages.map((item, itemIndex) => {
-        const offset = (itemIndex - index + languages.length + 1) % languages.length - 1;
+        const offset = (itemIndex - index + languages.length + 2) % languages.length - 2;
         return <div id={`${id}-${item.id}`} key={item.id} role="option" aria-selected={itemIndex === index}
-          data-offset={offset} data-language={item.id}>{item.label}</div>;
+          data-offset={offset} data-language={item.id}><LanguageMark code={item.id} /><span>{item.label}</span></div>;
       })}
     </div>
     <div className="setup-language-arrows">

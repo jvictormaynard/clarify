@@ -1,0 +1,422 @@
+{
+  "setup_choose_language": {
+    "de": "Sprache auswählen",
+    "ru": "Выберите язык"
+  },
+  "setup_interface_language": {
+    "de": "Sprache der Oberfläche",
+    "ru": "Язык интерфейса"
+  },
+  "setup_interface_hint": {
+    "de": "Die Sprachen für Spracheingabe und Ausgabe können Sie später wählen.",
+    "ru": "Языки речи и текста можно выбрать позже."
+  },
+  "setup_previous_language": {
+    "de": "Vorherige Sprache",
+    "ru": "Предыдущий язык"
+  },
+  "setup_next_language": {
+    "de": "Nächste Sprache",
+    "ru": "Следующий язык"
+  },
+  "setup_progress": {
+    "de": "Einrichtungsfortschritt",
+    "ru": "Ход настройки"
+  },
+  "Continuar": {
+    "de": "Weiter",
+    "ru": "Продолжить"
+  },
+  "Voltar": {
+    "de": "Zurück",
+    "ru": "Назад"
+  },
+  "Cancelar": {
+    "de": "Abbrechen",
+    "ru": "Отмена"
+  },
+  "Fechar": {
+    "de": "Schließen",
+    "ru": "Закрыть"
+  },
+  "Entendi": {
+    "de": "Verstanden",
+    "ru": "Понятно"
+  },
+  "setup_choose_rewriting": {
+    "de": "Wie soll Clarify Ihren Text überarbeiten?",
+    "ru": "Как Clarify должен редактировать текст?"
+  },
+  "setup_rewriting_hint": {
+    "de": "Wählen Sie einen Dienst zur Überarbeitung oder behalten Sie das Transkript.",
+    "ru": "Выберите сервис редактирования или сохраните расшифровку."
+  },
+  "setup_free_choice": {
+    "de": "Kostenlose Modelle verwenden",
+    "ru": "Использовать бесплатные модели"
+  },
+  "setup_subscription_choice": {
+    "de": "Mein KI-Abonnement verwenden",
+    "ru": "Использовать мою подписку на ИИ"
+  },
+  "setup_personal_choice": {
+    "de": "API-Schlüssel oder lokalen Server verwenden",
+    "ru": "Использовать ключ API или локальный сервер"
+  },
+  "setup_free": {
+    "de": "Kostenlose Modelle mit Nutzungslimits. Der Text wird an OpenCode gesendet.",
+    "ru": "Бесплатные модели с лимитами. Текст отправляется в OpenCode."
+  },
+  "setup_subscription": {
+    "de": "Der Text wird an OpenAI gesendet. Es gelten die Limits Ihres Abonnements.",
+    "ru": "Текст отправляется в OpenAI. Действуют лимиты вашей подписки."
+  },
+  "setup_key_hint": {
+    "de": "Verwenden Sie Ihren API-Schlüssel. Der Anbieter kann Gebühren berechnen.",
+    "ru": "Используйте свой ключ API. Сервис может взимать плату."
+  },
+  "setup_raw": {
+    "de": "Transkript behalten · keine KI-Bearbeitung",
+    "ru": "Сохранить расшифровку · без обработки ИИ"
+  },
+  "setup_raw_hint": {
+    "de": "Der erkannte Text bleibt unverändert. Es wird kein Textdienst verbunden.",
+    "ru": "Распознанный текст останется без изменений. Сервис редактирования не подключается."
+  },
+  "setup_subscription_title": {
+    "de": "KI-Abonnement verbinden",
+    "ru": "Подключите подписку на ИИ"
+  },
+  "setup_subscription_hint": {
+    "de": "Melden Sie sich bei ChatGPT an und wählen Sie ein Modell.",
+    "ru": "Войдите в ChatGPT и выберите модель редактирования."
+  },
+  "setup_free_models_title": {
+    "de": "Kostenloses Modell auswählen",
+    "ru": "Выберите бесплатную модель"
+  },
+  "setup_free_models_hint": {
+    "de": "Verbinden Sie OpenCode, um kostenlose Modelle zu laden.",
+    "ru": "Подключите OpenCode, чтобы загрузить список бесплатных моделей."
+  },
+  "setup_connect_plan": {
+    "de": "Textdienst verbinden",
+    "ru": "Подключите сервис редактирования"
+  },
+  "setup_connect_hint": {
+    "de": "Verbinden Sie einen Anbieter und wählen Sie ein Modell.",
+    "ru": "Подключите сервис и выберите модель редактирования."
+  },
+  "setup_text_service": {
+    "de": "Textdienst",
+    "ru": "Сервис редактирования"
+  },
+  "ChatGPT subscription": {
+    "de": "ChatGPT-Abonnement",
+    "ru": "Подписка ChatGPT"
+  },
+  "OpenCode free models": {
+    "de": "Kostenlose Modelle von OpenCode",
+    "ru": "Бесплатные модели OpenCode"
+  },
+  "setup_connected": {
+    "de": "Verbunden",
+    "ru": "Подключено"
+  },
+  "setup_not_connected": {
+    "de": "Nicht verbunden",
+    "ru": "Не подключено"
+  },
+  "setup_runtime_needed": {
+    "de": "Download erforderlich",
+    "ru": "Требуется загрузка"
+  },
+  "setup_provider_download": {
+    "de": "Herunterladen",
+    "ru": "Скачать"
+  },
+  "setup_install_opencode": {
+    "de": "OpenCode installieren und verbinden",
+    "ru": "Установить и подключить OpenCode"
+  },
+  "setup_connect_free": {
+    "de": "Kostenlose Modelle abrufen",
+    "ru": "Проверить бесплатные модели"
+  },
+  "setup_connect": {
+    "de": "Verbinden",
+    "ru": "Подключить"
+  },
+  "setup_manage_connection": {
+    "de": "Verwalten",
+    "ru": "Управление"
+  },
+  "setup_more_providers": {
+    "de": "Weitere Anbieter",
+    "ru": "Другие сервисы"
+  },
+  "setup_search_providers": {
+    "de": "Anbieter suchen",
+    "ru": "Поиск сервисов"
+  },
+  "setup_connecting": {
+    "de": "Anbieter wird vorbereitet und Modelle werden geladen…",
+    "ru": "Подготовка сервиса и загрузка моделей…"
+  },
+  "setup_rewriting_model": {
+    "de": "Modell für Textüberarbeitung",
+    "ru": "Модель редактирования"
+  },
+  "setup_browser_connection": {
+    "de": "Setzen Sie die Anmeldung im Browser fort. Sie können hier abbrechen und es erneut versuchen.",
+    "ru": "Продолжите вход в браузере. Здесь можно отменить вход и повторить попытку."
+  },
+  "setup_skip_text": {
+    "de": "Nicht jetzt",
+    "ru": "Не сейчас"
+  },
+  "setup_custom_endpoint": {
+    "de": "Lokalen Server oder andere Adresse verwenden",
+    "ru": "Использовать локальный сервер или другой адрес"
+  },
+  "setup_local_endpoint_hint": {
+    "de": "Geben Sie die Adresse des lokalen Servers ein. Lassen Sie den Schlüssel leer, falls keiner nötig ist.",
+    "ru": "Введите адрес локального сервера. Если ключ не нужен, оставьте поле пустым."
+  },
+  "Endpoint": {
+    "de": "Serveradresse",
+    "ru": "Адрес сервера"
+  },
+  "Chave de API": {
+    "de": "API-Schlüssel",
+    "ru": "Ключ API"
+  },
+  "Validar e salvar chave": {
+    "de": "Prüfen und speichern",
+    "ru": "Проверить и сохранить"
+  },
+  "Continuar com ChatGPT": {
+    "de": "Mit ChatGPT fortfahren",
+    "ru": "Продолжить с ChatGPT"
+  },
+  "Reconectar ChatGPT": {
+    "de": "ChatGPT erneut verbinden",
+    "ru": "Подключить ChatGPT заново"
+  },
+  "Plano ChatGPT conectado": {
+    "de": "ChatGPT-Abonnement verbunden",
+    "ru": "Подписка ChatGPT подключена"
+  },
+  "Atualizar modelos ChatGPT": {
+    "de": "ChatGPT-Modelle aktualisieren",
+    "ru": "Обновить модели ChatGPT"
+  },
+  "Atualizar modelos": {
+    "de": "Modelle aktualisieren",
+    "ru": "Обновить модели"
+  },
+  "setup_speech": {
+    "de": "Modell für Spracheingabe",
+    "ru": "Модель распознавания речи"
+  },
+  "setup_speech_hint": {
+    "de": "Die Empfehlung berücksichtigt die Ressourcen dieses Computers.",
+    "ru": "Рекомендация учитывает ресурсы этого компьютера."
+  },
+  "setup_languages": {
+    "de": "Welche Sprachen sprechen Sie?",
+    "ru": "На каких языках вы говорите?"
+  },
+  "setup_auto_language": {
+    "de": "Automatisch erkennen · mehrere Sprachen",
+    "ru": "Определять автоматически · несколько языков"
+  },
+  "setup_recommended": {
+    "de": "Empfohlen",
+    "ru": "Рекомендуется"
+  },
+  "setup_location": {
+    "de": "Die Spracheingabe wird auf diesem Computer verarbeitet.",
+    "ru": "Речь обрабатывается на этом компьютере."
+  },
+  "setup_download": {
+    "de": "Download: {v0} MiB. Für die Installation ist Internet erforderlich.",
+    "ru": "Загрузка: {v0} МиБ. Для установки нужен интернет."
+  },
+  "setup_alternatives": {
+    "de": "Andere Sprachmodelle",
+    "ru": "Другие модели распознавания"
+  },
+  "setup_speech_model": {
+    "de": "Sprachmodell",
+    "ru": "Модель распознавания"
+  },
+  "setup_check_again": {
+    "de": "Erneut prüfen",
+    "ru": "Проверить снова"
+  },
+  "setup_install": {
+    "de": "Erstes Diktat vorbereiten",
+    "ru": "Подготовьте первую диктовку"
+  },
+  "setup_install_hint": {
+    "de": "Clarify prüft das Modell, bevor Sie die Einrichtung abschließen können.",
+    "ru": "Clarify проверит модель перед завершением настройки."
+  },
+  "setup_ready": {
+    "de": "Das Modell ist installiert. Sie können es prüfen und fortfahren.",
+    "ru": "Модель установлена. Можно проверить её и продолжить."
+  },
+  "setup_needs_install": {
+    "de": "Installieren Sie das Sprachmodell, um fortzufahren.",
+    "ru": "Установите модель распознавания речи, чтобы продолжить."
+  },
+  "setup_retry_install": {
+    "de": "Installation wiederholen",
+    "ru": "Повторить установку"
+  },
+  "setup_download_install": {
+    "de": "Herunterladen und installieren",
+    "ru": "Скачать и установить"
+  },
+  "setup_practice": {
+    "de": "Prüfen und ausprobieren",
+    "ru": "Проверить и попробовать"
+  },
+  "Vamos preparar seu ditado": {
+    "de": "Diktat einrichten",
+    "ru": "Настройте диктовку"
+  },
+  "practice_setup_hint": {
+    "de": "Prüfen Sie die Einstellungen und probieren Sie das Diktat aus.",
+    "ru": "Проверьте настройки и попробуйте продиктовать текст."
+  },
+  "Seu ditado está pronto": {
+    "de": "Ihr Diktat ist bereit",
+    "ru": "Диктовка готова"
+  },
+  "Fale em vez de digitar": {
+    "de": "Sprechen statt tippen",
+    "ru": "Говорите вместо набора текста"
+  },
+  "Use o atalho onde você pode digitar.": {
+    "de": "Verwenden Sie das Kürzel überall, wo Sie tippen können.",
+    "ru": "Используйте сочетание клавиш там, где можно вводить текст."
+  },
+  "Experimente aqui. Este e-mail não será enviado.": {
+    "de": "Probieren Sie es hier aus. Diese E-Mail wird nicht gesendet.",
+    "ru": "Попробуйте здесь. Это письмо не будет отправлено."
+  },
+  "Microfone": {
+    "de": "Mikrofon",
+    "ru": "Микрофон"
+  },
+  "Testar microfone": {
+    "de": "Mikrofon testen",
+    "ru": "Проверить микрофон"
+  },
+  "Parar teste": {
+    "de": "Test beenden",
+    "ru": "Остановить проверку"
+  },
+  "Test": {
+    "de": "Testen",
+    "ru": "Проверить"
+  },
+  "Atalho de ditado": {
+    "de": "Diktat-Tastenkürzel",
+    "ru": "Сочетание клавиш для диктовки"
+  },
+  "Alterar atalho": {
+    "de": "Tastenkürzel ändern",
+    "ru": "Изменить сочетание клавиш"
+  },
+  "Idioma do texto": {
+    "de": "Ausgabesprache",
+    "ru": "Язык текста"
+  },
+  "Idioma original": {
+    "de": "Originalsprache",
+    "ru": "Язык оригинала"
+  },
+  "Tom": {
+    "de": "Schreibton",
+    "ru": "Тон"
+  },
+  "Formal": {
+    "de": "Formell",
+    "ru": "Формальный"
+  },
+  "Casual": {
+    "de": "Locker",
+    "ru": "Неформальный"
+  },
+  "practice_skip": {
+    "de": "Übung überspringen",
+    "ru": "Пропустить упражнение"
+  },
+  "practice_read_instruction": {
+    "de": "Lesen Sie diesen Satz vor:",
+    "ru": "Прочитайте эту фразу:"
+  },
+  "practice_read_text": {
+    "de": "Heute schreibe ich eine Nachricht mit Clarify.",
+    "ru": "Сегодня я напишу сообщение с Clarify."
+  },
+  "practice_subject_label": {
+    "de": "Betreff",
+    "ru": "Тема"
+  },
+  "practice_subject_text": {
+    "de": "Ein kurzes Gespräch",
+    "ru": "Короткий разговор"
+  },
+  "E-mail de prática": {
+    "de": "Übungs-E-Mail",
+    "ru": "Тренировочное письмо"
+  },
+  "practice_result": {
+    "de": "Ihr Diktat",
+    "ru": "Ваш текст"
+  },
+  "practice_recording": {
+    "de": "Aufnahme läuft. Sagen Sie einen Satz und beenden Sie dann die Aufnahme.",
+    "ru": "Идёт запись. Произнесите фразу и остановите запись."
+  },
+  "practice_processing": {
+    "de": "Diktat wird verarbeitet…",
+    "ru": "Обработка диктовки…"
+  },
+  "practice_waiting": {
+    "de": "Der vorherige Versuch wird noch verarbeitet…",
+    "ru": "Дождитесь завершения предыдущей попытки…"
+  },
+  "practice_destination": {
+    "de": "Der Text erscheint hier. Clarify kopiert oder fügt ihn nicht automatisch ein. Die Übung verwendet Ihre gewählten Modelle und Dienste.",
+    "ru": "Текст появится на этом экране. Clarify не скопирует и не вставит его автоматически. Для упражнения используются выбранные модели и сервисы."
+  },
+  "setup_phone_title": {
+    "de": "PC-Modelle auf dem iPhone verwenden",
+    "ru": "Используйте модели ПК на iPhone"
+  },
+  "setup_phone_hint": {
+    "de": "Verbinden Sie Ihr iPhone mit Clarify auf Ihrem Computer. Der Computer verarbeitet die Aufnahme und muss eingeschaltet bleiben. Ein Konto ist nur nötig, um den Zugriff außerhalb des WLANs zu erlauben.",
+    "ru": "Подключите iPhone к Clarify на компьютере. Компьютер обрабатывает звук и должен оставаться включённым. Аккаунт нужен только для разрешения доступа вне сети Wi-Fi."
+  },
+  "setup_pair_phone": {
+    "de": "iPhone koppeln",
+    "ru": "Подключить iPhone"
+  },
+  "Teste local de até 30 segundos. O áudio não é enviado.": {
+    "de": "Der lokale Test dauert bis zu 30 Sekunden. Der Ton wird nicht übertragen.",
+    "ru": "Локальная проверка длится до 30 секунд. Звук не отправляется."
+  },
+  "Você está usando seu plano ChatGPT": {
+    "de": "Sie verwenden Ihr ChatGPT-Abonnement",
+    "ru": "Вы используете подписку ChatGPT"
+  },
+  "As tarefas de texto que você configurar com ChatGPT usarão seu plano. Gerencie os limites nas configurações do ChatGPT. A conexão não altera os serviços dos seus fluxos.": {
+    "de": "Textaufgaben, für die Sie ChatGPT auswählen, verwenden Ihr Abonnement. Verwalten Sie die Limits in den ChatGPT-Einstellungen. Ihre eingerichteten Dienste bleiben beim Verbinden unverändert.",
+    "ru": "Задачи, для которых вы выберете ChatGPT, будут использовать вашу подписку. Управляйте лимитами в настройках ChatGPT. Подключение не меняет сервисы, выбранные для ваших задач."
+  }
+}

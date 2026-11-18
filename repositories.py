@@ -85,7 +85,8 @@ PROVIDER_SECRET_KEYS = {
     "groq": "groq_api_key",
 }
 SUPPORTED_UI_MODES = ("prompt",)
-SUPPORTED_LANGUAGES = ("auto", "en", "pt", "es", "de", "ru")
+SUPPORTED_INTERFACE_LANGUAGES = ("en", "pt", "es", "de", "ru")
+SUPPORTED_LANGUAGES = ("auto", *SUPPORTED_INTERFACE_LANGUAGES)
 
 
 def environment_defaults(
@@ -571,7 +572,7 @@ class AppConfig:
             ),
             local_asr_streaming=source.get("local_asr_streaming") is True,
             interface_language=choice(
-                "interface_language", ("auto", "en", "pt", "es"), "auto"
+                "interface_language", ("auto", *SUPPORTED_INTERFACE_LANGUAGES), "auto"
             ),
             recognition_language=choice(
                 "recognition_language", SUPPORTED_LANGUAGES, "auto"

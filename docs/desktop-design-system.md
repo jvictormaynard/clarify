@@ -370,7 +370,10 @@ Personal onboarding follows the approved OpenBot reference layout, implemented
 with Clarify components and assets. Start with a centered interface-language
 wheel, then rewriting setup, speech setup, verified installation, practice and
 optional phone pairing. The interface preference is separate from spoken and
-output languages. The wheel supports keyboard arrows, wheel input and drag.
+output languages. The wheel uses local flag marks for English (US), Portuguese
+(Brazil), Spanish (Spain), German and Russian. It supports keyboard arrows,
+wheel input and drag. German and Russian onboarding copy uses English for
+messages that have no translation yet.
 The saved interface language can also be changed in System Settings.
 Back preserves choices; each step moves keyboard focus to its heading.
 

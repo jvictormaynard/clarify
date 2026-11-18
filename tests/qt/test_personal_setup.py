@@ -14,18 +14,18 @@ class PersonalSetupTests(QmlTextActionFixture, unittest.TestCase):
         original = settings._config_repository.load()
         self.assertTrue(
             settings.personalSetupCommand(
-                "interface_language", json.dumps({"interfaceLanguage": "es"})
+                "interface_language", json.dumps({"interfaceLanguage": "de"})
             )
         )
         saved = settings._config_repository.load()
-        self.assertEqual(settings.uiLanguage, "es")
-        self.assertEqual(saved.interface_language, "es")
+        self.assertEqual(settings.uiLanguage, "de")
+        self.assertEqual(saved.interface_language, "de")
         self.assertEqual(type(saved).from_mapping(saved.to_mapping()), saved)
         self.assertEqual(saved.ui.language, original.ui.language)
         self.assertEqual(saved.recognition_language, original.recognition_language)
         self.assertEqual(saved.workflows, original.workflows)
         for value in (
-            '{"interfaceLanguage":"de"}',
+            '{"interfaceLanguage":"fr"}',
             '{"interfaceLanguage":[]}',
             '{"interfaceLanguage":"en","language":"pt"}',
         ):
