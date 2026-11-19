@@ -70,14 +70,15 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
         from workflows import SelectionTarget
 
         clipboard = Mock(platform_name="Darwin")
+        applications = Path(tempfile.gettempdir()) / "Applications"
         editor = SelectionTarget(
-            object(), "/Applications/Editor.app/Contents/MacOS/Editor"
+            object(), str(applications / "Editor.app/Contents/MacOS/Editor")
         )
         clipboard.capture_target.return_value = editor
         controller = QuickPasteController(
             clipboard, lambda callback: callback(), list, lambda: None
         )
-        shell = "/Applications/Clarify Desktop.app/Contents/MacOS/Clarify Desktop"
+        shell = str(applications / "Clarify Desktop.app/Contents/MacOS/Clarify Desktop")
         controller.excluded_executable = lambda: shell
         try:
             self.assertEqual(controller.capture_target(), editor)
