@@ -138,7 +138,7 @@ def community_release_notes(changelog, tag):
     if desktop_requires_macos("stable", tag[1:]):
         distribution = (
             "Download `Clarify-windows-x64.zip` for Windows or "
-            f"`{MACOS_ZIP}` for a Mac with Apple silicon.\n\n"
+            f"`{MACOS_ZIP}` for a Mac with Apple Silicon and macOS 13 or later.\n\n"
             f"Verify the macOS ZIP with `{MACOS_CHECKSUM}` before opening it.\n\n"
             "#### Windows\n\n"
         )

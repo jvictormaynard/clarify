@@ -77,8 +77,8 @@ directories and never access the developer's credential store.
 
 ## macOS setup
 
-Install Python 3.12 and Node.js 22.12 or later. Run these commands from the
-repository root.
+Use macOS 13 or later. Install Python 3.12 and Node.js 22.12 or later.
+Run these commands from the repository root.
 
 ```sh
 python3.12 -m venv .venv

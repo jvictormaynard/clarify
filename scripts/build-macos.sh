@@ -27,6 +27,10 @@ app="$output/Clarify.app"
     --distpath "$output" --workpath "$work" --specpath "$work" \
     --additional-hooks-dir "$repo/scripts/pyinstaller-hooks" \
     --paths "$repo" --paths "$repo/clarify/desktop" \
+    --exclude-module _distutils_hack --exclude-module chardet --exclude-module defusedxml \
+    --exclude-module lark --exclude-module lxml --exclude-module packaging \
+    --exclude-module setuptools --exclude-module tomli --exclude-module typing_extensions \
+    --exclude-module wheel \
     --add-data "$repo/clarify/desktop/qml:qml" \
     --add-data "$repo/assets:assets" \
     --add-data "$repo/shared:shared" \
@@ -46,6 +50,7 @@ ditto "$shell_app" "$contents/Helpers/Clarify Desktop.app"
 plist="$contents/Info.plist"
 version=$("$python" -c 'from version import __version__; print(__version__)')
 /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' \
+    -c 'Add :LSMinimumSystemVersion string 13.0' \
     -c 'Add :NSMicrophoneUsageDescription string Clarify uses your microphone when you record.' \
     -c "Set :CFBundleShortVersionString $version" "$plist"
 codesign --force --sign - "$app"

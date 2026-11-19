@@ -270,7 +270,13 @@ jobs:
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: macos-candidate-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: dist
+          path: ${{ runner.temp }}/macos-candidate-inputs
+
+      - name: Stage verified macOS candidate inputs
+        if: needs.build_gate.outputs.macos_required == 'true'
+        env:
+          MACOS_INCOMING: ${{ runner.temp }}/macos-candidate-inputs
+        run: python -c "import os; from pathlib import Path; from scripts.release_candidate import stage_macos_inputs; stage_macos_inputs(Path(os.environ['MACOS_INCOMING']), Path('dist'))"
 
       - name: Recheck candidate source before signing
         env:

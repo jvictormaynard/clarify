@@ -224,7 +224,8 @@ dependency intent remains readable in `requirements.txt` and
 
 ### Install on macOS
 
-Desktop releases after v0.18.0 include an Apple Silicon build. Open the
+Desktop releases after v0.18.0 include a build for Apple Silicon Macs with
+macOS 13 or later. Open the
 [releases page](https://github.com/jvictormaynard/clarify/releases) and download
 `Clarify-macos-arm64.zip` and `Clarify-macos-arm64.zip.sha256` from the same release.
 In the download folder, verify the ZIP with

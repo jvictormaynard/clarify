@@ -259,6 +259,23 @@ class CandidateTests(unittest.TestCase):
             with self.assertRaisesRegex(ReleaseError, "macOS ZIP checksum"):
                 candidate.verify_payload(self.files, self.identity)
 
+    def test_macos_transfer_rejects_windows_files_without_replacing_outputs(self):
+        incoming = self.root / "incoming"
+        incoming.mkdir()
+        self.write_macos_zip()
+        for name in (MACOS_ZIP, MACOS_CHECKSUM):
+            (self.files / name).replace(incoming / name)
+        windows = self.files / "Clarify.exe"
+        (incoming / windows.name).write_bytes(b"other executable")
+        with self.assertRaisesRegex(ReleaseError, "transfer inventory"):
+            candidate.stage_macos_inputs(incoming, self.files)
+        self.assertEqual(windows.read_bytes(), b"Clarify.exe")
+        self.assertFalse((self.files / MACOS_ZIP).exists())
+        (incoming / windows.name).unlink()
+        candidate.stage_macos_inputs(incoming, self.files)
+        self.assertEqual(windows.read_bytes(), b"Clarify.exe")
+        self.assertTrue((self.files / MACOS_ZIP).is_file())
+
     def test_macos_zip_requires_checksum_bundle_and_notices_without_extraction(self):
         line = self.write_macos_zip()
         with patch.object(zipfile.ZipFile, "extractall", side_effect=AssertionError):

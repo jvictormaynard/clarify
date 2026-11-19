@@ -44,6 +44,7 @@ MACOS_BUILD_STEPS = (
     "Upload macOS candidate inputs",
 )
 MACOS_DOWNLOAD_STEP = "Download macOS candidate inputs"
+MACOS_STAGE_STEP = "Stage verified macOS candidate inputs"
 SEAL_STEP = "Seal desktop candidate"
 MANIFEST = "Clarify-candidate.json"
 MAX_BYTES = 1024 * 1024 * 1024
@@ -220,7 +221,7 @@ def producer_steps(channel, version):
     if channel == "stable":
         steps.append("Sign portable update metadata")
     if release.desktop_requires_macos(channel, version):
-        steps.append(MACOS_DOWNLOAD_STEP)
+        steps.extend([MACOS_DOWNLOAD_STEP, MACOS_STAGE_STEP])
     steps.extend([SEAL_STEP, "Attest candidate provenance", "Upload desktop candidate"])
     return steps
 
@@ -284,8 +285,9 @@ def authenticate(api, expected, artifact_id, artifact_digest):
     if release.desktop_requires_macos(channel, version):
         require(
             positive(windows_steps[MACOS_DOWNLOAD_STEP].get("number"))
+            < positive(windows_steps[MACOS_STAGE_STEP].get("number"))
             < positive(windows_steps[SEAL_STEP].get("number")),
-            "Download macOS candidate inputs before sealing the candidate",
+            "Stage verified macOS candidate inputs before sealing the candidate",
         )
         verify_producer_job(jobs, MACOS_BUILD_JOB, attempt, MACOS_BUILD_STEPS)
     artifact = api.request("GET", f"/actions/artifacts/{artifact_id}")
@@ -505,6 +507,28 @@ def verify_macos_payload(directory):
             "macOS ZIP contains unsafe paths or exceeds its expanded size limit",
         )
         require(archive.testzip() is None, "macOS ZIP is corrupt")
+
+
+def stage_macos_inputs(incoming, output):
+    """Keep downloaded inputs separate from verified Windows build outputs."""
+    names = {release.MACOS_ZIP, release.MACOS_CHECKSUM}
+    require(
+        incoming.is_dir()
+        and not incoming.is_symlink()
+        and not incoming.is_junction()
+        and {entry.name for entry in incoming.iterdir()} == names,
+        "Unexpected macOS transfer inventory",
+    )
+    for name in names:
+        file_record(incoming / name)
+        require(not (output / name).exists(), "macOS output already exists: " + name)
+    verify_macos_payload(incoming)
+    for name in sorted(names):
+        with (
+            (incoming / name).open("rb") as source,
+            (output / name).open("xb") as target,
+        ):
+            shutil.copyfileobj(source, target)
 
 
 def verify_payload(directory, expected, *, building=False):

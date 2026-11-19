@@ -3,12 +3,60 @@
 from __future__ import annotations
 
 import argparse
-from importlib.metadata import distribution
+from ast import literal_eval
+from importlib.metadata import distribution, distributions
 import json
 from pathlib import Path
+import platform
+import sysconfig
+
+from packaging.utils import canonicalize_name
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def frozen_distribution_names():
+    analysis = ROOT / "build/macos/Clarify/Analysis-00.toc"
+    site = Path(sysconfig.get_path("purelib")).resolve()
+    owners = {
+        item.locate_file(file).resolve(): canonicalize_name(item.metadata["Name"])
+        for item in distributions()
+        for file in item.files or ()
+    }
+    found = set()
+    for group in literal_eval(analysis.read_text(encoding="utf-8")):
+        if not isinstance(group, list):
+            continue
+        for row in group:
+            if (
+                not isinstance(row, tuple)
+                or len(row) != 3
+                or not isinstance(row[1], str)
+            ):
+                continue
+            source = Path(row[1]).resolve()
+            if source.is_relative_to(site):
+                if source not in owners:
+                    raise ValueError(
+                        f"Frozen Python file has no installed distribution: {source.name}"
+                    )
+                found.add(owners[source])
+    return found
+
+
+def add_component(document, name, version, ref, license_expression):
+    document["components"].append(
+        {
+            "type": "library",
+            "name": name,
+            "version": version,
+            "bom-ref": ref,
+            "purl": ref,
+            "licenses": [{"expression": license_expression}],
+        }
+    )
+    document["dependencies"].append({"ref": ref, "dependsOn": []})
 
 
 def main():
@@ -18,14 +66,52 @@ def main():
     args = parser.parse_args()
 
     lock = ROOT / "requirements-lock-runtime-macos.txt"
+    pins = {
+        canonicalize_name(name): pin
+        for line in lock.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith((" ", "#"))
+        for name, pin in [line.split("==", 1)]
+    }
+    frozen = frozen_distribution_names()
+    packager = {"pyinstaller", "pyinstaller-hooks-contrib"}
+    unknown = frozen - pins.keys() - packager
+    if unknown:
+        raise ValueError(
+            "Frozen packages absent from the macOS inventory: "
+            + ", ".join(sorted(unknown))
+        )
+    document = json.loads(args.bom.read_text(encoding="utf-8"))
     notices = ["Clarify for macOS — Python runtime license texts"]
-    for line in lock.read_text(encoding="utf-8").splitlines():
-        if line.startswith((" ", "#")) or not line:
-            continue
-        name, pin = line.split("==", 1)
+    python_version = platform.python_version()
+    python_license = (Path(sysconfig.get_path("stdlib")) / "LICENSE.txt").read_text(
+        encoding="utf-8"
+    )
+    notices.append(f"\nCPython {python_version}\n\n{python_license.strip()}")
+    add_component(
+        document,
+        "CPython",
+        python_version,
+        f"pkg:generic/cpython@{python_version}",
+        "PSF-2.0",
+    )
+
+    for name in sorted(pins.keys() | packager):
         installed = distribution(name)
-        if installed.version != pin:
+        if name in pins and installed.version != pins[name]:
             raise ValueError(f"{name} does not match the macOS runtime lock")
+        if name in packager:
+            license_expression = (
+                "GPL-2.0-or-later WITH Bootloader-exception"
+                if name == "pyinstaller"
+                else "Apache-2.0"
+            )
+            add_component(
+                document,
+                name,
+                installed.version,
+                f"pkg:pypi/{name}@{installed.version}",
+                license_expression,
+            )
         for file in installed.files or ():
             if not file.parts[0].endswith(".dist-info"):
                 continue
@@ -33,7 +119,9 @@ def main():
                 ("license", "copying", "notice")
             ):
                 text = installed.locate_file(file).read_text(encoding="utf-8-sig")
-                notices.append(f"\n{name} {pin} / {file.name}\n\n{text.strip()}")
+                notices.append(
+                    f"\n{name} {installed.version} / {file.name}\n\n{text.strip()}"
+                )
 
     # The sounddevice wheel bundles PortAudio without a separate Python pin.
     import sounddevice
@@ -48,19 +136,11 @@ def main():
         "\n".join(notices) + "\n", encoding="utf-8"
     )
 
-    document = json.loads(args.bom.read_text(encoding="utf-8"))
     ref = "pkg:generic/portaudio@19.7.0"
-    document["components"].append(
-        {
-            "type": "library",
-            "name": "PortAudio",
-            "version": "19.7.0",
-            "bom-ref": ref,
-            "purl": ref,
-            "licenses": [{"license": {"id": "MIT"}}],
-            "externalReferences": [{"type": "license", "url": source}],
-        }
-    )
+    add_component(document, "PortAudio", "19.7.0", ref, "MIT")
+    document["components"][-1]["externalReferences"] = [
+        {"type": "license", "url": source}
+    ]
     sounddevice_ref = next(
         item["bom-ref"]
         for item in document["components"]
@@ -74,7 +154,6 @@ def main():
         document["dependencies"].append({"ref": sounddevice_ref, "dependsOn": [ref]})
     else:
         edge.setdefault("dependsOn", []).append(ref)
-    document["dependencies"].append({"ref": ref, "dependsOn": []})
     args.bom.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
 
 

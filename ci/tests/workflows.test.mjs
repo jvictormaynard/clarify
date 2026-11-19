@@ -223,6 +223,7 @@ test('desktop publication consumes a sealed candidate across a permission bounda
   assert.equal(macUpload.with.name, macDownload.with.name);
   assert.match(macUpload.with.name, /github\.run_id.*github\.run_attempt/);
   assert.equal(macUpload.with.overwrite, false);
+  assert.match(macDownload.with.path, /runner\.temp.*macos-candidate-inputs/);
   const names = release.jobs.build_candidate.steps.map(step => step.name);
   const required = JSON.parse(execFileSync(process.env.CLARIFY_TEST_PYTHON || 'python', [
     '-c', 'import json; from scripts.release_candidate import producer_steps; print(json.dumps({c:producer_steps(c, "0.19.0") for c in ("preview","stable")}))',

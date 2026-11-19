@@ -185,7 +185,7 @@ dependências automaticamente.
 ### Instalar no macOS
 
 As versões desktop após a v0.18.0 incluem um aplicativo para Macs com Apple
-Silicon. Baixe `Clarify-macos-arm64.zip` e `Clarify-macos-arm64.zip.sha256` da
+Silicon e macOS 13 ou mais recente. Baixe `Clarify-macos-arm64.zip` e `Clarify-macos-arm64.zip.sha256` da
 mesma versão na [página de releases](https://github.com/jvictormaynard/clarify/releases).
 Na pasta de downloads, confira o ZIP com
 `shasum -a 256 -c Clarify-macos-arm64.zip.sha256`. Extraia o arquivo e mova
