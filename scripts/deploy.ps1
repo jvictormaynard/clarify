@@ -262,6 +262,9 @@ foreach ($qmlModule in @(Get-ChildItem $repoQmlPython -Filter "qml_*.py" -File))
     Copy-Item $qmlModule.FullName $sourceQmlPython -Force
 }
 Copy-Item (Join-Path $repoQmlPython "qt_shell.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "core_audio.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "macos_clipboard.py") $sourceQmlPython -Force
+Copy-Item (Join-Path $repoQmlPython "macos_hotkeys.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "history_view.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "dictation_practice.py") $sourceQmlPython -Force
 Copy-Item (Join-Path $repoQmlPython "dictation_sounds.py") $sourceQmlPython -Force
