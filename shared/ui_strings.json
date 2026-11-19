@@ -1,4 +1,11 @@
 {
+  "Atalhos indisponíveis ({v0})": {
+    "pt": "Atalhos indisponíveis ({v0})",
+    "en": "Unavailable shortcuts ({v0})",
+    "es": "Atajos no disponibles ({v0})",
+    "de": "Nicht verfügbare Tastenkürzel ({v0})",
+    "ru": "Недоступные сочетания клавиш ({v0})"
+  },
   "Diagnóstico": {
     "pt": "Diagnóstico",
     "en": "Diagnostics",

@@ -22,8 +22,13 @@ try {
   fixture.stderr.on('data', data => errors.push(String(data)));
   // Playwright's Electron launcher ignores stdin. Spawn the real package with
   // pipes and attach CDP to preserve the production Python transport contract.
-  hostProcess = spawn(join(root, 'electron-dist/Clarify Desktop-win32-x64/Clarify Desktop.exe'),
-    ['--remote-debugging-port=0', '--user-data-dir=' + join(environment.profile, 'chromium')], {env, windowsHide:true, stdio:'pipe'});
+  const mac = process.platform === 'darwin';
+  const executable = mac
+    ? join(root, `electron-dist/Clarify Desktop-darwin-${process.arch}/Clarify Desktop.app/Contents/MacOS/Clarify Desktop`)
+    : join(root, 'electron-dist/Clarify Desktop-win32-x64/Clarify Desktop.exe');
+  const args = ['--remote-debugging-port=0'];
+  if (!mac) args.push('--user-data-dir=' + join(environment.profile, 'chromium'));
+  hostProcess = spawn(executable, args, {env, windowsHide:true, stdio:'pipe'});
   const endpoint = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('No packaged Chromium endpoint')),30000);
     hostProcess.once('error', reject);
@@ -99,8 +104,10 @@ try {
   };
   const hoverDock = async () => {
     let rect = await pill.locator('.workflow-pill').boundingBox();
-    if (process.platform === 'win32') {
-      const bounds = await nativeInput({action:'bounds'}), viewport = await pill.evaluate(() => ({width:innerWidth,height:innerHeight}));
+    if (process.platform === 'win32' || mac) {
+      let bounds;
+      await expect.poll(async () => !!(bounds = await nativeInput({action:'bounds'}))).toBe(true);
+      const viewport = await pill.evaluate(() => ({width:innerWidth,height:innerHeight}));
       await nativeInput({action:'move',x:bounds.x+2,y:bounds.y+2});
       await new Promise(resolve => setTimeout(resolve,60));
       await pill.locator('.workflow-pill').evaluate(async node => {

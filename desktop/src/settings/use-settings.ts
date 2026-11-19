@@ -1,4 +1,4 @@
-import { electron } from "../platform";
+import { electron, isMacDesktop, shortcutKey } from "../platform";
 import { t, setUiLanguage } from "../i18n";
 import {
   useCallback, useEffect, useMemo, useRef, useState,
@@ -760,6 +760,7 @@ export function useSettings() {
     event.preventDefault();
     if (event.repeat) return;
     const modifierKey = ({ Control: "CTRL", Alt: "ALT", Shift: "SHIFT", Meta: "WIN" } as Record<string, string>)[event.key];
+    if (isMacDesktop() && (modifierKey || event.type === "keyup")) return;
     if (event.type === "keydown" && modifierKey) {
       captureModifier.current = event.key;
       return;
@@ -774,12 +775,12 @@ export function useSettings() {
     ];
     await run("setHotkey", action, {
       modifiers: modifiers.filter(name => name.toUpperCase() !== modifierKey),
-      key: modifierKey || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
+      key: modifierKey || shortcutKey(event),
     });
   };
   const captureMouseHotkey = async (event: MouseEvent<HTMLInputElement>) => {
     const action = activeCapture();
-    if (!action || ![3, 4].includes(event.button)) return;
+    if (!action || isMacDesktop() || ![3, 4].includes(event.button)) return;
     event.preventDefault();
     captureModifier.current = null;
     await run("setHotkey", action, {

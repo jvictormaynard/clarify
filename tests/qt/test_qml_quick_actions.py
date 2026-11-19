@@ -1,5 +1,6 @@
 """Quick menu actions must preserve drafts, transcripts and paste targets."""
 
+import sys
 import unittest
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -55,7 +56,9 @@ class QuickActionsTests(unittest.TestCase):
         self.assertFalse(bridge.handleHotkey("recording_hotkey"))
         paste.call_args.args[1]("copied")
         self.assertTrue(bridge.feedbackVisible)
-        self.assertIn("Ctrl+V", bridge.feedbackTitle)
+        self.assertIn(
+            "Command+V" if sys.platform == "darwin" else "Ctrl+V", bridge.feedbackTitle
+        )
         bridge.dismissFeedback(bridge.feedbackOperationId)
         self.assertFalse(bridge.feedbackVisible)
         self.assertTrue(bridge.canPasteLastTranscription)

@@ -1,3 +1,4 @@
+import { isMacDesktop } from "../platform";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Picker, Row, Section, Toggle } from "../components/ui";
@@ -12,6 +13,11 @@ const languageNames: Record<string, string> = {
 
 export function GeneralPage({ controller }: SettingsPageProps) {
   const { state, run } = controller;
+  if (isMacDesktop()) return state.applicationVersion && (
+    <Section title={t("Sistema")}>
+      <Row title={t("Versão {v0}", { v0: state.applicationVersion })}>{null}</Row>
+    </Section>
+  );
   return (
     <>
       <Section title={t("Sistema")}>

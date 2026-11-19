@@ -1,3 +1,4 @@
+import { shortcutKeyName } from "../settings/display-labels";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, Mail, Mic } from "lucide-react";
 import "../styles/onboarding.css";
@@ -29,7 +30,7 @@ export function PracticeEntry({ controller }: SettingsPageProps) {
 }
 
 function ShortcutKeys({ shortcut }: { shortcut?: string }) {
-  return <span className="onboarding-keys">{(shortcut || t("Definir atalho")).split("+").map((key, index) => <kbd key={index}>{key.trim()}</kbd>)}</span>;
+  return <span className="onboarding-keys">{(shortcut || t("Definir atalho")).split("+").map((key, index) => <kbd key={index}>{shortcutKeyName(key.trim())}</kbd>)}</span>;
 }
 
 export function DictationPractice({ controller }: SettingsPageProps) {

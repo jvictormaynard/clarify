@@ -7,7 +7,6 @@ legacy frontend or any Tk/CustomTkinter module.
 
 from __future__ import annotations
 
-import math
 import io
 import os
 import platform
@@ -66,7 +65,6 @@ try:
     from audio_file_batch import (
         AudioFileBatchService,
         FileTranscriptionSelection,
-        SoxAudioConverter,
     )
     from dictionary_snippets import (
         DictionarySnippetService,
@@ -108,7 +106,6 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from ...audio_file_batch import (  # type: ignore[no-redef]
         AudioFileBatchService,
         FileTranscriptionSelection,
-        SoxAudioConverter,
     )
     from ...dictionary_snippets import (  # type: ignore[no-redef]
         DictionarySnippetService,
@@ -148,9 +145,11 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     )
 
 try:
+    from .core_audio import CoreAudioCapture, pcm_level
     from .qml_clipboard import QmlClipboardGateway
     from .dictation_sounds import DictationCuePlayer
 except ImportError:  # PyInstaller analyzes this module as top-level source.
+    from core_audio import CoreAudioCapture, pcm_level
     from qml_clipboard import QmlClipboardGateway
     from dictation_sounds import DictationCuePlayer
 
@@ -289,12 +288,15 @@ def _data_directory() -> Path:
     return path
 
 
-def create_runtime_repositories() -> ApplicationRepositories:
+def create_runtime_repositories(*, hotkey_defaults=None) -> ApplicationRepositories:
     data_dir = _data_directory()
+    defaults = environment_defaults()
+    if hotkey_defaults is not None:
+        defaults["hotkeys"] = hotkey_defaults.to_mapping()
     return ApplicationRepositories(
         config=LocalConfigRepository(
             data_dir / "config.json",
-            defaults=environment_defaults(),
+            defaults=defaults,
         ),
         usage_stats=LocalUsageStatsRepository(data_dir / "usage_stats.json"),
     )
@@ -500,22 +502,24 @@ def _open_readiness_file(path: Path) -> BinaryIO:
 
 @dataclass(eq=False)
 class _RecorderCapture:
-    """Identity and worker signals for one authoritative SoX capture."""
+    """Identity and worker signals for one recording."""
 
     path: Path
     cancel_event: threading.Event
     stopped: threading.Event = field(default_factory=threading.Event)
     ready: threading.Event = field(default_factory=threading.Event)
+    pcm_received: threading.Event = field(default_factory=threading.Event)
     meter_ready: threading.Event = field(default_factory=threading.Event)
     meter_finished: threading.Event = field(default_factory=threading.Event)
     process: Any = None
+    core_audio: CoreAudioCapture | None = None
     meter_device: Any = None
     started: bool = False
     cue_started: bool = False
 
 
 class QtRecorder:
-    """Minimal SoX owner for the Qt recording session."""
+    """Own the input and readiness for the Qt recording session."""
 
     def __init__(
         self,
@@ -550,6 +554,7 @@ class QtRecorder:
         self._readiness_worker: threading.Thread | None = None
         self._meter_worker: threading.Thread | None = None
         self._lock = threading.RLock()
+        self._core_audio_input = threading.Lock()
         self._cue_player = cue_player
         self._cue_lock = threading.Lock()
 
@@ -596,24 +601,29 @@ class QtRecorder:
                 if capture is None:
                     self._readiness_worker = None
                     return
-            process = capture.process
-            active = process is not None and process.poll() is None
+                native_capture = capture.core_audio
+            active = self._capture_is_live(capture)
             ready = active and (
-                capture.ready.is_set() or self._has_pcm_frames(capture.path)
+                capture.pcm_received.is_set()
+                if native_capture is not None
+                else capture.ready.is_set() or self._has_pcm_frames(capture.path)
             )
             # A device can exit while the readiness reader holds the WAV.
-            ready = ready and process.poll() is None
+            if ready:
+                active = self._capture_is_live(capture)
+                ready = active
             with self._lock:
                 if self._capture is capture and not capture.stopped.is_set():
                     if ready:
                         capture.ready.set()
                     else:
                         capture.ready.clear()
+                        if native_capture is not None and not active:
+                            self.mic_level = 0.0
             if ready:
-                # PCM from the authoritative capture, rather than command
-                # acceptance or the optional level meter, confirms recording.
+                # PCM from the recording WAV confirms capture.
                 with self._cue_lock:
-                    live = process.poll() is None
+                    live = self._capture_is_live(capture)
                     with self._lock:
                         announce = (
                             live
@@ -627,6 +637,21 @@ class QtRecorder:
                     if announce:
                         self._play_cue(True)
             capture.stopped.wait(0.016)
+
+    @staticmethod
+    def _capture_is_live(capture: _RecorderCapture) -> bool:
+        if capture.core_audio is not None:
+            return capture.core_audio.active
+        return capture.process is not None and capture.process.poll() is None
+
+    def _ensure_readiness_worker(self) -> None:
+        if self._readiness_worker is None:
+            self._readiness_worker = threading.Thread(
+                target=self._monitor_capture,
+                name="ClarifyCaptureReadiness",
+                daemon=True,
+            )
+            self._readiness_worker.start()
 
     def _microphone_input_name(self, system: str, capture: _RecorderCapture) -> str:
         selected_id = None
@@ -647,7 +672,7 @@ class QtRecorder:
             raise MicrophoneUnavailableError(
                 "Selected microphone has no unambiguous backend name"
             )
-        if system not in {"Windows", "Darwin"}:
+        if system != "Windows":
             is_default = device.is_default or inventory.default_id == device.stable_id
             if not is_default:
                 raise MicrophoneUnavailableError(
@@ -682,20 +707,9 @@ class QtRecorder:
             return
 
         def callback(indata, _frames, _time_info, _status):
-            raw_samples = memoryview(indata)
-            samples = (
-                raw_samples
-                if raw_samples.format in {"h", "<h", "=h", "@h"}
-                and raw_samples.ndim == 1
-                else memoryview(raw_samples.tobytes()).cast("h")
-            )
-            if not samples:
+            if not memoryview(indata).nbytes:
                 return
-            mean_square = sum(sample * sample for sample in samples) / len(samples)
-            level = min(
-                1.0,
-                math.sqrt(mean_square) / 32768.0 * 16,
-            )
+            level = pcm_level(indata)
             with self._lock:
                 if (
                     self._capture is capture
@@ -783,19 +797,26 @@ class QtRecorder:
 
     @staticmethod
     def supports_explicit_microphone_selection(system: str | None = None) -> bool:
-        """Return whether the active SoX driver can honor an input name."""
+        """Return whether the recording backend can honor an explicit input."""
 
         return (system or platform.system()) in {"Windows", "Darwin"}
 
     def selectable_microphone_devices(self, inventory: Any) -> tuple[Any, ...]:
-        """Expose only endpoint names the active SoX route can disambiguate."""
+        """Expose only endpoints the recording backend can open safely."""
 
-        if not self.supports_explicit_microphone_selection():
+        system = platform.system()
+        if system == "Darwin":
+            return tuple(
+                device
+                for device in inventory.available_devices
+                if device.backend_index is not None
+            )
+        if not self.supports_explicit_microphone_selection(system):
             return ()
         return tuple(
             device
             for device in inventory.available_devices
-            if _sox_microphone_name_is_unambiguous(inventory, device, platform.system())
+            if _sox_microphone_name_is_unambiguous(inventory, device, system)
         )
 
     def test_microphone(
@@ -848,18 +869,8 @@ class QtRecorder:
             nonlocal peak, last_level_at
             if cancel_event is not None and cancel_event.is_set():
                 return
-            raw_samples = memoryview(indata)
-            samples = (
-                raw_samples
-                if raw_samples.format in {"h", "<h", "=h", "@h"}
-                and raw_samples.ndim == 1
-                else memoryview(raw_samples.tobytes()).cast("h")
-            )
-            if samples:
-                rms = math.sqrt(
-                    sum(sample * sample for sample in samples) / len(samples)
-                )
-                level = min(1.0, rms / 32768.0 * 16)
+            if memoryview(indata).nbytes:
+                level = pcm_level(indata)
                 peak = max(peak, level)
                 now = time.monotonic()
                 if on_level is not None and now - last_level_at >= 0.04:
@@ -914,16 +925,17 @@ class QtRecorder:
             raise
 
     def _start_capture(self, capture: _RecorderCapture) -> None:
+        system = platform.system()
+        if system == "Darwin":
+            self._start_core_audio(capture)
+            return
         if not self.sox:
             raise QtRuntimeError("SoX was not found in the Clarify runtime")
         if capture.cancel_event.is_set() or capture.stopped.is_set():
             raise RuntimeError("Recording cancelled before startup")
-        system = platform.system()
         microphone_input_name = self._microphone_input_name(system, capture)
         if system == "Windows":
             source = ["-t", "waveaudio", microphone_input_name]
-        elif system == "Darwin":
-            source = ["-t", "coreaudio", microphone_input_name]
         else:
             source = ["-t", "pulseaudio", microphone_input_name]
         args = [
@@ -968,13 +980,7 @@ class QtRecorder:
             capture.started = True
             # At most one readiness reader and one native meter owner per
             # recorder. A slow old open/close cannot create unbounded workers.
-            if self._readiness_worker is None:
-                self._readiness_worker = threading.Thread(
-                    target=self._monitor_capture,
-                    name="ClarifyCaptureReadiness",
-                    daemon=True,
-                )
-                self._readiness_worker.start()
+            self._ensure_readiness_worker()
             if self._meter_worker is None:
                 self._meter_worker = threading.Thread(
                     target=self._run_level_meter,
@@ -984,18 +990,87 @@ class QtRecorder:
                 )
                 self._meter_worker.start()
 
-    def stop(self) -> None:
+    def _start_core_audio(self, capture: _RecorderCapture) -> None:
+        def check_cancelled() -> None:
+            if capture.cancel_event.is_set() or capture.stopped.is_set():
+                raise RuntimeError("Recording cancelled during startup")
+
+        def receive_level(level: float) -> None:
+            with self._lock:
+                if (
+                    self._capture is capture
+                    and not capture.stopped.is_set()
+                    and not capture.cancel_event.is_set()
+                ):
+                    self.mic_level = level
+                    capture.pcm_received.set()
+
+        check_cancelled()
+        # Cancellation can detach the capture while native input is opening.
+        # Keep input reserved until the old stream has closed.
+        while not self._core_audio_input.acquire(timeout=0.05):
+            check_cancelled()
+        native = None
+        try:
+            check_cancelled()
+            backend = _load_sounddevice()
+            if backend is None:
+                raise MicrophoneUnavailableError("CoreAudio input is unavailable")
+            device_index = self._core_audio_device_index()
+            check_cancelled()
+            try:
+                native = CoreAudioCapture(
+                    backend, capture.path, device_index, receive_level
+                )
+                check_cancelled()
+                native.start()
+            except backend.PortAudioError as error:
+                raise MicrophoneUnavailableError(
+                    "Could not open CoreAudio input"
+                ) from error
+            if not native.active:
+                raise MicrophoneUnavailableError("No active microphone")
+            with self._lock:
+                check_cancelled()
+                self._ensure_readiness_worker()
+                capture.core_audio = native
+        except Exception:
+            try:
+                if native is not None:
+                    native.close()
+            finally:
+                self._core_audio_input.release()
+            raise
+
+    def _core_audio_device_index(self) -> int | None:
+        if self.config is None:
+            return None
+        selected_id = self.config.current().microphone.selected_id
+        if not selected_id:
+            return None
+        selection = self.microphone_inventory().resolve(selected_id)
+        if not selection.can_record:
+            raise MicrophoneUnavailableError("The configured microphone is unavailable")
+        if selection.state is not MicrophoneSelectionState.SELECTED:
+            return None
+        device = selection.device
+        if device is None or device.backend_index is None:
+            raise MicrophoneUnavailableError(
+                "Selected microphone has no CoreAudio input"
+            )
+        return device.backend_index
+
+    def stop(self) -> bool:
         with self._lock:
             capture = self._capture
-        if capture is not None:
-            self._stop_capture(capture)
+        return self._stop_capture(capture) if capture is not None else False
 
-    def _stop_capture(self, capture: _RecorderCapture) -> None:
+    def _stop_capture(self, capture: _RecorderCapture) -> bool:
         with self._lock:
             capture.stopped.set()
             capture.ready.clear()
             if self._capture is not capture:
-                return
+                return False
             self._capture = None
             # The meter worker retains sole close ownership. Do not wait for
             # optional native open/start/stop/close during audio finalization.
@@ -1003,11 +1078,18 @@ class QtRecorder:
             self.mic_level = 0.0
             process = capture.process
             self.process = None
-        self._terminate_process(process)
+        if capture.core_audio is None:
+            self._terminate_process(process)
+        else:
+            try:
+                capture.core_audio.close()
+            finally:
+                self._core_audio_input.release()
         with self._cue_lock:
             if capture.cue_started:
                 capture.cue_started = False
                 self._play_cue(False)
+        return capture.core_audio is not None and capture.core_audio.interrupted
 
     @staticmethod
     def _terminate_process(process: Any) -> None:
@@ -1221,7 +1303,12 @@ class QtRecordingSession(RecordingSessionGateway):
         stopped_at = time.monotonic()
         if self._recovered_audio is not None:
             return self._recovered_audio
-        self.recorder.stop()
+        if self.recorder.stop() is True and finalize_stream:
+            error = MicrophoneUnavailableError(
+                "Microphone recording stopped unexpectedly"
+            )
+            self.fail(error)
+            raise error
         try:
             audio_bytes = self.audio_path.read_bytes()
         except OSError as error:
@@ -1383,6 +1470,8 @@ class QtRecordingAudioGateway:
             )
 
     def microphone_available(self) -> bool | None:
+        if platform.system() == "Darwin":
+            return None  # CoreAudio is checked by the recording worker.
         return bool(self.recorder.sox)
 
     def create_session(self) -> QtRecordingSession | None:
@@ -2070,10 +2159,7 @@ def create_real_workflow_runtime(
     )
     account.desktop_text_actions = provider.text_actions
     audio_batch_gateway = QtAudioFileGateway(provider)
-    audio_batch_service = AudioFileBatchService(
-        audio_batch_gateway,
-        SoxAudioConverter(),
-    )
+    audio_batch_service = AudioFileBatchService(audio_batch_gateway)
     history_recorder = QtHistoryRecorder(active, scheduler, account=account)
     account.history = AccountHistory(account, history_recorder.store)
     service = WorkflowService(

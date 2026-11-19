@@ -12,3 +12,12 @@ export const nativeWindow = () => !!electron();
 export async function windowAction(method: 'minimize' | 'toggleMaximize' | 'isMaximized' | 'closeAccepted') {
   if (electron()) return electron()!.window(method);
 }
+
+export const isMacDesktop = () => nativeWindow() && navigator.userAgent.includes("Macintosh");
+
+export function shortcutKey(event: Pick<KeyboardEvent, "key" | "code">) {
+  // On macOS Option can produce a character or dead key instead of a letter.
+  const physicalKey = isMacDesktop() && /^(?:Key[A-Z]|Digit[0-9])$/.test(event.code);
+  if (physicalKey) return event.code.slice(-1);
+  return event.key === " " ? "SPACE" : event.key.toUpperCase();
+}

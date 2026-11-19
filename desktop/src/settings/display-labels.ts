@@ -1,3 +1,4 @@
+import { isMacDesktop } from "../platform";
 import { t } from "../i18n";
 import type { HotkeyDefinition, TextAction } from "./bridge";
 
@@ -6,8 +7,15 @@ export const profileName = (id: string) => t(id === "default" ? "Serviço de tex
 export const actionDisplayName = (action: Pick<TextAction, "id" | "name">) =>
   (action.id === "rewrite" && action.name === "Rewrite") || (action.id === "translation" && action.name === "Translation") ? t(action.name) : action.name;
 
+export function shortcutKeyName(key: string) {
+  const names: Record<string, string> = {
+    ctrl: "Ctrl", alt: isMacDesktop() ? "Option" : "Alt",
+    shift: "Shift", win: isMacDesktop() ? "Command" : "Win",
+  };
+  return names[key.toLowerCase()] || key;
+}
+
 export function hotkeyLabel(value: HotkeyDefinition | null | undefined) {
   if (!value) return "";
-  const names: Record<string, string> = { ctrl: "Ctrl", alt: "Alt", shift: "Shift", win: "Win" };
-  return [...value.modifiers.map(modifier => names[modifier] ?? modifier), value.key].join("+");
+  return [...value.modifiers, value.key].map(shortcutKeyName).join("+");
 }

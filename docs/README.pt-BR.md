@@ -182,9 +182,15 @@ Python ou Node.js.
 Na primeira execução, o script cria um ambiente virtual e instala as
 dependências automaticamente.
 
+### Compilar e executar no macOS
+
+Você pode compilar `Clarify.app` no Mac com Python 3.12 e Node.js 22.12 ou mais
+recente. Veja as instruções de compilação, as permissões e os atalhos no
+[guia de instalação para macOS](development.md#macos-setup).
+
 ## Atalhos
 
-| Atalho | Ação |
+| Atalho no Windows | Ação |
 | --- | --- |
 | `Alt + L` | Iniciar ou encerrar a gravação |
 | `Esc` | Cancelar a gravação ativa ou fechar o seletor de idioma da tradução |
@@ -286,8 +292,8 @@ Não há garantia de exclusão segura.
 
 Excluir somente o executável não apaga os dados. Para remover também as
 credenciais, exclua `secrets.dpapi.json` ou toda a pasta de dados do
-Clarify. Em execuções experimentais no Linux/macOS, `secrets.json` é um
-fallback em texto simples com permissões restritas; não compartilhe esse arquivo.
+Clarify. No Linux e no macOS, `secrets.json` contém as credenciais em texto
+simples e tem permissões restritas. Não compartilhe esse arquivo.
 
 ## Desenvolvimento e contribuição
 

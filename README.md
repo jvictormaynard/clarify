@@ -5,7 +5,7 @@
 <h1 align="center">Clarify</h1>
 
 <p align="center">
-  Windows dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
+  Desktop dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
 </p>
 
 <p align="center">
@@ -222,13 +222,19 @@ dependency intent remains readable in `requirements.txt` and
 `requirements-dev.txt`; maintainers regenerate the matching lock with
 `python -m piptools compile` when that intent changes.
 
-Linux and macOS source paths are experimental. See
-[Development](docs/development.md#experimental-linux-and-macos-support) for
-their current limitations.
+### Build and run on macOS
+
+Build `Clarify.app` on your Mac with Python 3.12 and Node.js 22.12 or later.
+See [macOS setup](docs/development.md#macos-setup) for the build steps, permissions,
+and default shortcuts.
+
+[Linux source support](docs/development.md#experimental-linux-support) is experimental.
 
 ## Usage
 
-| Shortcut | Action |
+See [macOS shortcuts](docs/development.md#macos-setup) for the Mac defaults.
+
+| Windows shortcut | Action |
 | --- | --- |
 | `Alt + L` (default) | Start or stop recording |
 | `Esc` | Cancel an active recording or close the translation language picker |

@@ -3,14 +3,23 @@ const path = require('node:path');
 const {pathToFileURL, fileURLToPath} = require('node:url');
 const {Bridge, validateRequest} = require('./bridge.cjs');
 
-async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Menu}, input = process.stdin, output = process.stdout, passiveWindow = process.platform === 'win32' ? require('./passive_window.node') : null) {
+async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage}, input = process.stdin, output = process.stdout, passiveWindow = process.platform === 'win32' ? require('./passive_window.node') : null) {
+  const isMac = process.platform === 'darwin';
   await app.whenReady();
   let stopping = false, settingsPatch = {}, workflowState = null, ready = false;
   const windows = {}, loaded = new Set(), wantsVisible = {settings: false};
   let tray, trayLocale, pillShown = false, pillFocusable = false, hitTimer, interactive = false, regions = [];
   const index = path.resolve(__dirname, '../dist/index.html');
+  const icon = path.resolve(__dirname, '../icon.png');
   const urls = {settings: pathToFileURL(index).href, pill: pathToFileURL(index).href + '?surface=pill'};
-  const stop = () => { stopping = true; bridge.end(); app.quit(); };
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    app.quit();
+  };
+  const requestQuit = () => {
+    if (!stopping) bridge.send({event: 'quit'});
+  };
   const emit = (win, topic, message) => { if (loaded.has(win) && !win.isDestroyed()) win.webContents.send(topic, message); };
   const hitTest = () => {
     const point = screen.getCursorScreenPoint(), bounds = windows.pill.getContentBounds();
@@ -59,8 +68,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       workflowState = message.state;
       const panel = ['translation_picker', 'result', 'voice_result', 'voice_error'].includes(workflowState.surface);
       if (panel !== pillFocusable) {
-        // Hide the active picker before removing its activation permission.
-        // Windows can then return focus to the previous application.
+        // Hide the active panel before removing its ability to take focus.
         if (pillFocusable && !panel) { windows.pill.hide(); pillShown = false; clearInterval(hitTimer); hitTimer = undefined; }
         if (panel) passiveWindow?.setPassive(windows.pill.getNativeWindowHandle(), false);
         pillFocusable = panel; windows.pill.setFocusable(panel);
@@ -77,7 +85,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       emit(windows.settings, 'clarify:state', message);
     }
     else { emit(windows.pill, 'clarify:state', message); refreshTray(); }
-  }, () => { stopping = true; app.quit(); });
+  }, stop);
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
@@ -103,11 +111,14 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       show: false, frame: false, transparent: pill, backgroundColor: pill ? '#00000000' : '#000000',
       alwaysOnTop: pill, skipTaskbar: pill, focusable: !pill, resizable: !pill,
       thickFrame: !pill, hasShadow: !pill,
-      icon: path.resolve(__dirname, '../icon.png'),
+      icon,
+      // A macOS panel can take key focus without activating the app. The
+      // passive pill also needs to receive the first click while inactive.
+      ...(isMac && pill ? {type: 'panel', acceptFirstMouse: true} : {}),
       webPreferences: {preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false, devTools: false},
     });
     windows[surface] = win;
-    win.removeMenu();
+    if (!isMac) win.removeMenu();
     if (!pill) for (const event of ['maximize', 'unmaximize']) win.on(event, () => emit(win, 'clarify:window-event', 'resized'));
     if (pill) {
       const {workArea} = screen.getPrimaryDisplay();
@@ -139,11 +150,12 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       {label: text[0], click: () => command('openSettings')},
       {label: text[1], click: () => command('toggleWindow')},
       {type: 'separator'},
-      {label: text[2], click: () => bridge.send({event: 'quit'})},
+      {label: text[2], click: requestQuit},
     ]));
   };
   if (Tray && Menu) {
-    tray = new Tray(path.resolve(__dirname, '../icon.png'));
+    const trayIcon = isMac ? nativeImage.createFromPath(icon).resize({width: 18, height: 18}) : icon;
+    tray = new Tray(trayIcon);
     tray.setToolTip('Clarify');
     const command = method => { void bridge.call('workflow', method, []).catch(error => process.stderr.write(String(error) + '\n')); };
     refreshTray();
@@ -163,7 +175,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
         || (args[0] === 'setDictationWritingStyle' && ['', 'natural', 'formal', 'casual', 'very_casual', 'informal', 'organized'].includes(args[1][0])));
     if (!pillPreference && (surface === 'pill') !== (channel === 'workflow')) throw new Error('Invalid renderer channel');
     validateRequest(channel, method, args);
-    if (channel === 'workflow' && method === 'quit') { bridge.send({event: 'quit'}); return null; }
+    if (channel === 'workflow' && method === 'quit') { requestQuit(); return null; }
     return bridge.call(channel, method, args);
   });
   ipcMain.handle('clarify:renderer-ready', event => {
@@ -188,8 +200,18 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
     else if (method === 'closeAccepted') { wantsVisible.settings = false; win.hide(); bridge.send({event: 'settings-hidden'}); }
     else throw new Error('Invalid window control');
   });
-  app.on('before-quit', () => { stopping = true; clearInterval(hitTimer); tray?.destroy(); bridge.end(); });
-  app.on('window-all-closed', () => stop());
+  app.on('before-quit', event => {
+    if (isMac && !stopping) {
+      event.preventDefault();
+      requestQuit();
+      return;
+    }
+    stopping = true;
+    clearInterval(hitTimer);
+    tray?.destroy();
+    bridge.end();
+  });
+  app.on('window-all-closed', stop);
   return {windows, bridge};
 }
 module.exports = {startHost};
