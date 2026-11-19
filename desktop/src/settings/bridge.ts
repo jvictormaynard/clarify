@@ -7,7 +7,7 @@ function invoke<T>(request: {method: string; args: unknown[]}): Promise<T> {
 import { t } from "../i18n";
 import type { RecordingControls } from "./recording";
 
-export type Option = { id: string; label: string };
+export type Option = { id: string; label: string; recommended?: boolean };
 export type DictationCleanupLevel = "preserve" | "light" | "clarity";
 export type WritingStyle = "formal" | "casual" | "very_casual" | "natural" | "informal" | "organized";
 export type HotkeyDefinition = { modifiers: string[]; key: string };

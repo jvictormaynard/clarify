@@ -69,6 +69,7 @@ from microphone_controls import (
     SoundDeviceMicrophoneInventory,
 )
 from provider_http import CancellationToken
+from opencode_provider import RECOMMENDED_FREE_REWRITE_MODEL
 from provider_registry import PROVIDER_REGISTRY
 from provider_types import (
     ModelCatalog,
@@ -4365,6 +4366,7 @@ class QmlSettingsController(QObject):
                     {
                         "id": model,
                         "label": self._opencode_model_labels.get(model, model),
+                        "recommended": model == RECOMMENDED_FREE_REWRITE_MODEL,
                     }
                     for model in self._opencode_models
                 ],

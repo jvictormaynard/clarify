@@ -35,6 +35,8 @@ from provider_types import (
     TranslationResult,
 )
 
+RECOMMENDED_FREE_REWRITE_MODEL = "opencode/deepseek-v4.1-flash-free"
+
 _FREE_CATALOG_TTL = 60
 _ACP_IDLE_SECONDS = 25
 _ACP_MAX_TURNS = 6

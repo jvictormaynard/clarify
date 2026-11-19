@@ -245,8 +245,10 @@ test.describe("personal text catalogs", () => {
     await page.getByRole("button", { name: "Install and connect OpenCode", exact: true }).click();
     await expect(page.getByText("OpenCode free models", { exact: true })).toBeVisible();
     await model.click();
-    await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
+    await expect(page.getByRole("option", { name: "opencode/deepseek-v4.1-flash-free Recommended", exact: true })).toBeVisible();
+    await expect(page.getByRole("listbox").getByText("Recommended", { exact: true })).toHaveCount(1);
     await page.screenshot({ animations: "disabled", path: `${evidence}/rewriting-model-picker.png` });
+    await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await advance(page);
     await expect(model).toContainText("opencode/fixture-free-b");

@@ -439,7 +439,11 @@ def main():
                     "validate",
                     return_value=ModelCatalog(
                         (),
-                        ("opencode/fixture-free-a", "opencode/fixture-free-b"),
+                        (
+                            "opencode/fixture-free-a",
+                            "opencode/fixture-free-b",
+                            "opencode/deepseek-v4.1-flash-free",
+                        ),
                     ),
                 )
             )
