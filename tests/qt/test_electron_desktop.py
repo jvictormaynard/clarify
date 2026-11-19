@@ -451,3 +451,22 @@ class ElectronDesktopTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DesktopBindingTests(unittest.TestCase):
+    def test_pipe_finds_controller_bound_after_electron_construction(self):
+        from clarify.desktop.qml_electron import ElectronDesktopProcess
+
+        sent = []
+        remote = SimpleNamespace(
+            drain=lambda: iter([{"event": "computer-webrtc-config", "config": None}])
+        )
+        desktop = SimpleNamespace(
+            _webrtc=None,
+            settings=SimpleNamespace(_computer=SimpleNamespace(webrtc=remote)),
+            _ready=True,
+            _send=sent.append,
+        )
+        ElectronDesktopProcess._flush_webrtc(desktop)
+        self.assertIs(desktop._webrtc, remote)
+        self.assertEqual(sent[0]["event"], "computer-webrtc-config")

@@ -317,12 +317,6 @@ class QtWorkflowConfig:
         return self.current().dictation_writing_style
 
     def recording_usage_context(self, mode: str) -> dict[str, Any]:
-        if self.account is not None and self.account.hosted:
-            return {
-                "provider": "clarify",
-                "model": "whisper-large-v3-turbo",
-                "mode": str(mode),
-            }
         route = self.current().workflow(WorkflowScope.TRANSCRIPTION)
         return {
             "provider": route.provider_id,
@@ -371,8 +365,6 @@ class QtProviderGateway(WorkflowProviderService):
     def prepare_dictation(self, recording) -> None:
         """Best-effort local preparation; never contact a cloud provider."""
         try:
-            if self.account is not None and self.account.managed:
-                return
             with recording._lock:
                 if recording.preparation_done.is_set():
                     return
@@ -384,6 +376,26 @@ class QtProviderGateway(WorkflowProviderService):
             backend = adapter.select_backend(
                 route.model_id, self.config.current().local_asr_device
             )
+            if getattr(backend, "native_streaming", False) is True:
+                from local_asr_live import CaptureStream
+
+                stream = CaptureStream(
+                    recording.audio_path,
+                    backend,
+                    route.model_id,
+                    str(getattr(recording, "transcription_language", "auto") or "auto"),
+                    preparation_token,
+                )
+                with recording._lock:
+                    if not recording.preparation_done.is_set():
+                        recording.local_stream = stream
+                        recording.recorder._live_source = (recording.audio_path, stream)
+                        recording.attach_worker(stream.worker)
+                        stream.on_finished = lambda: recording.detach_worker(
+                            stream.worker
+                        )
+                        stream.start()
+                return
             if self.config.current().local_asr_streaming and getattr(
                 backend, "compute_device", "cpu"
             ).startswith("cuda:"):
@@ -547,6 +559,7 @@ class QtRecorder:
         self.mic_stream: Any | None = None
         self.mic_level = 0.0
         self._capture: _RecorderCapture | None = None
+        self._live_source = None
         self._readiness_worker: threading.Thread | None = None
         self._meter_worker: threading.Thread | None = None
         self._lock = threading.RLock()
@@ -560,6 +573,18 @@ class QtRecorder:
             except Exception:
                 # Output failure must not prevent microphone use or cleanup.
                 pass
+
+    @property
+    def live_transcript(self) -> str:
+        capture, source = self._capture, self._live_source
+        if (
+            capture is None
+            or source is None
+            or capture.path != source[0]
+            or not self.capture_active
+        ):
+            return ""
+        return str(getattr(source[1], "latest_text", ""))
 
     @property
     def capture_active(self) -> bool:
@@ -1951,22 +1976,13 @@ class QtWorkflowRuntime:
         if self.repositories is None:
             raise QtRuntimeError("The QML audio import route requires repositories")
         current = self.repositories.config.load()
-        if self.account is not None and self.account.managed:
-            return FileTranscriptionSelection(
-                provider_id="clarify",
-                model="whisper-large-v3-turbo",
-                language=str(language or current.ui.language or "auto"),
-            )
         route = current.workflow(WorkflowScope.TRANSCRIPTION)
         if not route.enabled:
             raise RuntimeError("transcription workflow is disabled")
         selected_provider = str(provider_id or route.provider_id).strip().lower()
         selected_model = str(model or route.model_id).strip()
-        selected_language = (
-            str(language or getattr(current.ui, "language", "en") or "en")
-            .strip()
-            .lower()
-        )
+        selected_language = str(current.recognition_language or "auto").strip().lower()
+        output_language = str(language or current.ui.language or "auto").strip().lower()
         custom_endpoint = (
             route.custom_endpoint if selected_provider == route.provider_id else ""
         )
@@ -1976,7 +1992,7 @@ class QtWorkflowRuntime:
             registry=self.provider_registry,
             custom_endpoint=custom_endpoint,
         )
-        language_label = language_display_name(selected_language)
+        language_label = language_display_name(output_language)
         instruction = PROMPT_INSTRUCTION.format(lang=language_label)
         return FileTranscriptionSelection(
             provider_id=selected_provider,

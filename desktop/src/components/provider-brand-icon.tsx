@@ -1,8 +1,10 @@
 import { cn } from "../lib/utils";
 import googleLogo from "../assets/google/google-g.png";
 
+import openCodeLogo from "../assets/opencode/opencode-logo-transparent-dark.svg";
+
 type ProviderBrandIconProps = {
-  provider: "Google" | "Microsoft" | "GitHub" | "ChatGPT";
+  provider: "Google" | "Microsoft" | "GitHub" | "ChatGPT" | "OpenCode";
   className?: string;
 };
 
@@ -10,6 +12,8 @@ type ProviderBrandIconProps = {
 export function ProviderBrandIcon({ provider, className }: ProviderBrandIconProps) {
   if (provider === "Google") return <img src={googleLogo} alt="" aria-hidden="true"
     draggable={false} width={20} height={20} className={cn("size-5 shrink-0 object-contain", className)} />;
+  if (provider === "OpenCode") return <img src={openCodeLogo} alt="" aria-hidden="true"
+    draggable={false} width={16} height={20} className={cn("h-5 w-4 shrink-0 object-contain", className)} />;
   return (
     <svg
       aria-hidden="true"

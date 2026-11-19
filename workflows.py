@@ -845,7 +845,11 @@ class WorkflowService:
             if session.recording is None:
                 raise RuntimeError("Recording session was not created")
             session.recording.transcription_language = (
-                "auto" if session.dictation_snapshot is not None else session.language
+                getattr(
+                    session.dictation_snapshot.config, "recognition_language", "auto"
+                )
+                if session.dictation_snapshot is not None
+                else session.language
             )
             session.recording.start()
             prepare = getattr(self._provider, "prepare_dictation", None)

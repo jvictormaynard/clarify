@@ -130,8 +130,9 @@ final class CloudAccount {
   }
   private func persist() throws { defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata") }
   func setSessionInvalidationHandler(_ handler: @escaping () -> Void) { locked { sessionInvalidated = handler } }
-  var hosted: Bool { locked { state.userID != nil } }
-  var managed: Bool { locked { state.userID != nil || state.hosted } }
+  var signedIn: Bool { locked { state.userID != nil } }
+  var hosted: Bool { false }
+  var managed: Bool { false }
   // The local vocabulary owner can differ from the server's user UUID after
   // explicit origin recovery. The same owner also isolates queued keyboard words.
   var scope: String? { locked { state.userID.map { vocabularyOwner(for: $0) } } }
@@ -173,7 +174,7 @@ final class CloudAccount {
   // Text preparation can wait for automatic work under its own cancelable UUID.
   // Explicit account changes must still exclude new operations.
   var textStartBlocked: Bool { locked { busy && !automatic } }
-  var configured: Bool { locked { hosted && readCredential() != nil } }
+  var configured: Bool { locked { signedIn && readCredential() != nil } }
   private var endpointRecovery: String {
     guard (try? Self.validateEndpoint(state.endpoint)) == "https://clarify-api-dev-dev.up.railway.app",
       let bundled = connectAccountEndpoint(),
@@ -720,7 +721,7 @@ final class CloudAccount {
   // Main-queue owner, separate from account/dictation busy state. Offline work
   // is durable in SQLite; at most four bounded pages are sent in each burst.
   @MainActor func syncHistory(_ library: LocalLibrary, force: Bool = false) async -> Bool {
-    guard hosted, !isBusy, let owner = historyScope else { return false }
+    guard signedIn, !isBusy, let owner = historyScope else { return false }
     if historyBusy { historyQueued = historyQueued || force; return false }
     let now = historyClock()
     guard now - lastHistoryAttempt >= 60 || (force && !historyFailed) else { return false }
@@ -730,11 +731,11 @@ final class CloudAccount {
     var changed = false
     do {
       for _ in 0..<4 {
-        guard acceptsHistory(capture), hosted else { return changed }
+        guard acceptsHistory(capture), signedIn else { return changed }
         let batch = try library.historyBatch(scope: owner)
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(batch)) as? [String: Any] ?? [:]
         let (code, raw) = try await perform("POST", "/v1/history/sync", json: json)
-        guard acceptsHistory(capture), hosted else { return changed }
+        guard acceptsHistory(capture), signedIn else { return changed }
         guard code == 200 else { throw ClarifyError(L("Não foi possível sincronizar o histórico.")) }
         let response = try HistorySyncResponse.decode(raw)
         try library.applyHistory(response, batch: batch, scope: owner)
@@ -928,100 +929,10 @@ final class CloudAccount {
   }
   @MainActor func processText(_ operationID: String, action: String, text: String, language: String,
     savedAction: TextActionDescriptor? = nil, preferences: OutputPreferences = OutputPreferences()) async throws -> ProcessingText {
-    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
-    guard UUID(uuidString: operationID) != nil, ["rewrite", "translate", "text_action"].contains(action), (action == "text_action") == (savedAction != nil),
-      ["auto", "pt", "en", "es", "de", "ru"].contains(language),
-      !text.contains("\0"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= ProcessingContractData.accountTextInputBytes else {
-      throw ClarifyError(L("Selecione um texto válido para processar."), code: "invalid_text_request")
-    }
-    let identity = captureTextIdentity()
-    try await waitForAutomaticRefresh()
-    guard acceptsTextIdentity(identity) else { throw CancellationError() }
-    try begin(); defer { end() }
-    try processingCapabilities.validate(preferences)
-    var fields: [String: Any] = [
-      "operation_id": operationID, "action": action, "text": text, "language": language
-    ]
-    if let savedAction {
-      guard savedAction.valid, savedAction.enabled, savedAction.ready,
-        let revision = TextActionDescriptor.wireRevision(savedAction.revision) else { throw ComputerFailure.notReady }
-      fields.removeValue(forKey: "action"); fields["action_id"] = savedAction.id; fields["action_revision"] = revision
-    }
-    for (key, value) in try preferences.requestFields(supported: outputPreferencesSupported, dictation: false) { fields[key] = value }
-    let (code, result) = try await perform("POST", savedAction == nil ? "/v1/text" : "/v1/text-actions/execute", json: fields)
-    guard code == 200 else { throw Self.processingFailure(code, result: result, operationID: operationID) }
-    guard let output = result["text"] as? String,
-      !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output.utf8.count <= ProcessingContractData.accountTextOutputBytes else {
-      throw ClarifyError(L("O Clarify retornou um resultado inválido."))
-    }
-    if result["operation_id"] != nil {
-      guard let echoed = result["operation_id"] as? String, UUID(uuidString: echoed) == UUID(uuidString: operationID) else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
-    }
-    if let savedAction {
-      guard result["action_id"] as? String == savedAction.id,
-        ComputerJSON.integer(result["action_revision"]).map({ String($0) }) == savedAction.revision else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
-    }
-    let retained = savedAction?.kind == "custom" || TextRetention.accepts(source: text, output: output)
-    let applied = retained && ComputerJSON.boolean(result["successful"]) != false && preferences.applied(in: result, dictation: false)
-    return ProcessingText(text: applied ? output : text, successful: applied, outputPreferenceFailed: !applied)
+    throw ClarifyError(L("Use um serviço pessoal ou um computador."), code: "inference_retired")
   }
   @MainActor func dictate(_ audio: URL, operationID: String, library: LocalLibrary,
     preferences: OutputPreferences = OutputPreferences(), policy: DictationPolicy = .legacy) async throws -> CloudDictation {
-    let effectivePreferences = policy.frozenPreferences(preferences, capabilities: processingCapabilities, catalog: textActions, computer: false)
-    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
-    let identity = captureTextIdentity()
-    try await waitForAutomaticRefresh()
-    guard acceptsTextIdentity(identity) else { throw CancellationError() }
-    try begin(); defer { end() }
-    if scope != nil && ProcessInfo.processInfo.systemUptime - lastSyncAttempt >= 60 {
-      do { try await syncImpl(library) }
-      catch {
-        try Task.checkCancellation()
-        guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
-        locked { syncError = L("O ditado usou a última versão salva no servidor. Há palavras ou snippets pendentes de sincronização.") }
-      }
-    }
-    guard configured else { throw ClarifyError(L("Entre na conta novamente."), code: "authentication_required") }
-    guard acceptsTextIdentity(identity) else { throw CancellationError() }
-    try processingCapabilities.validate(effectivePreferences)
-    let requiresOriginalConfirmation = processingCapabilities.available
-    let policyFields = try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: false)
-    let bytes = try Data(contentsOf: audio)
-    guard bytes.count <= 24 * 1024 * 1024, UUID(uuidString: operationID) != nil else { throw ClarifyError(L("Grave um trecho menor.")) }
-    let boundary = "Clarify-\(UUID().uuidString)"
-    var body = Data()
-    func append(_ value: String) { body.append(Data(value.utf8)) }
-    append("--\(boundary)\r\nContent-Disposition: form-data; name=\"operation_id\"\r\n\r\n\(operationID)\r\n")
-    for (key, value) in try effectivePreferences.requestFields(supported: outputPreferencesSupported, dictation: true).sorted(by: { $0.key < $1.key }) {
-      append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n")
-    }
-    for (key, value) in policyFields.sorted(by: { $0.key < $1.key }) {
-      append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n")
-    }
-    append("--\(boundary)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"clip.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n")
-    body.append(bytes); append("\r\n--\(boundary)--\r\n")
-    let (code, result) = try await perform("POST", "/v1/dictations", body: body, contentType: "multipart/form-data; boundary=\(boundary)")
-    guard code == 200 else {
-      throw Self.processingFailure(code, result: result, operationID: operationID)
-    }
-    guard let outcome = try? JSONDecoder().decode(CloudDictation.self, from: JSONSerialization.data(withJSONObject: result)),
-      !outcome.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !outcome.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      outcome.text.utf8.count <= 32_768, outcome.transcript.utf8.count <= 32_768 else { throw ClarifyError(L("O Clarify retornou um resultado inválido.")) }
-    guard acceptsTextIdentity(identity) else { throw CancellationError() }
-    guard policy.accepts(result) else { throw ComputerFailure.invalidResponse }
-    if !effectivePreferences.applied(in: result, dictation: true, requireOriginalConfirmation: requiresOriginalConfirmation) {
-      let preserveFallback = !outcome.rewritten && effectivePreferences.hasDictationFallback(in: result)
-      return CloudDictation(transcript: outcome.transcript, text: preserveFallback ? outcome.text : outcome.transcript, rewritten: false,
-        snippetExpanded: preserveFallback && outcome.snippetExpanded == true, outputPreferenceFailed: true)
-    }
-    // Hosted processing substitutes snippets before rewriting. This is the
-    // terminal text, including the expanded fallback when rewriting fails;
-    // applying the local library again would recursively alter saved content.
-    if [.preserve, .light].contains(policy.mode) {
-      return CloudDictation(transcript: outcome.transcript, text: outcome.text, rewritten: outcome.rewritten,
-        snippetExpanded: outcome.snippetExpanded, policyApplied: true)
-    }
-    return outcome
+    throw ClarifyError(L("Use um serviço pessoal ou um computador."), code: "inference_retired")
   }
 }

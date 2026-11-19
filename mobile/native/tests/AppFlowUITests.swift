@@ -106,7 +106,9 @@ final class AppFlowUITests: XCTestCase {
     }
     let keyboard = app.keyboards.firstMatch
     if keyboard.exists {
-      let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
+      let keyboardPage = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
+      let accountPage = app.scrollViews["app.account"].firstMatch
+      let page = keyboardPage.exists ? keyboardPage : accountPage
       guard page.exists && page.frame.intersects(app.frame) else {
         diagnose("keyboard-dismissal-page-missing"); XCTFail("Cannot reach the page to dismiss the keyboard"); return
       }
@@ -132,13 +134,8 @@ final class AppFlowUITests: XCTestCase {
     let button = app.buttons[identifier].firstMatch
     XCTAssertTrue(button.waitForExistence(timeout: 15))
     if !button.isHittable {
-      diagnose("keyboard-before-scroll-\(identifier)")
-      let page = app.descendants(matching: .any)["app.keyboard-page"].firstMatch.scrollViews.firstMatch
-      XCTAssertTrue(page.exists && page.isHittable)
-      let distance = min(max(button.frame.maxY - page.frame.maxY + 16, 16), page.frame.height * 0.6)
-      let start = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85))
-      let finish = page.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.85 - distance / page.frame.height))
-      start.press(forDuration: 0.1, thenDragTo: finish)
+      // Use the visible viewport above the system keyboard, including on Account.
+      guard reveal(button, identifier: identifier) else { return }
     }
     let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
     XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed, "Reach \(identifier) with the keyboard open")
@@ -266,6 +263,11 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertEqual(app.staticTexts["actions.result"].label, "Fixture result: done")
     press("actions.copy")
     XCTAssertTrue(app.staticTexts["Texto copiado."].waitForExistence(timeout: 10))
+    let completedPosts = fixture("/__fixture/state")["processing"] as? [[String: Any]] ?? []
+    XCTAssertEqual(completedPosts.count, (previousPosts ?? 0) + 1)
+    let firstRequest = completedPosts.last?["value"] as? [String: Any]
+    XCTAssertEqual(firstRequest?["language"] as? String, "de")
+    XCTAssertEqual(firstRequest?["writing_style"] as? String, "casual")
     capture("actions-owned-result")
     press("actions.choose"); press("actions.option.saved:translation:1")
     absent(app.staticTexts["actions.result"])
@@ -277,6 +279,7 @@ final class AppFlowUITests: XCTestCase {
     press("actions.run")
     XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
     let posted = fixture("/__fixture/state")["processing"] as? [[String: Any]]
+    XCTAssertEqual(posted?.count, (previousPosts ?? 0) + 2)
     let translation = posted?.last?["value"] as? [String: Any]
     XCTAssertEqual(translation?["language"] as? String, "ru")
     capture("actions-translation-russian")
@@ -292,25 +295,25 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.waitForExistence(timeout: 30))
     capture("onboarding-first-open")
     press("onboarding.skip")
-    // The first route after cold launch uses the same readiness budget as
-    // onboarding presentation; loaded simulators can settle after 15 seconds.
-    guard app.textFields["account.email"].waitForExistence(timeout: 30) else {
-      diagnose("account-form-after-onboarding")
-      XCTFail("The account form did not appear after closing onboarding"); return
-    }
+    XCTAssertTrue(app.descendants(matching: .any)["app.keyboard-page"].firstMatch.waitForExistence(timeout: 30))
+    XCTAssertFalse(app.textFields["account.email"].exists)
+    XCTAssertFalse(app.tabBars.firstMatch.exists)
     if checkPersistence {
       app.terminate(); app.launch()
-      XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
+      XCTAssertTrue(app.buttons["computer.scan"].waitForExistence(timeout: 20))
       XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
-      press("processing.computer")
-      XCTAssertTrue(app.buttons["computer.scan"].waitForExistence(timeout: 10))
-      XCTAssertFalse(app.textFields["account.email"].exists, "Computer pairing does not require hosted sign-in")
-      XCTAssertFalse(app.tabBars.firstMatch.exists, "Choosing a mode alone does not authorize processing")
-      press("processing.hosted")
-      XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 10))
-      for provider in ["Google", "Microsoft", "GitHub"] {
-        XCTAssertTrue(app.buttons["Continuar com \(provider)"].exists, "Social sign-in remains available")
-      }
+    }
+    capture("computer-pairing-required")
+    press("computer.scan")
+    // The generated scanner supplies a synthetic invitation. Pairing, Keychain,
+    // readiness and the protected route all use the actual native contract.
+    tab("Início")
+    XCTAssertEqual(app.tabBars.buttons.count, 5)
+    verifyLibraryIsolation()
+    tab("Ajustes"); press("settings.account")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    for provider in ["Google", "Microsoft", "GitHub"] {
+      XCTAssertTrue(app.buttons["Continuar com \(provider)"].exists)
     }
     enter("clarify-e2e@example.test", in: app.textFields["account.email"], name: "email")
     XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
@@ -341,52 +344,49 @@ final class AppFlowUITests: XCTestCase {
     enter("123456", in: app.textFields["account.code"], name: "code")
     capture("login-code-keyboard-visible")
     pressWithKeyboard("account.verifyCode", field: app.textFields["account.code"], value: "123456")
-    tab("Início")
+    back(); tab("Início")
     XCTAssertEqual(app.tabBars.buttons.count, 5)
   }
-  func verifyLibraryDrafts(compact: Bool = false) {
-    tab("Dicionário")
-    capture("dictionary")
-    press("Adicionar palavra")
-    let word = app.textFields["Palavra"]
-    enter(compact ? "ui" : "Fixture draft", in: word, name: "dictionary-draft")
-    capture("dictionary-editor-keyboard-dirty")
-    press("Cancelar")
-    if !compact {
-      let savedWord = "fixture saved"
-      press("Adicionar palavra")
-      enter(savedWord, in: word, name: "dictionary-save")
-      enter("fixture alias", in: app.textFields["Variações"], name: "dictionary-alias")
-      press("Salvar"); absent(word)
-      let saved = (fixture("/v1/dictionary")["entries"] as? [[String: Any]])?.first { ($0["term"] as? String) == savedWord }
-      XCTAssertEqual(saved?["term"] as? String, savedWord, "The received dictionary payload retains the full term")
-      XCTAssertEqual(saved?["aliases"] as? [String], ["fixture alias"])
-      let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", savedWord)).firstMatch
-      XCTAssertTrue(row.waitForExistence(timeout: 15)); row.tap()
-      XCTAssertEqual(word.value as? String, savedWord)
-      XCTAssertEqual(app.textFields["Variações"].value as? String, "fixture alias")
-      capture("dictionary-saved-readback"); press("Cancelar")
+  func verifyLibraryIsolation() {
+    for label in ["Dicionário", "Snippets"] {
+      tab(label)
+      XCTAssertTrue(app.staticTexts["Use o dicionário e os snippets configurados no computador."].firstMatch.waitForExistence(timeout: 15))
+      XCTAssertFalse(app.buttons["Adicionar palavra"].exists)
+      XCTAssertFalse(app.buttons["Adicionar snippet"].exists)
+      capture("computer-library-\(label)")
     }
-    tab("Snippets"); capture("snippets")
-    press("Adicionar snippet")
-    let trigger = app.textFields["Frase de ativação"]
-    enter(compact ? "ui" : "fixture phrase", in: trigger, name: "snippet-draft")
-    capture("snippets-editor-keyboard-dirty")
-    press("Cancelar")
+  }
+  func signOutKeepingComputer() {
+    press("account.logout")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    back(); tab("Início")
+    XCTAssertEqual(app.tabBars.buttons.count, 5, "Account logout must keep LAN pairing")
+    app.terminate(); app.launch()
+    tab("Início")
+    XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
+    verifyLibraryIsolation()
+    tab("Ajustes"); press("settings.account")
+    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
+    capture("account-logout-keeps-computer")
+    back(); press("settings.processing")
+    XCTAssertTrue(app.staticTexts["computer.status"].waitForExistence(timeout: 15))
+    press("computer.manage"); press("computer.disconnect")
+    let alert = app.alerts.firstMatch
+    XCTAssertTrue(alert.waitForExistence(timeout: 15)); alert.buttons["Desconectar"].tap()
+    XCTAssertTrue(app.buttons["computer.scan"].waitForExistence(timeout: 15))
+    XCTAssertFalse(app.tabBars.firstMatch.exists, "Disconnect closes the protected workspace")
   }
   func testFirstPresentationAccountNavigationAndExplicitReplay() {
     signIn(checkPersistence: true)
     XCTAssertFalse(app.buttons["home.account"].exists)
     capture("dictation")
-    verifyLibraryDrafts()
+    verifyLibraryIsolation()
     tab("Ajustes"); capture("settings")
     press("settings.account")
     XCTAssertTrue(app.descendants(matching: .any)["app.account"].firstMatch.waitForExistence(timeout: 15))
-    let weeklyUsage = app.staticTexts["account.weeklyUsage"]
-    XCTAssertTrue(weeklyUsage.waitForExistence(timeout: 15))
-    XCTAssertEqual(weeklyUsage.label, "12,5% usados · 82,5% restantes")
-    XCTAssertTrue(app.staticTexts["account.usageReset"].label.hasPrefix("Próxima renovação: "))
-    XCTAssertFalse(app.buttons["processing.computer"].exists, "Identity and usage do not become PC controls")
+    XCTAssertTrue(app.staticTexts["clarify-e2e@example.test"].firstMatch.waitForExistence(timeout: 15))
+    XCTAssertFalse(app.staticTexts["account.weeklyUsage"].exists)
+    XCTAssertFalse(app.staticTexts["account.usageReset"].exists)
     capture("account"); back()
     XCTAssertTrue(app.descendants(matching: .any)["app.preferences"].firstMatch.exists)
     press("settings.processing"); capture("processing"); back()
@@ -411,20 +411,16 @@ final class AppFlowUITests: XCTestCase {
     XCTAssertTrue(sharedLanguage.waitForExistence(timeout: 15))
     XCTAssertTrue(sharedLanguage.isSelected, "Text actions and dictation use the same output language")
     press("output.close"); press("settings.account")
-    press("account.logout")
-    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
-    app.terminate(); app.launch()
-    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 20))
-    XCTAssertFalse(app.descendants(matching: .any)["onboarding.welcome"].firstMatch.exists)
-    capture("login-after-logout")
+    signOutKeepingComputer()
   }
   func testCompactKeyboardAndActionLayout() {
     signIn(checkPersistence: false)
     capture("compact-dictation")
-    verifyLibraryDrafts(compact: true)
+    verifyLibraryIsolation()
     tab("Ajustes"); capture("compact-settings")
     press("settings.account")
-    XCTAssertTrue(app.staticTexts["account.weeklyUsage"].waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts["clarify-e2e@example.test"].firstMatch.waitForExistence(timeout: 15))
+    XCTAssertFalse(app.staticTexts["account.weeklyUsage"].exists)
     capture("compact-account"); back()
     press("settings.output")
     press("output.policy.clarity"); press("output.style.casual"); press("output.more"); press("output.language.de")
@@ -440,7 +436,12 @@ final class AppFlowUITests: XCTestCase {
     press("actions.run")
     waitForCatalogDiscovery()
     capture("compact-cancel-ready")
-    press("actions.cancel"); absent(app.buttons["actions.cancel"])
+    press("actions.cancel", allowScroll: false)
+    let cancel = app.buttons["actions.cancel"]
+    let cancelled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: cancel)
+    guard XCTWaiter.wait(for: [cancelled], timeout: 15) == .completed else {
+      diagnose("compact-cancel-remains"); XCTFail("Cancel did not end the action"); return
+    }
     _ = fixture("/__fixture/control", values: ["release": true])
     XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, previousPosts)
     XCTAssertEqual(text.value as? String, draft)
@@ -452,11 +453,11 @@ final class AppFlowUITests: XCTestCase {
     capture("compact-language-sheet"); press("actions.target.ru")
     press("actions.run")
     XCTAssertTrue(app.staticTexts["actions.result"].waitForExistence(timeout: 15))
+    XCTAssertEqual((fixture("/__fixture/state")["processing"] as? [Any])?.count, (previousPosts ?? 0) + 1)
+    XCTAssertEqual(app.staticTexts["actions.result"].label, "Fixture result: ok")
     press("actions.copy")
     XCTAssertTrue(app.staticTexts["Texto copiado."].waitForExistence(timeout: 10))
     capture("compact-copied-result")
-    tab("Ajustes"); press("settings.account"); press("account.logout")
-    XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
-    capture("compact-logout")
+    tab("Ajustes"); press("settings.account"); signOutKeepingComputer()
   }
 }

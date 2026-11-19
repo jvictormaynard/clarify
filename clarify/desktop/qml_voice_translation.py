@@ -131,9 +131,6 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
 
     def workflow_config(self) -> VoiceTranslationConfig:
         config = self._config()
-        if self._account is not None and self._account.managed:
-            # Preserve language choices, while ignoring personal model routes.
-            return VoiceTranslationConfig(languages=config.voice_translation.languages)
         return config.voice_translation
 
     @staticmethod
@@ -182,10 +179,6 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         audio_source: RecordingSnapshot,
         source_language: str,
     ) -> TranscriptionResult:
-        if self._account is not None and self._account.managed:
-            return self._account.transcribe(
-                audio_source, source_language, self._dictionary_service
-            )
         config = self._config()
         route = self._transcription_route(config)
         provider_id = route.provider_id
@@ -222,16 +215,6 @@ class QmlVoiceTranslationProvider(VoiceTranslationProvider):
         return result
 
     def translate(self, request: VoiceTranslationRequest) -> TranslationResult:
-        if self._account is not None and self._account.managed:
-            text = self._account.transform_text(
-                request.text,
-                "translate",
-                request.target_language,
-                cancel=_registry_cancel_token(request.cancel_event),
-            )
-            return TranslationResult(
-                text, "clarify", "openai/gpt-oss-20b", request.target_language
-            )
         config = self._config()
         voice_config = self._voice_translation_config(config)
         route = voice_config.route

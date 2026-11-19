@@ -231,7 +231,6 @@ ApplicationWindow {
             }
 
             GridLayout {
-                visible: !(settings.accountState.managed || settings.accountState.signedIn)
                 Layout.fillWidth: true
                 columns: 4
                 columnSpacing: 7

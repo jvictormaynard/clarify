@@ -33,7 +33,9 @@ class PracticePackagingTests(unittest.TestCase):
                 r"foreach \(\$backendModule in @\((.*?)\)\)", script, re.S
             ).group(1)
             for name in re.findall(r'"([^"]+)"', backend):
-                shutil.copy2(ROOT / name, stage)
+                target = stage / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, target)
             shared = re.search(
                 r"foreach \(\$catalogFile in @\((.*?)\)\)", script, re.S
             ).group(1)
@@ -45,9 +47,13 @@ class PracticePackagingTests(unittest.TestCase):
             command = (
                 "import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); "
                 "import clarify.desktop.qml_app; "
-                "from clarify.desktop import dictation_practice, practice_local_model; "
-                "assert all(Path(m.__file__).is_relative_to(Path(sys.argv[1])) "
-                "for m in (dictation_practice, practice_local_model))"
+                "from clarify.desktop import dictation_practice, practice_local_model, computer_webrtc; "
+                "import computer_live, local_asr_live, local_asr_live_assets; "
+                "import opencode_provider, opencode_acp, opencode_runtime; "
+                "assert all(Path(m.__file__).resolve().is_relative_to(Path(sys.argv[1]).resolve()) "
+                "for m in (dictation_practice, practice_local_model, computer_webrtc, "
+                "computer_live, local_asr_live, local_asr_live_assets, "
+                "opencode_provider, opencode_acp, opencode_runtime))"
             )
             result = subprocess.run(
                 [sys.executable, "-I", "-c", command, str(stage)],

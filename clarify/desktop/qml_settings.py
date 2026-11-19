@@ -69,12 +69,19 @@ from microphone_controls import (
     SoundDeviceMicrophoneInventory,
 )
 from provider_http import CancellationToken
+from opencode_provider import RECOMMENDED_FREE_REWRITE_MODEL
 from provider_registry import PROVIDER_REGISTRY
-from provider_types import ModelCatalog, ProviderCapability, ProviderConnection
+from provider_types import (
+    ModelCatalog,
+    ProviderCapability,
+    ProviderConnection,
+    ProviderError,
+)
 from repositories import (
     AppConfig,
     ApplicationRepositories,
     ConfigRepository,
+    SUPPORTED_INTERFACE_LANGUAGES,
     SUPPORTED_LANGUAGES,
     SUPPORTED_UI_MODES,
 )
@@ -381,6 +388,17 @@ def _format_local_requirements(requirements: dict[str, Any]) -> str:
     return f"{platform} · {download} download · {disk} disk · {memory} RAM{suffix}"
 
 
+def _local_requirement_lines(values):
+    return [
+        f"{format_requirement_bytes(values.get('download_bytes', 0))} maximum download",
+        f"{format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
+        f"{format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
+        str(values.get("platform", "Windows x64")),
+        str(values.get("compute", "")),
+        str(values.get("runtime", "")),
+    ]
+
+
 def _default_microphone_inventory_source() -> Any | None:
     """Build the optional PortAudio inventory without making it a hard import."""
 
@@ -486,6 +504,7 @@ class QmlSettingsController(QObject):
     textActionsChanged = Signal()
     textActionPreviewChanged = Signal()
     chatgptStateChanged = Signal()
+    personalSetupStateChanged = Signal()
     accountStateChanged = Signal()
     _accountFinished = Signal(object)
     _libraryPreferenceSynced = Signal(str, str)
@@ -604,6 +623,25 @@ class QmlSettingsController(QObject):
         self._chatgpt_initialized = False
         self._chatgpt_account_reserved = False
         self._chatgpt_cancel = threading.Event()
+        self._personal_setup = {
+            "language": repositories.config.load().recognition_language,
+            "recommendation": {
+                "providerId": "local_asr",
+                "modelId": "ggml-base",
+                "label": "Whisper Base",
+                "reason": "Check this device before installing.",
+                "executionDevice": "cpu",
+                "downloadBytes": 0,
+                "installed": False,
+            },
+            "busy": False,
+            "error": "",
+        }
+        self._personal_setup_generation = 0
+        self._personal_setup_cancel = CancellationToken()
+        self._opencode_models = ()
+        self._opencode_model_labels = {}
+
         self._library_sync_pending = False
         self._library_sync_expected_identity = None
         self._library_sync_context = None
@@ -661,6 +699,7 @@ class QmlSettingsController(QObject):
         self._local_state: LocalASRProductState = self._local_product.state
         self._local_profile = "ggml-small"
         self._local_device = "cpu"
+        self._local_exact_pack = False
         self._local_generation = 0
         self._local_benchmark_busy = False
         self._local_benchmark_detail = ""
@@ -797,6 +836,7 @@ class QmlSettingsController(QObject):
             self.hotkeyChanged,
             self.accountStateChanged,
             self.chatgptStateChanged,
+            self.personalSetupStateChanged,
             self.modelCatalogChanged,
             self.providerStateChanged,
             self.dirtyChanged,
@@ -815,7 +855,7 @@ class QmlSettingsController(QObject):
             self._local_product.refresh_async()
         self.refreshMicrophoneInventory()
         self._background_timer.start()
-        if self._text_actions.managed():
+        if self._text_actions.account_owned():
             self.refreshTextActions()
 
     @Slot()
@@ -829,6 +869,8 @@ class QmlSettingsController(QObject):
                 self._apply_local_state((generation, payload))
             elif kind == "local_devices":
                 self._apply_local_devices(payload)
+            elif kind == "personal_setup":
+                self._finish_personal_setup(generation, payload)
             elif kind == "chatgpt":
                 self._finish_chatgpt_command(generation, payload)
             elif kind == "text_action_preview":
@@ -1099,7 +1141,7 @@ class QmlSettingsController(QObject):
         try:
             bindings = self._text_actions.bindings_for(config)
         except Exception:
-            if not self._text_actions.managed():
+            if not self._text_actions.account_owned():
                 raise
             bindings = native_bindings(config, ())
         self._hotkey_applier(bindings)
@@ -1677,7 +1719,6 @@ class QmlSettingsController(QObject):
             or self._provider_tokens
             or self.localAsrBusy
             or self.localBenchmarkBusy
-            or self._account.snapshot().get("signedIn")
         ):
             self._set_error(
                 ValueError("Finalize a operação antes de alterar a conta ChatGPT.")
@@ -2224,8 +2265,7 @@ class QmlSettingsController(QObject):
         permitted = self.dictationCleanupRefinementAllowed
         route = self._config.workflow("transcription")
         if (
-            getattr(self._account, "managed", False) is not True
-            and self._config.dictation_cleanup_level is None
+            self._config.dictation_cleanup_level is None
             and route.provider_id in PROVIDER_REGISTRY.provider_ids
             and PROVIDER_REGISTRY.supports(
                 route.provider_id, ProviderCapability.MULTIMODAL_AUDIO
@@ -2241,8 +2281,6 @@ class QmlSettingsController(QObject):
 
     @Property(bool, notify=configChanged)
     def dictationCleanupRefinementAllowed(self) -> bool:
-        if getattr(self._account, "managed", False) is True:
-            return getattr(self._account, "signed_in", False) is True
         local = self._config.workflow("transcription").provider_id == "local_asr"
         scope = "local_asr_refinement" if local else "refinement"
         return self._config.workflow(scope).enabled and (
@@ -3155,7 +3193,7 @@ class QmlSettingsController(QObject):
             state = self.chatgptState
             return (provider, state["accountId"], str(state["generation"]))
         if provider == LOCAL_ASR_PROVIDER_ID:
-            return (provider, "", "")
+            return (provider, self._config.local_asr_device, "")
         config = self._provider_config(provider)
         return (
             provider,
@@ -3167,7 +3205,9 @@ class QmlSettingsController(QObject):
     def routeModelStatus(self) -> str:
         key = self._model_connection_key()
         if (key[0] == "chatgpt" and not self._chatgpt_ready()) or (
-            key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt"} and not key[2]
+            key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt", "opencode"}
+            and not key[2]
+            and not (key[0] == "openai" and self._personal_local_endpoint(key[1]))
         ):
             return "not_configured"
         if key == self._model_loading_key:
@@ -3217,12 +3257,14 @@ class QmlSettingsController(QObject):
         """Discover models without saving credentials or changing the route."""
         if not self._processing_allowed():
             return False
-        if getattr(self._account, "managed", False) is True:
-            return False
         key = self._model_connection_key()
         if (
             (key[0] == "chatgpt" and not self._chatgpt_ready())
-            or (key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt"} and not key[2])
+            or (
+                key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt", "opencode"}
+                and not key[2]
+                and not (key[0] == "openai" and self._personal_local_endpoint(key[1]))
+            )
         ) or key == self._model_loading_key:
             return False
         if self._model_token is not None:
@@ -3244,12 +3286,18 @@ class QmlSettingsController(QObject):
         def discover() -> None:
             try:
                 if key[0] == LOCAL_ASR_PROVIDER_ID:
-                    from local_asr_catalog import MODELS, installer_for
+                    from local_asr_catalog import MODELS, installer_for, model_device
 
                     installed = []
                     for model in MODELS:
                         token.raise_if_cancelled()
-                        if installer_for(model, "cpu").status()["state"] == "installed":
+                        device = model_device(model, key[1])
+                        if (
+                            installer_for(model, "cpu").status()["state"] == "installed"
+                            or device.startswith("cuda:")
+                            and installer_for(model, device).status()["state"]
+                            == "installed"
+                        ):
                             installed.append(model)
                     catalog = ModelCatalog(audio_models=tuple(installed))
                 else:
@@ -3295,7 +3343,7 @@ class QmlSettingsController(QObject):
             "download:runtime": "1 of 5 · Downloading engine",
             "verify:runtime": "2 of 5 · Verifying engine",
             "extract:runtime": "3 of 5 · Installing engine",
-            "download:model": "4 of 5 · Downloading Whisper Small",
+            "download:model": "4 of 5 · Downloading speech model",
             "verify:model": "5 of 5 · Verifying model",
             "complete": "Ready to use",
         }
@@ -3314,15 +3362,7 @@ class QmlSettingsController(QObject):
 
     @Property("QVariantList", notify=providerStateChanged)
     def localAsrRequirementsList(self) -> list[str]:
-        values = self._local_state.requirements or {}
-        return [
-            f"{format_requirement_bytes(values.get('download_bytes', 0))} maximum download",
-            f"{format_requirement_bytes(values.get('disk_bytes', 0))} free disk",
-            f"{format_requirement_bytes(values.get('memory_bytes', 0))} RAM",
-            str(values.get("platform", "Windows x64")),
-            str(values.get("compute", "")),
-            str(values.get("runtime", "")),
-        ]
+        return _local_requirement_lines(self._local_state.requirements or {})
 
     @Property(bool, notify=providerStateChanged)
     def localBenchmarkBusy(self):
@@ -3343,6 +3383,7 @@ class QmlSettingsController(QObject):
             not self._processing_allowed()
             or self.localAsrBusy
             or self._local_benchmark_busy
+            or not self.localSupportsGpu
         ):
             return False
         from local_asr import default_manifest_path
@@ -3390,22 +3431,47 @@ class QmlSettingsController(QObject):
 
         return list(PROFILE_LABELS)
 
+    @Property("QStringList", notify=providerStateChanged)
+    def localModelIds(self):
+        from local_asr_catalog import MODELS
+
+        return list(MODELS)
+
     @Property(int, notify=providerStateChanged)
     def localProfileIndex(self):
         from local_asr_catalog import MODELS
 
         return MODELS.index(self._local_profile)
 
+    @Property(str, notify=providerStateChanged)
+    def localModelDescription(self):
+        from local_asr_catalog import PROFILE_DESCRIPTIONS
+
+        return PROFILE_DESCRIPTIONS[self._local_profile]
+
+    @Property(bool, notify=providerStateChanged)
+    def localSupportsGpu(self):
+        from local_asr_catalog import CPU_ONLY_MODELS
+
+        return self._local_profile not in CPU_ONLY_MODELS
+
+    def _available_local_devices(self):
+        return [
+            item
+            for item in self._local_devices
+            if self.localSupportsGpu or item["id"] == "cpu"
+        ]
+
     @Property("QStringList", notify=providerStateChanged)
     def localDevices(self):
-        return [item["label"] for item in self._local_devices]
+        return [item["label"] for item in self._available_local_devices()]
 
     @Property(int, notify=providerStateChanged)
     def localDeviceIndex(self):
         return next(
             (
                 i
-                for i, item in enumerate(self._local_devices)
+                for i, item in enumerate(self._available_local_devices())
                 if item["id"] == self._local_device
             ),
             1,
@@ -3442,24 +3508,31 @@ class QmlSettingsController(QObject):
 
     @Slot(int, result=bool)
     def selectLocalDevice(self, index):
+        devices = self._available_local_devices()
         if (
             self.localAsrBusy
             or self._local_benchmark_busy
-            or not 0 <= index < len(self._local_devices)
+            or not 0 <= index < len(devices)
         ):
             return False
-        return self._browse_local(self._local_profile, self._local_devices[index]["id"])
+        return self._browse_local(self._local_profile, devices[index]["id"])
 
-    def _browse_local(self, model, device):
+    def _browse_local(self, model, device, *, exact_pack=False):
         if not self._processing_allowed():
             return False
         try:
-            from local_asr_catalog import ModelInstaller
+            from local_asr_catalog import ModelInstaller, installer_for, model_device
 
+            device = model_device(model, device)
             adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
-            backend = adapter.select_backend(model, "cpu")
+            backend = adapter.select_backend(model, device if exact_pack else "cpu")
+            installer = (
+                installer_for(model, device)
+                if exact_pack
+                else ModelInstaller(model, adapter.engines, self._local_devices, device)
+            )
             product = LocalASRProductController(
-                installer=ModelInstaller(model, adapter.engines, self._local_devices),
+                installer=installer,
                 backend=backend,
             )
         except Exception as error:
@@ -3468,6 +3541,7 @@ class QmlSettingsController(QObject):
         self._local_generation += 1
         generation = self._local_generation
         self._local_profile, self._local_device = model, device
+        self._local_exact_pack = exact_pack
         self._unsubscribe_local_state()
         self._local_product.cancel()
         self._local_product = product
@@ -3591,8 +3665,6 @@ class QmlSettingsController(QObject):
         """Validate and persist the selected cloud provider without blocking QML."""
         if not self._processing_allowed():
             return False
-        if getattr(self._account, "managed", False) is True:
-            return False
 
         provider_id = self._selected_provider_id
         if provider_id == LOCAL_ASR_PROVIDER_ID:
@@ -3612,7 +3684,16 @@ class QmlSettingsController(QObject):
         if provider_id == "chatgpt" and not self._chatgpt_ready():
             self._set_error(ValueError("Conecte o ChatGPT e permita o uso do plano."))
             return False
-        if not api_key and provider_id != "chatgpt":
+        if (
+            not api_key
+            and provider_id not in {"chatgpt", "opencode"}
+            and not (
+                provider_id == "openai"
+                and self._personal_local_endpoint(
+                    self._provider_base_url_draft.strip() or provider_config.base_url
+                )
+            )
+        ):
             self._set_error(
                 ValueError("Enter an API key before validating the provider")
             )
@@ -3739,7 +3820,8 @@ class QmlSettingsController(QObject):
             or self._local_benchmark_busy
         ):
             return False
-        self._local_device = "auto"
+        if not self._local_exact_pack:
+            self._local_device = "auto"
         try:
             self._local_product.install_async()
         except Exception as error:
@@ -3796,6 +3878,7 @@ class QmlSettingsController(QObject):
         self._account_shutdown = True
         self._history_correction_sync.stop()
         self._history_corrections.clear()
+        self._personal_setup_cancel.cancel()
         self._background_mailbox.close()
         self._background_timer.stop()
         self._microphone_inventory_shutdown = True
@@ -3852,11 +3935,15 @@ class QmlSettingsController(QObject):
         self.loaded.emit()
         return True
 
-    @Property(str, constant=True)
+    @Property(str, notify=configChanged)
     def uiLanguage(self):
         from shared.localization import device_language
 
-        return device_language()
+        return (
+            device_language()
+            if self._config.interface_language == "auto"
+            else self._config.interface_language
+        )
 
     @Property("QVariantMap", notify=accountStateChanged)
     def accountState(self):
@@ -4239,6 +4326,450 @@ class QmlSettingsController(QObject):
             return False
         return self._practice.command(action)
 
+    @Property("QVariantMap", notify=personalSetupStateChanged)
+    def personalSetupState(self):
+        state = self._personal_setup
+        recommendation = dict(state["recommendation"])
+        if (
+            self._local_exact_pack
+            and recommendation["modelId"] == self._local_profile
+            and recommendation["executionDevice"] == self._local_device
+        ):
+            recommendation["installed"] = self._local_state.status == "installed"
+        chatgpt = self.chatgptState
+        options = [
+            {
+                "id": "none",
+                "label": "Keep the transcript",
+                "available": True,
+                "connected": True,
+                "modelId": "",
+                "modelLabel": "",
+                "access": "local",
+            },
+            {
+                "id": "chatgpt",
+                "label": "ChatGPT subscription",
+                "available": True,
+                "connected": bool(chatgpt["connected"] and chatgpt["planEnabled"]),
+                "models": self.chatgptTextCatalog.get("models", []),
+                "modelId": self._config.chatgpt.text_model,
+                "modelLabel": self._config.chatgpt.text_model,
+                "access": "subscription",
+            },
+            {
+                "id": "opencode",
+                "label": "OpenCode free models",
+                "available": True,
+                "runtimeInstalled": PROVIDER_REGISTRY.adapter("opencode").available(),
+                "models": [
+                    {
+                        "id": model,
+                        "label": self._opencode_model_labels.get(model, model),
+                        "recommended": model == RECOMMENDED_FREE_REWRITE_MODEL,
+                    }
+                    for model in self._opencode_models
+                ],
+                "connected": bool(self._opencode_models),
+                "modelId": self._config.opencode.text_model,
+                "modelLabel": self._opencode_model_labels.get(
+                    self._config.opencode.text_model, self._config.opencode.text_model
+                ),
+                "access": "free_limited",
+            },
+        ]
+        for provider in ("openai", "groq", "gemini"):
+            config = getattr(self._config, provider)
+            options.append(
+                {
+                    "id": provider,
+                    "label": PROVIDER_REGISTRY.describe(provider).display_name,
+                    "models": [
+                        {"id": model, "label": model}
+                        for model in self._provider_activity.get(provider, {}).get(
+                            "textModels", []
+                        )
+                    ],
+                    "available": True,
+                    "connected": bool(config.api_key)
+                    or (
+                        provider == "openai"
+                        and self._personal_local_endpoint(config.base_url)
+                    ),
+                    "modelId": config.text_model or config.audio_model,
+                    "modelLabel": config.text_model or config.audio_model,
+                    "access": "personal_key",
+                }
+            )
+        return {
+            **state,
+            "recommendation": recommendation,
+            "textOptions": options,
+            "busy": state["busy"]
+            or self.localAsrBusy
+            or bool(self._local_product.busy)
+            or self._chatgpt_busy,
+            "error": state["error"]
+            or (
+                self._local_state.detail
+                if self._local_state.status in {"error", "invalid"}
+                else ""
+            ),
+        }
+
+    @staticmethod
+    def _personal_local_endpoint(endpoint):
+        from provider_adapters import is_keyless_loopback_url
+
+        return is_keyless_loopback_url(endpoint)
+
+    @Slot(str, result=bool)
+    @Slot(str, str, result=bool)
+    def personalSetupCommand(self, action, value=""):
+        import json
+        from local_asr import LocalASRError
+        from local_asr_catalog import (
+            BATCH_LANGUAGES,
+            MODELS,
+            installer_for,
+            recommend_model,
+        )
+
+        if self._account_shutdown:
+            return False
+        if action == "cuda_license":
+            import webbrowser
+
+            return webbrowser.open("https://docs.nvidia.com/cuda/eula/index.html")
+        if action == "interface_language":
+            try:
+                payload = json.loads(value)
+                if (
+                    not isinstance(payload, dict)
+                    or set(payload) != {"interfaceLanguage"}
+                    or payload["interfaceLanguage"] not in SUPPORTED_INTERFACE_LANGUAGES
+                ):
+                    raise ValueError("Select a supported interface language.")
+                if self.dirty or self.providerDirty or self.personalSetupState["busy"]:
+                    raise ValueError("Finish the current operation before setup.")
+                config = self._config_repository.load()
+                persisted = self._config_repository.apply(
+                    replace(config, interface_language=payload["interfaceLanguage"])
+                )
+                self._replace_loaded_config(persisted)
+                self._personal_setup["error"] = ""
+                self.personalSetupStateChanged.emit()
+                return True
+            except Exception as error:
+                self._personal_setup["error"] = str(error)
+                self.personalSetupStateChanged.emit()
+                return False
+        if action == "cancel":
+            self._personal_setup_cancel.cancel()
+            self._personal_setup_generation += 1
+            self._personal_setup["busy"] = False
+            self.cancelLocalAsr()
+            self.personalSetupStateChanged.emit()
+            return True
+        if self.personalSetupState["busy"]:
+            return False
+        if action == "reset_text_choice":
+            if self.providerBusy:
+                return False
+            self._provider_api_key_draft = ""
+            self._provider_base_url_draft = self._config_provider_base_url(
+                self._selected_provider_id
+            )
+            activity = self._provider_activity.get(self._selected_provider_id)
+            if activity is not None:
+                activity.pop("error", None)
+            self._personal_setup["error"] = ""
+            self._set_error(None)
+            self.providerStateChanged.emit()
+            self.personalSetupStateChanged.emit()
+            return True
+        try:
+            payload = json.loads(value) if value else {}
+            if (
+                not isinstance(payload, dict)
+                or set(payload)
+                - {"language", "speechModelId", "textProvider", "textModelId"}
+                or any(type(v) is not str for v in payload.values())
+            ):
+                raise ValueError("Invalid personal setup options.")
+            language = payload.get("language", self._personal_setup["language"])
+            if language not in SUPPORTED_LANGUAGES:
+                raise ValueError("Select a supported language.")
+            config_before = self._config_repository.load()
+            if action not in {
+                "recommend",
+                "prepare_speech",
+                "configure",
+                "connect_opencode",
+                "complete",
+            }:
+                raise ValueError("Unknown personal setup command.")
+            if action in {"prepare_speech", "configure", "complete"}:
+                recommendation = self._personal_setup["recommendation"]
+                model = payload.get("speechModelId", recommendation["modelId"])
+                if model not in MODELS:
+                    raise ValueError("Select a supported speech model.")
+                if (
+                    model in BATCH_LANGUAGES
+                    and language != "auto"
+                    and language not in BATCH_LANGUAGES[model]
+                ):
+                    raise ValueError(
+                        "The selected batch model does not support this language"
+                    )
+                device = (
+                    recommendation["executionDevice"]
+                    if model == recommendation["modelId"]
+                    and language == recommendation.get("recognitionLanguage")
+                    else "cpu"
+                )
+                if action == "prepare_speech":
+                    if self._local_benchmark_busy:
+                        return False
+                    ready = self._browse_local(model, device, exact_pack=True)
+                    if ready and self._personal_setup["error"]:
+                        self._personal_setup["error"] = ""
+                        self.personalSetupStateChanged.emit()
+                    return ready
+            if action in {"configure", "complete"}:
+                if (
+                    not self._processing_allowed()
+                    or not self._account_can_change()
+                    or self.dirty
+                    or self.providerDirty
+                ):
+                    raise ValueError("Finish the current operation before setup.")
+                provider = payload.get("textProvider", "none")
+                text_model = payload.get("textModelId", "")
+                if provider not in {
+                    "none",
+                    "chatgpt",
+                    "opencode",
+                    "openai",
+                    "groq",
+                    "gemini",
+                }:
+                    raise ValueError("Select a personal text service.")
+                if provider != "none" and not text_model:
+                    raise ValueError("Select a text model.")
+                if provider == "chatgpt":
+                    self._chatgpt_model_account(text_model)
+                if provider == "opencode" and text_model not in self._opencode_models:
+                    raise ValueError(
+                        "Connect OpenCode and select an available free model."
+                    )
+                if (
+                    provider in {"openai", "groq", "gemini"}
+                    and not getattr(self._config, provider).api_key
+                    and not (
+                        provider == "openai"
+                        and self._personal_local_endpoint(self._config.openai.base_url)
+                    )
+                ):
+                    raise ValueError("Connect the personal provider first.")
+                if action == "configure":
+                    self._personal_setup["language"] = language
+                    if not self._browse_local(model, device, exact_pack=True):
+                        raise ValueError("Cannot prepare this speech model.")
+                    setup_product = self._local_product
+                    setup_local_generation = self._local_generation
+        except Exception as error:
+            self._personal_setup["error"] = str(error)
+            self.personalSetupStateChanged.emit()
+            return False
+        self._personal_setup_generation += 1
+        generation = self._personal_setup_generation
+        token = self._personal_setup_cancel = CancellationToken()
+        self._personal_setup.update(language=language, busy=True, error="")
+        mailbox = self._background_mailbox
+        self.personalSetupStateChanged.emit()
+
+        def run():
+            result, error = None, ""
+            try:
+                if action == "configure":
+                    # Browsing starts read-only verification. Wait for it before
+                    # installation, without blocking Qt or racing its worker.
+                    deadline = time.monotonic() + 30
+                    while setup_product.busy:
+                        token.raise_if_cancelled()
+                        if time.monotonic() > deadline:
+                            raise ValueError(
+                                "Speech model verification timed out. Retry setup."
+                            )
+                        time.sleep(0.025)
+                    result = (setup_product, setup_local_generation)
+                elif action == "connect_opencode":
+                    adapter = PROVIDER_REGISTRY.adapter("opencode")
+                    adapter.install(token)
+                    result = adapter.validate(ProviderConnection("", ""), token)
+                elif action == "complete":
+                    token.raise_if_cancelled()
+                    if (
+                        installer_for(model, device)
+                        .status(cancel_check=lambda: token.cancelled)
+                        .get("state")
+                        != "installed"
+                    ):
+                        raise ValueError(
+                            "Install and verify the speech model before continuing."
+                        )
+                    if device.startswith("cuda:"):
+                        adapter = PROVIDER_REGISTRY.adapter(LOCAL_ASR_PROVIDER_ID)
+                        try:
+                            adapter.select_backend(model, device).start(
+                                cancel_event=token
+                            )
+                        except (LocalASRError, OSError) as error:
+                            token.raise_if_cancelled()
+                            raise ValueError("setup_cuda_unavailable") from error
+                    result = (
+                        payload,
+                        model,
+                        device,
+                        provider,
+                        text_model,
+                        config_before,
+                    )
+                else:
+                    result = recommend_model(
+                        language,
+                        SUPPORTED_INTERFACE_LANGUAGES,
+                        token,
+                    )
+                    result["requirementsList"] = _local_requirement_lines(
+                        result.pop("requirements")
+                    )
+                    result["recognitionLanguage"] = language
+                token.raise_if_cancelled()
+            except Exception as failure:
+                error = (
+                    str(failure)
+                    if isinstance(failure, (ValueError, ProviderError))
+                    else "Personal setup failed. Check the selected service and try again."
+                )
+            mailbox.post("personal_setup", generation, (action, result, error))
+
+        threading.Thread(target=run, name="ClarifyPersonalSetup", daemon=True).start()
+        return True
+
+    def _finish_personal_setup(self, generation, payload):
+        if generation != self._personal_setup_generation:
+            return
+        action, result, error = payload
+        self._personal_setup.update(busy=False, error=error)
+        if not error:
+            try:
+                if action == "configure":
+                    product, local_generation = result
+                    if (
+                        product is not self._local_product
+                        or local_generation != self._local_generation
+                    ):
+                        raise ValueError("Speech model selection changed. Retry setup.")
+                    if not self._processing_allowed():
+                        raise ValueError("Finish the current operation before setup.")
+                    product.install_async()
+                    self.providerStateChanged.emit()
+                elif action == "recommend":
+                    self._personal_setup["recommendation"] = result
+                elif action == "connect_opencode":
+                    self._opencode_models = result.text_models
+                    self._opencode_model_labels = dict(result.display_names)
+                    self._provider_activity["opencode"] = {
+                        "textModels": list(result.text_models),
+                        "status": "active",
+                    }
+                    self.providerStateChanged.emit()
+                elif action == "complete":
+                    options, model, device, provider, text_model, before = result
+                    config = self._config_repository.load()
+                    if (
+                        config != before
+                        or self.dirty
+                        or self.providerDirty
+                        or not self._processing_allowed()
+                        or not self._account_can_change()
+                    ):
+                        raise ValueError("Settings changed. Try setup again.")
+                    routes = config.workflows.with_route(
+                        "transcription",
+                        replace(
+                            config.workflow("transcription"),
+                            provider_id="local_asr",
+                            model_id=model,
+                            enabled=True,
+                            independent=True,
+                            custom_endpoint="",
+                            account_id="",
+                        ),
+                    )
+                    for scope in (
+                        "refinement",
+                        "local_asr_refinement",
+                        "rewrite",
+                        "translation",
+                    ):
+                        old = config.workflow(scope)
+                        routes = routes.with_route(
+                            scope,
+                            replace(
+                                old,
+                                enabled=provider != "none",
+                                **(
+                                    {
+                                        "provider_id": provider,
+                                        "model_id": text_model,
+                                        "independent": True,
+                                        "custom_endpoint": getattr(
+                                            config, provider
+                                        ).base_url
+                                        if provider == "openai"
+                                        and self._personal_local_endpoint(
+                                            config.openai.base_url
+                                        )
+                                        else "",
+                                        "account_id": self._chatgpt_model_account(
+                                            text_model
+                                        )
+                                        if provider == "chatgpt"
+                                        else "",
+                                    }
+                                    if provider != "none"
+                                    else {}
+                                ),
+                            ),
+                        )
+                    updates = {
+                        "workflows": routes,
+                        "recognition_language": options.get("language", "auto"),
+                        "local_asr": replace(config.local_asr, audio_model=model),
+                        "local_asr_device": device,
+                        "local_asr_cloud_refinement": provider != "none",
+                        "onboarding_completed": True,
+                    }
+                    if provider != "none":
+                        updates[provider] = replace(
+                            getattr(config, provider), text_model=text_model
+                        )
+                    updated = replace(config, **updates)
+                    updated = self._text_actions.sync_legacy_routes(updated, config)
+                    if provider == "none":
+                        updated = self._text_actions.without_after_action(updated)
+                    persisted = self._config_repository.apply(updated)
+                    self._replace_loaded_config(persisted)
+                    if self._local_exact_pack:
+                        self._browse_local(model, device)
+                    self.saved.emit()
+            except Exception as failure:
+                self._personal_setup["error"] = str(failure)
+        self.personalSetupStateChanged.emit()
+
     @Slot(str, str, result=bool)
     def completeOnboarding(self, mode, key=""):
         """Commit the first-run choice through the existing config transaction."""
@@ -4260,10 +4791,6 @@ class QmlSettingsController(QObject):
                 if not account.get("signedIn"):
                     raise ValueError("Entre na conta novamente.")
             elif mode in {"byok", "local"}:
-                if self._account.snapshot().get("signedIn"):
-                    raise ValueError(
-                        "Saia da conta para usar sua chave ou modelos locais."
-                    )
                 if mode == "byok":
                     key = str(key).strip()
                     if not key.startswith("gsk_") or any(c.isspace() for c in key):
@@ -4635,20 +5162,6 @@ class QmlSettingsController(QObject):
             valid = method in {"resetAllHotkeys", "useLocalAsr"} and not args
         if not valid:
             raise ValueError("Invalid settings value")
-        if (
-            method
-            in {
-                "setRouteProviderId",
-                "setRouteModelId",
-                "setRouteEnabled",
-                "useLocalAsr",
-                "setLocalStreaming",
-                "setLocalAsrCloudRefinement",
-            }
-            and getattr(self._account, "managed", False) is True
-        ):
-            raise ValueError("A conta Clarify gerencia as opções de processamento.")
-
         if method == "setDictationCleanupLevel":
             from shared.dictation_policy import cleanup_level
 
@@ -4989,6 +5502,21 @@ class QmlSettingsController(QObject):
                 "models": [],
                 "textModels": list(activity.get("textModels", [])),
             }
+        if provider_id == "opencode":
+            activity = self._provider_activity.get(provider_id, {})
+            return {
+                "providerId": provider_id,
+                "displayName": metadata.display_name,
+                "kind": "cloud",
+                "status": activity.get("status", "not_configured"),
+                "busy": self._personal_setup["busy"],
+                "error": "",
+                "configured": bool(self._opencode_models),
+                "hasApiKey": False,
+                "baseUrl": "",
+                "models": [],
+                "textModels": list(self._opencode_models),
+            }
         if provider_id == LOCAL_ASR_PROVIDER_ID:
             state = self._local_state
             return {
@@ -5008,8 +5536,11 @@ class QmlSettingsController(QObject):
         config = self._provider_config(provider_id)
         activity = self._provider_activity.get(provider_id, {})
         has_key = bool(config.api_key.strip())
+        ready = has_key or (
+            provider_id == "openai" and self._personal_local_endpoint(config.base_url)
+        )
         status = str(
-            activity.get("status") or ("configured" if has_key else "not_configured")
+            activity.get("status") or ("configured" if ready else "not_configured")
         )
         return {
             "providerId": provider_id,
@@ -5019,7 +5550,7 @@ class QmlSettingsController(QObject):
             "detail": "",
             "error": str(activity.get("error") or ""),
             "busy": bool(activity.get("busy", False)),
-            "configured": has_key and status in {"configured", "active"},
+            "configured": ready and status in {"configured", "active"},
             "hasApiKey": has_key,
             "baseUrl": config.base_url or metadata.default_base_url,
             "models": list(activity.get("models", [])),
@@ -5152,8 +5683,11 @@ class QmlSettingsController(QObject):
                 return
         if isinstance(state, LocalASRProductState):
             self._local_state = state
-            self._model_catalogs.pop((LOCAL_ASR_PROVIDER_ID, "", ""), None)
+            for key in tuple(self._model_catalogs):
+                if key[0] == LOCAL_ASR_PROVIDER_ID:
+                    self._model_catalogs.pop(key)
             self.providerStateChanged.emit()
+            self.personalSetupStateChanged.emit()
 
     def _microphone_supports_explicit_selection(self) -> bool:
         backend_method = getattr(

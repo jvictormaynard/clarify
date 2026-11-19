@@ -50,11 +50,9 @@ class FinancialIntegrationTests(TestCase):
         self.public = Client()
 
     def test_public_finances_and_private_percentages_use_the_same_funded_ledger(self):
-        usage = self.account.get("/v1/usage")
-        self.assertEqual(usage.status_code, 200)
-        self.assertEqual(usage.json()["remaining_percent"], 100)
-        self.assertNotIn("usd", str(usage.json()).lower())
-        self.assertNotIn("audio", str(usage.json()).lower())
+        self.assertEqual(self.account.get("/v1/usage").status_code, 410)
+        # Historical financial settlement remains valid after HTTP retirement.
+        self.assertEqual(ledger.usage(self.user)["remaining_percent"], 100)
 
         operation, fresh = ledger.reserve(
             self.user, uuid.uuid4(), "private-content-hash", 1000

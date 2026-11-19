@@ -1,0 +1,5 @@
+Parakeet TDT 0.6B v3: NVIDIA Corporation. Licensed under CC-BY-4.0.
+Original: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+INT8 ONNX conversion: Fangjun Kuang (k2-fsa), csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8, revision ed5d745623472f97cfc2e6c2916ee248798fc5a8.
+Changes: quantized ONNX conversion; Clarify does not modify model files.
+Runtime: sherpa-onnx v1.12.14 (Apache-2.0), with ONNX Runtime (MIT).

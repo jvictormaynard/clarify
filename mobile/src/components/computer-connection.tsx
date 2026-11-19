@@ -12,11 +12,8 @@ export function ProcessingChoice() {
   const c = usePalette();
   const busy = accountBusy || !!account?.busy;
   return <View style={{ gap: 10 }}>
-    <Text style={[ui.small, { color: c.muted }]}>{t('Processar com')}</Text>
-    <View style={{ flexDirection: 'row', gap: 10 }}>
-      <View style={{ flex: 1 }}><Button testID="processing.hosted" primary={account?.mode !== 'computer'} disabled={busy} onPress={() => void computerCommand('hosted').catch(report)}>{t('Conta Clarify')}</Button></View>
-      <View style={{ flex: 1 }}><Button testID="processing.computer" primary={account?.mode === 'computer'} disabled={busy} onPress={() => void computerCommand('computer').catch(report)}>{t('Meu computador')}</Button></View>
-    </View>
+    <Text style={[ui.small, { color: c.muted }]}>{t('setup_phone_hint')}</Text>
+    <Button testID="processing.computer" disabled={busy} onPress={() => void computerCommand('computer').catch(report)}>{t('Meu computador')}</Button>
   </View>;
 }
 

@@ -1,5 +1,6 @@
 html.pill-surface, .pill-surface body, .pill-surface #root { background: transparent; min-width: 0; overflow: hidden; }
 .pill-stage { height: 100vh; position: relative; color: #fff; font-family: var(--font-sans); font-weight: 400; }
+.pill-live-transcript { position: absolute; bottom: 52px; left: 50%; translate: -50% 0; width: min(460px, calc(100% - 24px)); max-height: min(140px, calc(100vh - 70px)); overflow: auto; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: none; }
 .workflow-pill, .pill-menu, .pill-error { background: var(--background); border: 1px solid var(--border); }
 .workflow-pill { position: absolute; bottom: 6.4px; left: 50%; transform: translateX(-50%); border-radius: 20px; height: 36px; padding: 0; background: #0a0a0a; border-color: #1c1c1c; transition: width 280ms cubic-bezier(.215,.61,.355,1), height 280ms cubic-bezier(.215,.61,.355,1), border-color 180ms ease; }
 /* Use screen pixels for compact controls so icons and tooltips stay legible. */

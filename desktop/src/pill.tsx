@@ -44,6 +44,7 @@ function CaptureWave({level, active}: {level: number; active: boolean}) {
 }
 
 export interface WorkflowState {
+  liveTranscript?: string;
   surface: string; status: string; result: string; busy: boolean; recording: boolean;
   showRecordingStop: boolean; refinementFailed: boolean; canShowResult: boolean;
   recoveryResultVisible: boolean; canRetryTranscription: boolean; cancellationVisible: boolean; canUndoCancellation: boolean;
@@ -270,6 +271,7 @@ export function Pill() {
       </>}
       </div>
     </section>
+    {state.recording && state.liveTranscript && <div className="pill-live-transcript" role="status" aria-live="polite" aria-atomic="true" aria-label={t('Transcrição ao vivo')}>{state.liveTranscript}</div>}
     {languageMenu && <nav data-pill-interactive className="pill-menu pill-language-menu" onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave} aria-label={t('Idioma de saída')}>
       {['auto', 'en', 'pt', 'es', 'de', 'ru'].map(code => <button key={code} aria-pressed={state.language === code} onClick={() => {
         setLanguageMenu(false);

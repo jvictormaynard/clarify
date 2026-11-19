@@ -65,16 +65,3 @@ test("styles: output preference saves through the toolbar owner without saving p
 
 
 });
-
-settingsScenario({ initialPage: "style", quota: true }, () => {
-test("quota: styles hide tone for preserve without exposing personal provider routes", async ({ page }) => {
-  await expect(page.getByRole("combobox", { name: "Tom", exact: true })).toBeVisible();
-  const editing = page.getByRole("combobox", { name: "Edição do texto", exact: true });
-  await editing.click(); await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "Tom", exact: true })).toHaveCount(0);
-  await page.reload(); await navigate(page, "Estilo"); await expect(editing).toContainText("Manter minhas palavras");
-  await openDisclosure(page, "Mais opções");
-  await expect(page.getByRole("button", { name: "Modelo e instruções da revisão", exact: true })).toHaveCount(0);
-});
-
-});

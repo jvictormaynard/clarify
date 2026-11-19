@@ -249,6 +249,7 @@ def path_components(path: str) -> set[str]:
         ".github/dependabot.yml",
         ".github/workflows/dependency-audit.yml",
         "scripts/dependency_audit.py",
+        "scripts/javascript_dependency_audit.py",
     }:
         return {"audit"}
     if dependency_input(path):

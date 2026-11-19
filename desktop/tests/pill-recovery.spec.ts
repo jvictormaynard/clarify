@@ -57,4 +57,17 @@ test('pill recovery uses the current processing animation and distinct error pre
   await publish({ surface: 'cancelled', recoveryResultVisible: false, canShowResult: false, cancellationVisible: true, canUndoCancellation: true, feedbackTitle: 'Transcrição cancelada' });
   await expect(pill.locator('.pill-problem-icon')).toHaveCount(0);
   await expect(pill.getByRole('button', { name: 'Desfazer', exact: true })).toBeVisible();
+  const beforePartial = await calls();
+  await page.setViewportSize({ width: 660, height: 272 });
+  await publish({ surface: 'recording', feedbackVisible: false, recording: true, recordingReady: true, cancellationVisible: false, canUndoCancellation: false, status: 'Gravando', feedbackTitle: '', liveTranscript: 'Estas palavras ainda podem mudar.', showRecordingStop: true });
+  const partial = page.getByRole('status', { name: 'Transcrição ao vivo' });
+  await expect(partial).toContainText('Estas palavras ainda podem mudar.');
+  await page.clock.runFor(400);
+  await page.clock.resume();
+  await page.evaluate(() => document.fonts.ready);
+  expect(await calls()).toEqual(beforePartial);
+  await expect(partial).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('04-live-transcription.png'), omitBackground: true });
+  await publish({ surface: 'processing', recording: false });
+  await expect(partial).toHaveCount(0);
 });

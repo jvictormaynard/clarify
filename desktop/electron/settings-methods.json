@@ -15,6 +15,7 @@
   "practiceCommand",
   "computerCommand",
   "completeOnboarding",
+  "personalSetupCommand",
   "accountCommand",
   "chatgptCommand",
   "deleteHistoryEntry",

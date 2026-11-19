@@ -8,6 +8,12 @@ from enum import Enum
 from functools import partial
 from pathlib import Path
 
+# Frozen batch recognition workers must exit before Qt or profile startup.
+if __name__ == "__main__":
+    from multiprocessing import freeze_support
+
+    freeze_support()
+
 # Source autostart executes this file directly from ``clarify/desktop`` while
 # the root-level workflow modules remain package imports.  Put the repository
 # root on ``sys.path`` before importing either the Qt or application modules.

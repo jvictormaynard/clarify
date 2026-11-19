@@ -121,6 +121,11 @@ class ElectronDesktopProcess(QObject):
         self.bridge = bridge
         self._unavailable = unavailable
         self.protocol = SettingsProtocol(settings)
+        self._webrtc = getattr(getattr(settings, "_computer", None), "webrtc", None)
+        self._webrtc_timer = QTimer(self)
+        self._webrtc_timer.setInterval(20)
+        self._webrtc_timer.timeout.connect(self._flush_webrtc)
+        self._webrtc_timer.start()
         self.process = QProcess(self)
         self.process.readyReadStandardOutput.connect(self._read)
         self.process.readyReadStandardError.connect(self.process.readAllStandardError)
@@ -170,7 +175,9 @@ class ElectronDesktopProcess(QObject):
         self.history_timer.timeout.connect(self._check_history)
         self._connect_notifications(bridge, WORKFLOW_PROPERTIES, self._mark_workflow)
         self._connect_notifications(
-            status, ("audioLevel", "recordingReady", "targetIcon"), self._mark_workflow
+            status,
+            ("audioLevel", "recordingReady", "targetIcon", "liveTranscript"),
+            self._mark_workflow,
         )
         self._connect_notifications(
             settings, (*PROPERTIES, "quickMicrophoneId"), self._mark_settings
@@ -353,6 +360,7 @@ class ElectronDesktopProcess(QObject):
             recordingReady=self.status.recordingReady,
             level=self.status.audioLevel,
             targetIcon=self.status.targetIcon,
+            liveTranscript=getattr(self.status, "liveTranscript", ""),
             uiLanguage=self.settings.uiLanguage,
         )
         return state
@@ -487,10 +495,25 @@ class ElectronDesktopProcess(QObject):
         except Exception:
             return {**reply, "error": "Could not apply desktop command"}
 
+    def _flush_webrtc(self):
+        if self._webrtc is None:
+            self._webrtc = getattr(
+                getattr(self.settings, "_computer", None), "webrtc", None
+            )
+        if self._webrtc is not None and self._ready:
+            for message in self._webrtc.drain():
+                self._send(message)
+
     def _receive(self, request):
         if not isinstance(request, dict):
             return
         event = request.get("event")
+        if event == "computer-webrtc" and self._webrtc is not None:
+            self._webrtc.submit(request)
+            return
+        if event == "computer-webrtc-state" and self._webrtc is not None:
+            self._webrtc.connected = request.get("connected") is True
+            return
         if event == "ready":
             self._ready = True
             if self._recovering or self.failed or self._shutting_down:
@@ -552,6 +575,8 @@ class ElectronDesktopProcess(QObject):
         if self._shutting_down or self._recovering or self.failed:
             return
         self._ready = False
+        if self._webrtc is not None:
+            self._webrtc.stop()
         self._recovering = True
         self._stop_attempts = 0
         for timer in (

@@ -14,10 +14,8 @@ from secret_store import MemorySecretStore
 from text_actions import TextAction
 from workflow_config import WorkflowRoute
 from hotkey_config import HotkeyConflictError, HotkeyDefinition
-from provider_registry import ProviderRegistry
 from provider_http import CancellationToken, ProviderCancelledError
 from provider_types import RewriteResult, TranslationResult, TranscriptionResult
-from workflow_provider import WorkflowProviderService
 from clarify_account import AccountService, AccountError
 
 
@@ -37,7 +35,7 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
         )
         self.assertEqual([call[0] for call in self.server.calls], ["GET"])
         self.assertEqual(
-            self.service.projection()["textActionProfiles"][0]["providerId"], "clarify"
+            self.service.projection()["textActionProfiles"][0]["providerId"], "openai"
         )
         before = self.service.projection()
         self.account._generation += 1
@@ -97,134 +95,37 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
         with self.assertRaises(ValueError):
             self.save(TextAction("new", "New", "Edit.").to_mapping())
 
-    def test_snapshot_context_execute_idempotency_and_no_personal_fallback(self):
-        registry = Mock(spec=ProviderRegistry)
-        provider = WorkflowProviderService(
-            SimpleNamespace(current=self.repo.load),
-            Mock(),
-            registry=registry,
-            account=self.account,
-            text_actions=self.service,
-        )
+    def test_account_definition_uses_personal_profile_and_rejects_stale_identity(self):
+        provider, registry = LocalServiceFixture.provider(self)
+        provider.account = self.account
         snapshot = provider.snapshot_text_action("rewrite")
+        self.assertIsNotNone(snapshot.account_context)
+        self.assertEqual(snapshot.route.provider_id, "openai")
         self.assertEqual(
-            provider.transform_text_action(snapshot, "Source").text, "Hosted result"
+            provider.transform_text_action(snapshot, "Source").text, "Summary result"
         )
-        self.server.actions = []
-        self.assertEqual(
-            provider.transform_text_action(snapshot, "Source").text, "Hosted result"
+        self.assertIn(
+            "Account instruction.", registry.rewrite.call_args.args[1].instruction
         )
-        post = next(call[2]["json"] for call in self.server.calls if call[0] == "POST")
-        self.assertEqual(
-            set(post),
-            {"operation_id", "action_id", "action_revision", "text", "language"},
-        )
+        self.assertEqual([call[0] for call in self.server.calls], ["GET"])
         self.account._generation += 1
         with self.assertRaises(RuntimeError):
             provider.transform_text_action(snapshot, "Source")
-        registry.rewrite.assert_not_called()
+        self.assertEqual(registry.rewrite.call_count, 1)
 
-    def test_old_text_service_cannot_claim_an_explicit_output_language(self):
-        from shared.output_preferences import output_language_outcome
-
-        snapshot = self.service.resolve("rewrite")
-        response = {
-            "text": "Original language",
-            "action_id": snapshot.action.id,
-            "action_name": snapshot.action.name,
-            "action_revision": snapshot.action.revision,
-        }
-        with patch.object(self.account, "_request", return_value=(200, response)):
-            with self.assertRaises(AccountError) as failure:
-                self.account.execute_text_action(
-                    snapshot, "Source", "es", output_language="es"
-                )
-            self.assertEqual(failure.exception.code, "output_preferences_unapplied")
-            response.update(output_language_outcome("es", refined=True))
-            self.assertEqual(
-                self.account.execute_text_action(
-                    snapshot, "Source", "es", output_language="es"
-                ),
-                "Original language",
-            )
-
-    def test_hosted_tone_is_sent_and_must_be_confirmed_before_acceptance(self):
-        from shared.writing_style_policy import style_outcome
-
-        snapshot = self.service.resolve("rewrite")
-        self.account._output_preferences_identity = self.account.history_identity()
-        self.account._output_preferences_available = True
-        response = {
-            "text": "A complete result",
-            "action_id": snapshot.action.id,
-            "action_name": snapshot.action.name,
-            "action_revision": snapshot.action.revision,
-        }
-        with patch.object(
-            self.account, "_request", return_value=(200, response)
-        ) as request:
-            with self.assertRaises(AccountError) as failure:
-                self.account.execute_text_action(
-                    snapshot, "Source", writing_style="formal"
-                )
-            self.assertEqual(failure.exception.code, "output_preferences_unapplied")
-            self.assertEqual(
-                request.call_args.kwargs["json"]["writing_style"], "formal"
-            )
-            response.update(style_outcome("formal", refined=True))
-            self.assertEqual(
-                self.account.execute_text_action(
-                    snapshot, "Source", writing_style="formal"
-                ),
-                "A complete result",
-            )
-        self.account._output_preferences_available = False
+    def test_retired_account_methods_never_read_audio_or_send_requests(self):
         with patch.object(self.account, "_request") as request:
-            with self.assertRaises(AccountError):
-                self.account.execute_text_action(
-                    snapshot, "Source", writing_style="formal"
-                )
-            request.assert_not_called()
-
-    def test_restored_account_discovers_tone_support_and_rejects_identity_changes(self):
-        from shared.writing_style_policy import style_outcome
-
-        snapshot = self.service.resolve("rewrite")
-        account = {
-            "id": snapshot.account_context.user_id,
-            "email": "fixture@example.test",
-            "output_preferences_supported": True,
-        }
-        result = {
-            "text": "Complete result",
-            "action_id": snapshot.action.id,
-            "action_name": snapshot.action.name,
-            "action_revision": snapshot.action.revision,
-            **style_outcome("natural", refined=True),
-        }
-        with patch.object(
-            self.account, "_request", side_effect=[(200, account), (200, result)]
-        ) as request:
-            self.assertEqual(
-                self.account.execute_text_action(
-                    snapshot, "Source", writing_style="natural"
+            for call in (
+                lambda: self.account.transcribe(
+                    object(), "auto", object(), writing_style="natural"
                 ),
-                "Complete result",
-            )
-            self.assertEqual(
-                [call.args[:2] for call in request.call_args_list],
-                [("GET", "/v1/account"), ("POST", "/v1/text-actions/execute")],
-            )
-        self.account._output_preferences_identity = None
-        other = {**account, "id": "22222222-2222-4222-8222-222222222222"}
-        with patch.object(
-            self.account, "_request", return_value=(200, other)
-        ) as request:
-            with self.assertRaises(AccountError):
-                self.account.execute_text_action(
-                    snapshot, "Source", writing_style="natural"
-                )
-            request.assert_called_once_with("GET", "/v1/account")
+                lambda: self.account.transform_text("Source", "rewrite"),
+                lambda: self.account.execute_text_action(object(), "Source"),
+            ):
+                with self.assertRaises(AccountError) as failure:
+                    call()
+                self.assertEqual(failure.exception.code, "inference_retired")
+            request.assert_not_called()
 
     def test_managed_expired_context_rejects_without_personal_route(self):
         self.account._state.pop("user_id")
@@ -287,41 +188,6 @@ class HostedServiceTests(HostedServiceFixture, unittest.TestCase):
         self.assertEqual(results[0]["textActionContext"], before)
         self.assertEqual(results[0]["textActions"][0]["name"], "Account rewrite")
         self.assertNotEqual(self.service.context(), before)
-
-    def test_hosted_dictation_fields_and_response_identity_are_validated(self):
-        from workflows import RecordingSnapshot
-
-        snapshot = self.service.resolve("rewrite")
-        self.account._last_sync_attempt = self.account._clock()
-        response = {
-            "transcript": "Original",
-            "text": "Account result",
-            "rewritten": True,
-            "text_action_id": "rewrite",
-            "text_action_name": "Account rewrite",
-            "text_action_revision": 1,
-        }
-        request = Mock(
-            return_value=SimpleNamespace(
-                status_code=200, content=b"fixture", json=lambda: response
-            )
-        )
-        self.account.request = request
-        audio = RecordingSnapshot(
-            Path("fixture-not-read.wav"), b"fake-audio", CancellationToken()
-        )
-        result = self.account.transcribe(audio, "en", Mock(), text_action=snapshot)
-        self.assertEqual(result.raw_text, "Original")
-        self.assertEqual(result.text_action_name, "Account rewrite")
-        body = request.call_args.kwargs["data"]
-        self.assertEqual(
-            set(body),
-            {"operation_id", "language", "text_action_id", "text_action_revision"},
-        )
-        self.assertEqual(body["text_action_revision"], "1")
-        response["text_action_revision"] = 2
-        with self.assertRaises(AccountError):
-            self.account.transcribe(audio, "en", Mock(), text_action=snapshot)
 
     def test_library_bounds_and_unknown_fields_do_not_reach_http(self):
         count = len(self.server.calls)
@@ -927,7 +793,7 @@ class WorkflowActionTests(WorkflowActionFixture, unittest.TestCase):
         with self.assertRaises(ValueError):
             provider.transform_text_action(snapshot, "Source", "fr")
         provider.text_action_input_policy = TextActionInputPolicy.PAIRED_COMPUTER
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             provider.transform_text_action(
                 replace(snapshot, account_context=object()), "Source"
             )

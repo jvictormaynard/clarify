@@ -98,7 +98,7 @@ test('Settings unit tests need neither Qt nor a browser', () => {
 test('Windows builds embed the complete Electron shell without a Rust toolchain', () => {
   const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
   const commands = action.runs.steps.map(step => step.run || '').join('\n');
-  for (const command of ['npm ci', 'npm audit', 'npm run build',
+  for (const command of ['npm ci', '../scripts/javascript_dependency_audit.py --component desktop', 'npm run build',
     '../scripts/ci.py --task settings_browser',
     'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
   for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {

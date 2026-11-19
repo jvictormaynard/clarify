@@ -1100,6 +1100,33 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
         )
         self.assertEqual(self.processor.calls, [])
 
+    def test_status_asset_probe_does_not_hold_cancellation_lock(self):
+        _, session = self.pair()
+        entered, release, cancelled = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+        self.processor.refresh_live_readiness = lambda: (entered.set(), release.wait(2))
+        status = threading.Thread(target=self.host._status)
+        operation = self.operation()
+        cancel = threading.Thread(
+            target=lambda: (
+                self.host._cancel(session["device_id"], operation),
+                cancelled.set(),
+            )
+        )
+        status.start()
+        try:
+            self.assertTrue(entered.wait(1))
+            cancel.start()
+            self.assertTrue(cancelled.wait(0.5), "asset probing blocked cancellation")
+        finally:
+            release.set()
+            status.join(2)
+            if cancel.ident is not None:
+                cancel.join(2)
+
     def test_status_and_admission_use_each_requested_personal_workflow(self):
         registry = Mock(spec=ProviderRegistry)
         for name in (
@@ -1303,6 +1330,7 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
                     "computer_id": session["computer_id"],
                     "computer_name": "Test PC",
                     "ready": True,
+                    "live_recognition": False,
                     "action_readiness": {
                         "dictate": True,
                         "rewrite": True,

@@ -27,7 +27,6 @@ from dictionary_snippets import (
     _atomic_write_json,
     account_snippet_entries,
 )
-from provider_types import TranscriptionResult
 from secret_store import SecretStore, create_secret_store
 from shared.localization import device_language
 
@@ -335,16 +334,11 @@ class AccountService:
 
     @property
     def hosted(self):
-        with self._lock:
-            return bool(self._state.get("user_id"))
+        return False
 
     @property
     def managed(self):
-        """An expired managed session cannot silently fall back to personal keys."""
-        with self._lock:
-            return (
-                bool(self._state.get("user_id")) or self._state.get("mode") == "hosted"
-            )
+        return False
 
     @property
     def scope(self):
@@ -358,6 +352,8 @@ class AccountService:
                 "endpoint": self._state.get("endpoint", self.default_endpoint),
                 "signedIn": bool(self._state.get("user_id")),
                 "managed": self.managed,
+                "accountLibraryRequired": bool(self._state.get("user_id"))
+                or self._state.get("mode") == "hosted",
                 "email": self._state.get("email", ""),
                 "pending": self._state.get("pending", ""),
                 "hosted": self.hosted,
@@ -926,226 +922,14 @@ class AccountService:
         text_action_language="auto",
         expected_identity=None,
     ):
-        from shared.dictation_policy import cleanup_level as parse_cleanup_level
-        from shared.writing_style_policy import writing_style as parse_writing_style
-        from shared.output_preferences import output_language as parse_output_language
-
-        level = parse_cleanup_level(cleanup_level)
-        style = parse_writing_style(writing_style)
-        target = parse_output_language(output_language)
-        if not self.hosted:
-            raise AccountError("Entre na conta novamente.")
-        preference_identity = None
-        if target is not None or (
-            style is not None and style.value in {"formal", "casual", "very_casual"}
-        ):
-            with self._lock:
-                preference_identity = self.history_identity()
-                if preference_identity is None:
-                    raise AccountError("Entre na conta novamente.")
-                if (
-                    expected_identity is not None
-                    and expected_identity != preference_identity
-                ):
-                    raise AccountError("A conta mudou. O resultado foi descartado.")
-                known = self._output_preferences_identity == preference_identity
-            if not known:
-                self.refresh()
-            with self._lock:
-                if preference_identity != self.history_identity():
-                    raise AccountError("A conta mudou. O resultado foi descartado.")
-                if not self.output_preferences_supported:
-                    raise AccountError(
-                        "Atualize o serviço para usar estas preferências de saída."
-                    )
-        if source.cancel_token:
-            source.cancel_token.raise_if_cancelled()
-        if self.scope and self._clock() - self._last_sync_attempt >= 60:
-            try:
-                self.sync_library(dictionary_service)
-            except AccountError as error:
-                with self._lock:
-                    self._sync_error = str(error)
-        data = source.audio_bytes or source.audio_path.read_bytes()
-        fields = {
-            "operation_id": str(uuid.uuid4()),
-            "language": str(language or "auto").split("-")[0],
-        }
-        if level is not None:
-            fields["cleanup_level"] = level.value
-        if style is not None:
-            fields["writing_style"] = style.value
-        if target is not None:
-            fields["output_language"] = target
-        if text_action is not None:
-            if text_action.account_context != self.history_identity():
-                raise AccountError("A conta mudou. Atualize as ações.")
-            fields["text_action_id"] = text_action.action.id
-            fields["text_action_revision"] = str(text_action.action.revision)
-            if text_action.action.kind == "translation":
-                fields["text_action_language"] = text_action_language
-        code, result = self._request(
-            "POST",
-            "/v1/dictations",
-            cancel=source.cancel_token,
-            data=fields,
-            files={"audio": ("clip.wav", data, "audio/wav")},
-            # A new preference cannot move to another account before upload.
-            expected_identity=text_action.account_context
-            if text_action is not None
-            else expected_identity or preference_identity,
-        )
-        if code != 200:
-            if code in {401, 403}:
-                dictionary_service.reload()
-            raise _processing_error(code, result)
-        raw, text = result.get("transcript"), result.get("text")
-        if not isinstance(raw, str) or not isinstance(text, str) or not text.strip():
-            raise AccountError("O Clarify retornou um resultado inválido.")
-        rewritten = result.get("rewritten") is True
-        if text_action is not None and (
-            result.get("text_action_id") != text_action.action.id
-            or type(result.get("text_action_revision")) is not int
-            or result.get("text_action_revision") != text_action.action.revision
-            or result.get("text_action_name") != text_action.action.name
-        ):
-            raise AccountError("O Clarify retornou uma ação inválida.")
-        applied = None
-        if level is not None:
-            # An old or mismatched server must not silently apply a different
-            # policy. No retry or personal-provider fallback is safe here.
-            try:
-                requested = parse_cleanup_level(result.get("cleanup_level_requested"))
-                applied = parse_cleanup_level(result.get("cleanup_level_applied"))
-                if requested != level or applied is None:
-                    raise ValueError()
-                if applied not in {level, parse_cleanup_level("preserve")}:
-                    raise ValueError()
-                if rewritten != (applied.value == "clarity"):
-                    raise ValueError()
-            except ValueError:
-                raise AccountError(
-                    "O Clarify retornou um resultado inválido."
-                ) from None
-        style_fields = {}
-        if style is not None:
-            try:
-                requested_style = parse_writing_style(
-                    result.get("writing_style_requested")
-                )
-                applied_style = parse_writing_style(result.get("writing_style_applied"))
-                style_status = result.get("writing_style_status")
-                if requested_style != style or applied_style not in (None, style):
-                    raise ValueError()
-                if style_status not in {
-                    "applied",
-                    "standalone",
-                    "refinement_failed",
-                    "refinement_not_allowed",
-                }:
-                    raise ValueError()
-                if (applied_style is not None) != (style_status == "applied"):
-                    raise ValueError()
-                if applied_style is not None and (
-                    not rewritten or level not in (None, parse_cleanup_level("clarity"))
-                ):
-                    raise ValueError()
-                style_fields = {
-                    "writing_style_requested": style.value,
-                    "writing_style_applied": applied_style.value
-                    if applied_style
-                    else None,
-                    "writing_style_status": style_status,
-                }
-            except ValueError:
-                raise AccountError(
-                    "O Clarify retornou um resultado inválido."
-                ) from None
-        output_fields = {}
-        if target is not None:
-            requested = result.get("output_language_requested")
-            target_applied = result.get("output_language_applied")
-            status = result.get("output_language_status")
-            if (
-                requested != target
-                or status
-                not in {
-                    "applied",
-                    "unchanged",
-                    "standalone",
-                    "refinement_failed",
-                    "refinement_not_allowed",
-                }
-                or (status == "applied" and target_applied != target)
-                or (
-                    status == "unchanged"
-                    and (target != "auto" or target_applied != "auto")
-                )
-                or (
-                    status not in {"applied", "unchanged"}
-                    and target_applied is not None
-                )
-            ):
-                raise AccountError("O Clarify retornou um resultado inválido.")
-            output_fields = {
-                "output_language_requested": target,
-                "output_language_applied": target_applied,
-                "output_language_status": status,
-            }
-        return TranscriptionResult(
-            text,
-            "clarify",
-            "whisper-large-v3-turbo",
-            raw_text=raw,
-            refined_text=text
-            if rewritten or text != raw or result.get("snippet_expanded") is True
-            else None,
-            refinement_failed=(result.get("refinement_failed") is True)
-            if level is not None or style is not None or target is not None
-            else not rewritten and result.get("snippet_expanded") is not True,
-            refinement_provider_id="clarify"
-            if (level is None and style is None and target is None)
-            or result.get("refinement_attempted") is True
-            else None,
-            refinement_model="openai/gpt-oss-20b"
-            if (level is None and style is None and target is None)
-            or result.get("refinement_attempted") is True
-            else None,
-            cleanup_level_requested=level,
-            cleanup_level_applied=applied,
-            text_action_id=text_action.action.id if text_action else None,
-            text_action_name=text_action.action.name if text_action else None,
-            text_action_revision=text_action.action.revision if text_action else None,
-            **style_fields,
-            **output_fields,
+        raise AccountError(
+            "Use um serviço pessoal ou um computador.", code="inference_retired"
         )
 
     def transform_text(self, text, action, language="auto", *, cancel=None):
-        if not self.hosted:
-            raise AccountError("Entre na conta novamente.")
-        code, result = self._request(
-            "POST",
-            "/v1/text",
-            cancel=cancel,
-            json={
-                "operation_id": str(uuid.uuid4()),
-                "action": action,
-                "text": str(text),
-                "language": str(language or "auto").split("-")[0],
-            },
+        raise AccountError(
+            "Use um serviço pessoal ou um computador.", code="inference_retired"
         )
-        if code != 200:
-            raise _processing_error(code, result, text=True)
-        value = result.get("text")
-        if not isinstance(value, str) or not value.strip():
-            raise AccountError("O Clarify retornou um resultado inválido.")
-        from shared.text_preservation import validate_preserved_text
-
-        try:
-            validate_preserved_text(str(text), value)
-        except ValueError:
-            raise AccountError("O Clarify retornou um resultado inválido.") from None
-        return value
 
     def text_actions_path(self, identity):
         key = hashlib.sha256(identity.endpoint.encode("utf-8")).hexdigest()
@@ -1256,86 +1040,9 @@ class AccountService:
         output_language=None,
         writing_style=None,
     ):
-        from text_actions import validate_input, validate_output
-
-        from shared.output_preferences import (
-            output_language as parse_output_language,
-            output_language_outcome,
+        raise AccountError(
+            "Use um serviço pessoal ou um computador.", code="inference_retired"
         )
-
-        from shared.writing_style_policy import (
-            writing_style as parse_writing_style,
-            style_outcome,
-        )
-        from shared.text_preservation import validate_preserved_text
-
-        validate_input(text, language)
-        target = parse_output_language(output_language)
-        style = parse_writing_style(writing_style)
-        if style is not None:
-            if cancel is not None:
-                cancel.raise_if_cancelled()
-            with self._lock:
-                identity = self.history_identity()
-                if identity is None or identity != snapshot.account_context:
-                    raise AccountError("A conta mudou. O resultado foi descartado.")
-                known = self._output_preferences_identity == identity
-            if not known:
-                self.refresh(cancel=cancel)
-            with self._lock:
-                if identity != self.history_identity():
-                    raise AccountError("A conta mudou. O resultado foi descartado.")
-                if not self.output_preferences_supported:
-                    raise AccountError(
-                        "Atualize o serviço para usar estas preferências de saída."
-                    )
-        code, result = self._request(
-            "POST",
-            "/v1/text-actions/execute",
-            cancel=cancel,
-            expected_identity=snapshot.account_context,
-            json={
-                "operation_id": snapshot.operation_id,
-                "action_id": snapshot.action.id,
-                "action_revision": snapshot.action.revision,
-                "text": text,
-                "language": language,
-                **({"writing_style": style.value} if style is not None else {}),
-            },
-        )
-        if code != 200:
-            raise _processing_error(code, result, text=True)
-        if target not in (None, "auto") and any(
-            result.get(key) != value
-            for key, value in output_language_outcome(target, refined=True).items()
-        ):
-            raise AccountError(
-                "A preferência de saída não foi aplicada. O texto original foi preservado.",
-                code="output_preferences_unapplied",
-            )
-        if style is not None and any(
-            result.get(key) != value
-            for key, value in style_outcome(style, refined=True).items()
-        ):
-            raise AccountError(
-                "A preferência de saída não foi aplicada. O texto original foi preservado.",
-                code="output_preferences_unapplied",
-            )
-        value = result.get("text")
-        try:
-            validate_output(value)
-            if snapshot.action.kind != "custom":
-                validate_preserved_text(text, value)
-        except ValueError:
-            raise AccountError("O Clarify retornou um resultado inválido.")
-        if (
-            result.get("action_id") != snapshot.action.id
-            or type(result.get("action_revision")) is not int
-            or result.get("action_revision") != snapshot.action.revision
-            or result.get("action_name") != snapshot.action.name
-        ):
-            raise AccountError("O Clarify retornou uma ação inválida.")
-        return value
 
 
 class AccountDictionaryRepository:

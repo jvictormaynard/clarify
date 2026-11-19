@@ -15,7 +15,7 @@ import { recordingDraft } from "../settings/recording";
 
 export function DictationPage({ controller }: SettingsPageProps) {
   const { state, run, prompt, setPrompt, recording, setRecording } = controller;
-  const managedProcessing = state.accountState?.managed || state.accountState?.signedIn;
+  const managedProcessing = state.accountState?.managed;
   return (
     <>
       <Section title={t("Entrada de áudio")}>

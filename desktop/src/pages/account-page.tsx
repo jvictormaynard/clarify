@@ -1,8 +1,8 @@
-import { t, uiLanguage } from "../i18n";
+import { t } from "../i18n";
 import { useRef, useState } from "react";
-import { Gauge, LogIn, RefreshCw, UserRound } from "lucide-react";
+import { LogIn, RefreshCw, UserRound } from "lucide-react";
 import { Button, Confirm, Field, Section, SettingsDisclosure } from "../components/ui";
-import { formatUsageReset, usageProgress } from "../../../shared/usage";
+
 import type { SettingsPageProps } from "../settings/use-settings";
 import { AccountSignIn } from "../components/account-sign-in";
 
@@ -18,18 +18,6 @@ export function AccountPage({ controller }: SettingsPageProps) {
     if (action === "cancel-social" ? account?.socialPending && !accountPending : !accountBusy && !dirty) void run("accountCommand", action, value);
   };
   if (!account) return null;
-  const usage = usageProgress(account.usage);
-  const percent = new Intl.NumberFormat(uiLanguage, { style: "percent", maximumFractionDigits: 1 });
-  const usageLabel = usage ? t("{v0} usados · {v1} restantes", {
-    v0: percent.format(usage.used_percent / 100), v1: percent.format(usage.remaining_percent / 100),
-  }) : "";
-  const usageNotice = !usage ? "A cota semanal não está disponível. Atualize para tentar novamente."
-    : usage.allocation_status === "waiting" ? "Sua conta aguarda a próxima distribuição de cotas."
-    : usage.allocation_status === "unfunded" ? "Não há saldo de patrocínio para uma cota neste momento."
-    : usage.allocation_status === "inactive" ? "O processamento da conta está inativo."
-    : usage.used_percent === 100 && usage.remaining_percent === 0 && usage.reserved_percent === 0
-      ? "Você usou toda a sua cota semanal."
-    : !usage.hosted_available ? "O processamento da conta está indisponível no momento." : "";
   const confirm = async () => {
     if (accountBusy || dirty || !confirmation || submittingRef.current) return;
     submittingRef.current = true;
@@ -62,19 +50,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
         </SettingsDisclosure>
       </Section> : <>
         <Section className="account-card" title={<><UserRound size={16} aria-hidden="true" /><span className="account-email">{account.email}</span></>}>
-          <p className="hint">{t("O Clarify gerencia os modelos e provedores da sua conta. Áudio, texto e palavras ativas do dicionário são processados pelo Clarify.")}</p>
-          {usage?.allocation_status === "available" && <div className="account-usage">
-            <p className="usage-label"><Gauge size={15} aria-hidden="true" />{usageLabel}</p>
-            <div className="usage-progress" role="progressbar" aria-label={t("Uso nesta semana")}
-              aria-valuemin={0} aria-valuemax={100} aria-valuenow={usage.used_percent} aria-valuetext={usageLabel}>
-              <div style={{ width: `${usage.used_percent}%` }} />
-            </div>
-          </div>}
-          {usageNotice && <p role="status" className="hint">{t(usageNotice)}</p>}
-          {!usage && <Button onClick={() => command("refresh")}>{t("Retry")}</Button>}
-          {usage && <p className="hint">{t("Próxima renovação: {v0}.", { v0: formatUsageReset(usage.reset_at, uiLanguage) })}</p>}
-          <p className="hint">{t("Sua cota semanal é individual e vale em todos os seus dispositivos. Ela fica fixa até a renovação.")}</p>
-          <p className="hint">{t("Os patrocínios financiam as cotas semanais. A disponibilidade depende do saldo de patrocínio.")}</p>
+          <p className="hint">{t("setup_account_library")}</p>
         </Section>
         <Section className="account-card" title={<><RefreshCw size={16} aria-hidden="true" />{t("Dicionário e snippets")}</>}>
           <p className="hint">{t("Seu dicionário, snippets e novas transcrições da conta são sincronizados automaticamente. Atalhos e chaves permanecem neste computador.")}</p>

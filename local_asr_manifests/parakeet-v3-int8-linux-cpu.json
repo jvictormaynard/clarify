@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "provider": "local_asr",
+  "engine": {
+    "name": "sherpa-onnx",
+    "version": "v1.12.14",
+    "source_url": "https://github.com/k2-fsa/sherpa-onnx/tree/v1.12.14",
+    "license": "Apache-2.0"
+  },
+  "recommended_model": {
+    "id": "parakeet-v3-int8",
+    "display_name": "Parakeet TDT 0.6B v3 INT8 (provisional)",
+    "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tree/ed5d745623472f97cfc2e6c2916ee248798fc5a8",
+    "license": "CC-BY-4.0"
+  },
+  "requirements": {
+    "platform": "linux x64",
+    "compute": "CPU, maximum 3 threads; batch only; provisional candidate",
+    "runtime": "sherpa-onnx 1.12.14 native CLI",
+    "memory_bytes": 2200000000,
+    "disk_bytes": 1000000000,
+    "download_bytes": 693373155
+  },
+  "license_files": [
+    "local_asr_manifests/parakeet-v3-LICENSE.txt",
+    "local_asr_manifests/parakeet-v3-NOTICE.txt",
+    "local_asr_manifests/sherpa-onnx-LICENSE.txt",
+    "local_asr_manifests/onnxruntime-LICENSE.txt",
+    "local_asr_manifests/onnxruntime-NOTICES.txt"
+  ],
+  "assets": {
+    "runtime": {
+      "filename": "sherpa-onnx-v1.12.14-linux-x64-shared-no-tts.tar.bz2",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.14/sherpa-onnx-v1.12.14-linux-x64-shared-no-tts.tar.bz2",
+      "size": 22796371,
+      "sha256": "47be6c12c030a45a5e4518980916a3da32148ace883f05f34f02042caaf2635b",
+      "license": "Apache-2.0",
+      "source_url": "https://github.com/k2-fsa/sherpa-onnx/tree/v1.12.14",
+      "archive": "tar.bz2"
+    },
+    "model": {
+      "filename": "encoder.int8.onnx",
+      "url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/encoder.int8.onnx",
+      "size": 652282294,
+      "sha256": "1afbe69c1ffdabee94755f42e4daf1d93549131a3da11356bda84fcef0f2c479",
+      "license": "CC-BY-4.0",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tree/ed5d745623472f97cfc2e6c2916ee248798fc5a8"
+    }
+  },
+  "extracted_files": [
+    {
+      "archive_path": "sherpa-onnx-v1.12.14-linux-x64-shared-no-tts/bin/sherpa-onnx-offline",
+      "path": "runtime/bin/sherpa-onnx-offline",
+      "size": 3114064,
+      "sha256": "c93fdd3dfd811bfa6f6d65874fa9c29f6d37e626a92e1d68b52b72c468cd5dd1"
+    },
+    {
+      "archive_path": "sherpa-onnx-v1.12.14-linux-x64-shared-no-tts/lib/libsherpa-onnx-cxx-api.so",
+      "path": "runtime/lib/libsherpa-onnx-cxx-api.so",
+      "size": 74272,
+      "sha256": "5a995c69ec6a307c3a6897d653d0dbf02298ba3247c0789eab5435166aa082b3"
+    },
+    {
+      "archive_path": "sherpa-onnx-v1.12.14-linux-x64-shared-no-tts/lib/libonnxruntime.so",
+      "path": "runtime/lib/libonnxruntime.so",
+      "size": 15534400,
+      "sha256": "cb3d244eb794c698cdd5bd1ebac41c57e9b4353b998aeb287b7f53e1799acf77"
+    },
+    {
+      "archive_path": "sherpa-onnx-v1.12.14-linux-x64-shared-no-tts/lib/libsherpa-onnx-c-api.so",
+      "path": "runtime/lib/libsherpa-onnx-c-api.so",
+      "size": 4082608,
+      "sha256": "a4899e66854e175211cdae4f8f13b2dd22345087e4fa42d303d684a995c406f4"
+    }
+  ],
+  "batch_model_files": [
+    {
+      "filename": "decoder.int8.onnx",
+      "url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/decoder.int8.onnx",
+      "size": 11845274,
+      "sha256": "0222a86147299d4dee90edf95b6d13827edb42ad8b7c9cf0b2582f030937c0b5",
+      "license": "CC-BY-4.0",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tree/ed5d745623472f97cfc2e6c2916ee248798fc5a8"
+    },
+    {
+      "filename": "joiner.int8.onnx",
+      "url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/joiner.int8.onnx",
+      "size": 6355277,
+      "sha256": "cbd02f3696e9944970111fb439d9c3fd365a80374565f13f2b9c7007d253fc98",
+      "license": "CC-BY-4.0",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tree/ed5d745623472f97cfc2e6c2916ee248798fc5a8"
+    },
+    {
+      "filename": "tokens.txt",
+      "url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/ed5d745623472f97cfc2e6c2916ee248798fc5a8/tokens.txt",
+      "size": 93939,
+      "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+      "license": "CC-BY-4.0",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/tree/ed5d745623472f97cfc2e6c2916ee248798fc5a8"
+    }
+  ]
+}

@@ -1563,6 +1563,45 @@ class QmlWorkflowBridgeTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional spike dependency")
 class QtProviderGatewayTests(unittest.TestCase):
+    def test_signed_in_native_capture_uses_personal_route_and_keeps_final_owner(self):
+        from unittest.mock import Mock
+
+        config = AppConfig.from_mapping(
+            {
+                "workflows": {
+                    "transcription": {
+                        "provider_id": "local_asr",
+                        "model_id": "nemotron-3.5-streaming",
+                        "enabled": True,
+                    }
+                }
+            }
+        )
+        registry = Mock()
+        backend = SimpleNamespace(native_streaming=True)
+        registry.adapter.return_value.select_backend.return_value = backend
+        gateway = QtProviderGateway(
+            SimpleNamespace(current=lambda: config, workflow=config.workflow),
+            SimpleNamespace(vocabulary_prompt=lambda: ""),
+            registry=registry,
+            account=SimpleNamespace(managed=True),
+        )
+        recording = SimpleNamespace(
+            _lock=threading.RLock(),
+            preparation_done=threading.Event(),
+            provider_cancel_token=CancellationToken(),
+            audio_path=Path("fixture.wav"),
+            recorder=SimpleNamespace(),
+            attach_worker=Mock(),
+            detach_worker=Mock(),
+        )
+        with patch("local_asr_live.CaptureStream") as factory:
+            gateway.prepare_dictation(recording)
+            self.assertIs(recording.local_stream, factory.return_value)
+            factory.return_value.start.assert_called_once()
+            recording.attach_worker.assert_called_once_with(factory.return_value.worker)
+            self.assertEqual(factory.call_args.args[2], "nemotron-3.5-streaming")
+
     def test_background_recognition_requires_cuda_and_respects_opt_out(self):
         from unittest.mock import Mock
 
@@ -2271,8 +2310,19 @@ class QtWorkflowSchedulerTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
 class QtWorkflowRuntimeTests(unittest.TestCase):
-    def test_audio_file_selection_rejects_disabled_transcription_route(self):
-        current = AppConfig()
+    def test_audio_file_selection_separates_recognition_output_and_disabled_route(self):
+        current = AppConfig(recognition_language="pt")
+        current_repository = SimpleNamespace(load=lambda: current)
+        runtime = QtWorkflowRuntime(
+            None,
+            None,
+            None,
+            None,
+            repositories=SimpleNamespace(config=current_repository),
+        )
+        selection = runtime.audio_file_selection(language="en")
+        self.assertEqual(selection.language, "pt")
+        self.assertIn("English", selection.instruction)
         disabled_workflows = replace(
             current.workflows,
             transcription=replace(current.workflows.transcription, enabled=False),

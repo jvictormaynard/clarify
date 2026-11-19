@@ -22,8 +22,7 @@ function GeneralSettings({ controller }: SettingsPageProps) {
 const sections = { dictation: GeneralSettings, general: GeneralPage, devices: DevicesPage, models: ModelsPage, shortcuts: ShortcutsPage, privacy: PrivacyPage, account: AccountPage, about: AboutPage };
 
 export function SettingsDialog({ controller: c, returnFocus }: SettingsPageProps & { returnFocus: RefObject<HTMLButtonElement | null> }) {
-  const managed = !!(c.state.accountState?.managed || c.state.accountState?.signedIn);
-  const section = managed && c.settingsSection === "models" ? "account" : c.settingsSection;
+  const section = c.settingsSection;
   const content = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [section]);
   const Page = sections[section];
@@ -36,7 +35,7 @@ export function SettingsDialog({ controller: c, returnFocus }: SettingsPageProps
       <div className="settings-dialog-layout">
         <nav className="settings-dialog-navigation" aria-label={t("Seções das configurações")}>
           <span className="settings-dialog-label" aria-hidden="true">{t("Configurações")}</span>
-          {getSettingsSections().filter(item => item.id !== "shortcuts" && (!managed || item.id !== "models")).map(({ id, label, icon: Icon }) =>
+          {getSettingsSections().filter(item => item.id !== "shortcuts").map(({ id, label, icon: Icon }) =>
             <button key={id} type="button" className="navigation-item" aria-label={label} title={label}
               aria-current={section === id ? "page" : undefined} onClick={() => void c.navigate(id)}>
               <Icon size={16} aria-hidden /><span>{label}</span>

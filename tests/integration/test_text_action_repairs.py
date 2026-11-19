@@ -261,18 +261,21 @@ class HostedOptionalActionRepairTests(unittest.TestCase):
         snapshot = provider.snapshot_dictation()
         self.assertTrue(snapshot.action_error)
         self.assertEqual(len(self.server.calls), calls)
-        with patch.object(
-            self.account,
-            "transcribe",
-            return_value=TranscriptionResult("Expanded source", "clarify", "hosted"),
-        ) as transcribe:
+        provider.dictionary_service.expand_spoken_trigger.return_value = None
+        provider.dictionary_service.expand.side_effect = lambda text: text
+        provider._registry = Mock()
+        provider._registry.transcribe.return_value = TranscriptionResult(
+            "Expanded source", "gemini", "fixture"
+        )
+        provider._registry.describe.return_value.supports.return_value = True
+        with patch.object(provider, "_connection", return_value=Mock()):
             result = provider.transcribe(
                 RecordingSnapshot(Path("unused.wav"), b"fake", CancellationToken()),
                 "prompt",
                 "en",
                 dictation_snapshot=snapshot,
             )
-        self.assertEqual(transcribe.call_args.kwargs["cleanup_level"], "preserve")
+        provider._registry.rewrite.assert_not_called()
         self.assertEqual(result.text, "Expanded source")
         self.account._state.pop("user_id")
         with self.assertRaises(Exception):

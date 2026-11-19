@@ -361,12 +361,57 @@ focus removes the mask. Main content has no top fade, so headings retain full
 contrast at the measured 40 px inset. It keeps a stable scrollbar lane. Controls stack when needed. Library and history text can wrap and remain
 available in full; layout must not truncate persisted content.
 
-Authentication keeps full-width forms through each step. Managed accounts hide
-personal providers. Destructive operations keep their confirmation and account
+Authentication keeps full-width forms through each step. Signed-in accounts retain
+personal provider controls. Destructive operations keep their confirmation and account
 context checks. Opening a screen does not acquire the microphone or submit an
 authentication request.
 
-Initial setup and Account Settings share the same sign-in method selector:
+Personal onboarding follows the approved OpenBot reference layout, implemented
+with Clarify components and assets. Start with a centered interface-language
+wheel, then optional Clarify account sign-in or sign-up, speech model selection,
+rewriting setup, verified installation, practice and optional phone pairing.
+Reuse the account sign-in form and offer Continue without an account.
+Signing in to Clarify leaves personal rewriting services available. The interface preference is separate from spoken and
+output languages. The wheel uses local flag marks for English (US), Portuguese
+(Brazil), Spanish (Spain), German and Russian. It supports keyboard arrows,
+wheel input and drag. German and Russian onboarding copy uses English for
+messages that have no translation yet.
+The saved interface language can also be changed in System Settings.
+Back preserves choices; each step moves keyboard focus to its heading.
+
+Use one focused task per screen, a centered heading, small step dots and a compact
+480 px content column. Show the Clarify brand on the language screen. Use grouped
+choice and provider rows, quiet separators, short copy and generous spacing.
+The primary action is a centered pill with foreground/background colors. Use
+semantic tokens and shared controls. At 640 px, retain readable spacing without
+horizontal scroll. Short windows scroll.
+
+Rewriting setup offers separate choices for free models and a subscription.
+The free path shows OpenCode. The subscription path shows ChatGPT. Personal
+API services and compatible local endpoints have their own path. Keep raw
+transcription available. In the provider group, show a selection control, the
+provider mark and its connection state. Place More providers below the group
+and open a searchable dialog. Use the primary action to connect the selected
+provider or continue after model selection. Put the connected provider's
+management action in its row. Offer the OpenCode download in its row when
+a verified runtime is missing. On Windows, a verified native OpenCode install
+in the user Programs folder can supply the runtime. API keys and endpoint details use a connection
+dialog. ChatGPT uses the supported browser
+sign-in and cancellation flow. Do not show unsupported code-login methods.
+Show model selection after connection and catalog discovery. Rewriting and speech
+models have separate controls and saved routes. Changing a provider clears its
+setup errors. An optional skip continues with the raw transcript.
+
+The speech card shows the model, processing location and download. Put hardware
+details and the refresh action in the model-options disclosure. Installation
+shows progress and supports cancel and retry. Provider preparation uses an
+indeterminate status when byte progress is unavailable. Completion requires the
+backend installation check. Opening setup does not request audio, install a
+model or connect a provider. The user starts each action.
+Live speech appears in a bounded panel above the pill while recording. Partials
+are display-only and clear when capture ends.
+
+Account Settings uses the shared sign-in method selector:
 Google, Microsoft, GitHub and email. The shared sign-in form keeps full-width
 controls with a 44 px minimum height, 8 px gaps between method choices and a
 14 px form gap during onboarding. Email opens its own form; Back retains the
@@ -394,8 +439,8 @@ the configured toggle or hold behavior. Practice has only Skip and Continue in
 its footer. Continue stays disabled until a completed, nonempty transcript has
 no error or blocked state. Skip also closes active recording safely. Error
 recovery uses a contextual settings link. Starting again uses the shortcut.
-Back appears on the left and the forward action on the right in onboarding
-navigation rows, including email and code confirmation. Setup and practice
+Email and code confirmation place Back on the left and the forward action on
+the right. Personal model setup uses the centered stacked footer described above. Setup and practice
 group Skip and Continue on the right, with Skip immediately before Continue. The sign-in
 method choices retain their order. A completed transcript shows a success state;
 Skip and failed attempts do not. Replay uses the same practice destination and
@@ -430,8 +475,8 @@ phrase and restores the keys. The animation loops automatically, including on
 hover. Reduced motion shows the completed text without motion.
 
 The email form and Account Settings use an outlined guest button. It opens local setup during onboarding and
-returns to General from Account Settings. An expired managed session retains its
-explicit sign-out action before personal processing becomes available.
+returns to General from Account Settings. An expired account session retains its
+explicit sign-out action. Personal processing does not depend on that session.
 
 Provider marks use local official assets. The Google button uses the current
 gradient G and a bundled Google Sans Medium font, with its provider-specific

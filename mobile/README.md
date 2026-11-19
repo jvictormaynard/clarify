@@ -14,6 +14,18 @@ not identify the current source version or current Apple availability. Check
 
 ## Computer connection candidate
 
+Current source uses the paired computer for transcription and text processing.
+A Clarify account supplies optional libraries and remote signaling authorization,
+with no funded inference quota. Signing in alone does not enable the keyboard
+processing route. The dated delivery sections below describe earlier versions.
+The optional Apple SpeechAnalyzer source remains disabled pending native acceptance.
+Incremental phone-to-computer PCM capture is also an experimental source path.
+It requires `ClarifyExperimentalLiveCapture=true` in the containing app's Info.plist
+and foreground admission. Official configuration leaves it disabled until native
+background acceptance. Keyboard and background dictation retain the existing WAV
+path, selected before recording. A captured live operation is never replayed as
+WAV automatically. Backgrounding does not invoke a new whole-recording cancel.
+
 The mobile workspace has five direct tabs: **Início**, **Dicionário**,
 **Snippets**, **Estilo**, and **Ações**. Home contains keyboard activation and
 date-grouped history. Dictionary and Snippets open their lists and editors.
@@ -53,20 +65,20 @@ sets the output language. Each operation keeps its accepted preference snapshot.
 Choose **Meu computador** on the sign-in page or under **Ajustes > Processamento**, then scan the QR
 inside Clarify. The computer must have its iPhone connection enabled. Direct LAN
 routes require access to the computer's private network. A Clarify account is
-not required for LAN processing. Internet access in the Cloudflare preview needs
-a free, verified Clarify account and one initial pairing on the same network.
-Login can continue that pairing without another QR scan. The account authorizes
-the connection; models and provider keys remain on the computer. See the
-[Cloudflare transport contract](../docs/computer-connection.md#cloudflare-internet-access).
-The optional TLS byte relay remains a separate transport.
+not required for LAN processing. Internet access in the new source uses direct WebRTC with TURN fallback. It
+requires an operator-configured HTTPS signaling endpoint and a Clarify account.
+The exact `ClarifyWebRTCSignalURL` must match the trusted pairing route. New hosts
+do not allocate Cloudflare tunnels. See [the WebRTC operator contract](../connect/webrtc/README.md).
+Existing computer history remains separate from account history. An offline or
+revoked computer never selects a hosted fallback.
 
-The existing recorder, keyboard bridge and local history store serve both modes.
+The existing recorder, keyboard bridge and local history store serve computer processing.
 Computer mode also exposes selected-text actions in the keyboard,
 and text processing in the Actions tab. It uses the computer's configured dictionary and
 snippets. This protocol does not upload an iPhone library. Computer history has
 its own stable computer scope and is never synchronized with a hosted account.
 An offline or revoked computer connection does not select hosted processing.
-Switching modes or disconnecting stops capture and rejects former operations.
+Switching computers or disconnecting stops capture and rejects former operations.
 
 QR parsing, device credentials and HTTPS requests stay in Swift. Keychain stores
 the device session and trusted routes in the containing app only. The keyboard
@@ -77,7 +89,7 @@ The recorder's AAC clip is converted locally to PCM16 mono 16 kHz WAV, capped at
 300 seconds. Converted request WAVs remain temporary. Stopped source recordings are kept
 in app-only storage and appear as normal History items in Dictation,
 including when processing fails or is cancelled. Reprocess uses the current
-account or paired computer and current dictation settings as a new request.
+paired computer and current dictation settings as a new request.
 History shows the timestamp and source device to the left of each transcript,
 without inline action controls. Hold an item
 to open the native context menu for copying, audio playback, transcription retry,
@@ -102,7 +114,7 @@ camera permission/cancel, local-network permission, pinned TLS, actual keyboard
 insertion and physical iPhone acceptance still require macOS/iOS validation.
 Local TypeScript or bundle checks do not establish TestFlight availability.
 
-### Optional relay build configuration and trust
+### Legacy optional relay build configuration and trust
 
 `shared/computer_connect.json` owns the public relay hostname and port for both
 desktop and iOS builds. A null `relay_host` keeps the public service disabled.
@@ -179,8 +191,8 @@ unverified until those checks and the coordinator's delivery gates complete.
 
 This candidate combines Google, Microsoft and GitHub sign-in with the complete
 source delivered as TestFlight 0.10.4 (37). Email-code login remains available.
-Account shows funded weekly usage, pending reservations and the next reset in
-the device's time zone. Processing requires an available funded allocation.
+Account retains sign-in, libraries and account deletion. Processing requires a
+paired computer with a ready personal route; there is no funded allocation.
 
 The planned app, keyboard and activity extension version was 0.11.0 (38).
 At that planning point, the checked-in Expo identity was 0.10.4 (37), pending a

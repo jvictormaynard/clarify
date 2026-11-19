@@ -123,6 +123,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             onChange={(v) => void run("selectLocalProfile", Number(v))}
           />
         </Row>
+        {state.localModelDescription && <p className="hint" role="status">{t(state.localModelDescription)}</p>}
         <Row title={t("Processamento")}>
           <Picker
             label={t("Processamento")}
@@ -188,18 +189,18 @@ export function ModelsPage({ controller }: SettingsPageProps) {
           </SettingsDisclosure>
         )}
         <SettingsDisclosure title={t("Opções do modelo local")}>
-          <Toggle
+          {state.localSupportsGpu !== false && <Toggle
             title={t("Reconhecer durante a gravação (experimental)")}
             hint={t("Requer GPU NVIDIA. Pode reduzir a espera ao terminar com uma pausa, mas pode aumentar a espera em fala contínua. Mantém a gravação completa.")}
             checked={state.localStreaming}
             onChange={(v) => void run("setLocalStreaming", v)}
-          />
+          />}
           <p className="hint" role="status">
             {state.localBenchmarkDetail}
           </p>
           <div className="inline-actions">
             <Button
-              disabled={state.localAsrBusy}
+              disabled={state.localAsrBusy || state.localSupportsGpu === false}
               onClick={() =>
                 void run(
                   state.localBenchmarkBusy

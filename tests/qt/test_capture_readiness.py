@@ -51,11 +51,14 @@ class CaptureReadinessTests(unittest.TestCase):
         self.assertFalse(controller.recordingReady)
         recorder.capture_active = True
         recorder.mic_level = 0.0
+        recorder.live_transcript = "Provisional words"
         controller._sample_level()
         self.assertTrue(controller.recordingReady)
+        self.assertEqual(controller.liveTranscript, "Provisional words")
         bridge.recording = False
         bridge.recordingChanged.emit()
         self.assertFalse(controller.recordingReady)
+        self.assertEqual(controller.liveTranscript, "")
         recorder.capture_active = False
         bridge.recording = True
         bridge.recordingChanged.emit()

@@ -234,7 +234,7 @@ class EmailAccountTests(TestCase):
             "/_allauth/app/v1/auth/email/verify", {"key": "000000"}, format="json"
         )
         self.assertNotEqual(response.status_code, 200)
-        self.assertIn(self.client.get("/v1/usage").status_code, (401, 403))
+        self.assertIn(self.client.get("/v1/dictionary").status_code, (401, 403))
 
     def test_existing_account_email_directs_to_unified_email_form(self):
         user = get_user_model().objects.create_user("existing@example.test")

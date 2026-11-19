@@ -46,6 +46,30 @@ class QmlTextActionRepairTests(unittest.TestCase):
         self.settings._text_actions.refresh()
         self.applier.reset_mock()
 
+    def test_signed_in_startup_loads_account_actions_with_personal_processing(self):
+        from clarify.desktop.qml_settings import QmlSettingsController
+        from local_asr_product import LocalASRProductState
+
+        self.hosted()
+        account = self.settings._account
+        account.text_actions_path(account.history_identity()).unlink()
+        repositories = self.settings.repositories
+        self.settings.shutdown()
+        self.settings = QmlSettingsController(
+            repositories,
+            account_service=account,
+            local_product=Mock(state=LocalASRProductState("missing"), busy=False),
+            hotkey_applier=self.applier,
+        )
+        self.addCleanup(self.settings.shutdown)
+        self.drain_until(
+            lambda: any(
+                row["name"] == "Account rewrite" for row in self.settings.textActions
+            )
+        )
+        self.assertFalse(account.managed)
+        self.assertTrue(account.signed_in)
+
     def block_http(self, method):
         entered, release = threading.Event(), threading.Event()
         original = self.settings._account.request

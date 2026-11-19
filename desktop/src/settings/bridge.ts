@@ -7,7 +7,7 @@ function invoke<T>(request: {method: string; args: unknown[]}): Promise<T> {
 import { t } from "../i18n";
 import type { RecordingControls } from "./recording";
 
-export type Option = { id: string; label: string };
+export type Option = { id: string; label: string; recommended?: boolean };
 export type DictationCleanupLevel = "preserve" | "light" | "clarity";
 export type WritingStyle = "formal" | "casual" | "very_casual" | "natural" | "informal" | "organized";
 export type HotkeyDefinition = { modifiers: string[]; key: string };
@@ -60,7 +60,13 @@ export type ComputerState = {
   error: string; devices: { id: string; name: string }[];
   pairingReady: boolean; pairingExpiresAt: number;
 };
+export type PersonalSetupState = {
+  language: string; busy: boolean; error: string;
+  recommendation: { providerId: string; modelId: string; label: string; reason: string; reasonValues?: Record<string, string | number>; recognitionLanguage?: string; executionDevice: string; downloadBytes: number; installed: boolean; requirementsList?: string[]; description?: string; lowMemory?: boolean; availableRamMiB?: number; lowDisk?: boolean };
+  textOptions: { id: string; label: string; available: boolean; runtimeInstalled?: boolean; connected: boolean; modelId: string; modelLabel: string; access: string; models?: Option[] }[];
+};
 export interface Settings {
+  personalSetupState?: PersonalSetupState;
   textActions?: TextAction[];
   textActionProfiles?: TextActionProfile[];
   textActionProviders?: (Option & { defaultModel: string; supportsCustomEndpoint: boolean })[];
@@ -144,6 +150,9 @@ export interface Settings {
   providerError: string;
   providerSupportsCustomEndpoint: boolean;
   localProfiles: string[];
+  localModelIds?: string[];
+  localModelDescription?: string;
+  localSupportsGpu?: boolean;
   localProfileIndex: number;
   localDevices: string[];
   localDeviceIndex: number;
@@ -186,6 +195,7 @@ export type SettingsArguments = {
   refreshTextActions: [];
   practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
   computerCommand: [action: "enable" | "pair" | "stop" | "revoke" | "durable" | "close", value: string];
+  personalSetupCommand: [action: "interface_language" | "recommend" | "prepare_speech" | "configure" | "connect_opencode" | "complete" | "cancel" | "reset_text_choice" | "cuda_license", value: string];
   completeOnboarding: [mode: "account" | "byok" | "local", key: string];
   accountCommand: [action: string, value: string];
   chatgptCommand: [action: ChatGPTAction, value: string];

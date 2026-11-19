@@ -1,12 +1,13 @@
 # Architecture
 
 Clarify has a local-first Windows desktop client, an iOS client in `mobile/`,
-and an account service in `server/`. On desktop, local models and personal API keys
-work without an account. The iOS client uses an authenticated Clarify account or
-an explicitly paired computer. Stored personal keys from older versions do not
-enable mobile processing.
-Hosted dictation requires an authenticated account and
-uses a server-owned Groq key; personal keys never pass through that service.
+and an optional account service in `server/`. All inference uses the user's
+computer, provider credentials, or connected subscription. Clarify does not fund
+transcription or text processing. Signing in does not change provider routes.
+The iOS client requires an explicitly paired computer for processing; an account
+alone does not enable dictation. Existing account libraries and history remain
+available. Legacy funded endpoints fail with `410 inference_retired` before
+reading processing input or contacting a provider.
 
 `computer_host.py` owns the opt-in personal HTTPS listener, pairing, device
 revocation and operation admission. `computer_processing.py` uses the desktop's
@@ -21,17 +22,16 @@ All product source remains in this public MIT repository. Production credentials
 user data, backups and administrator access stay private in the hosting platform.
 There is no separate closed backend or local/cloud product fork.
 
-Accounts share vocabulary, snippets, sponsored processing quota and new account
-transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
+Accounts share vocabulary, snippets, action definitions and account transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
 Account snippet caches use endpoint and account identity; signing in does not
-upload guest snippets. Hosted substitution runs once after recognition and before optional rewriting.
+upload guest snippets. Substitution runs once on the processing computer after recognition and before optional rewriting.
 The rewrite model receives the substituted source and can adjust it with the
 rest of the message. Rewrite failure returns the substituted source. The
 original recognized transcript remains unchanged in history. Standalone triggers
 insert the exact saved text without rewriting. Recognition hints contain only
 enabled triggers; saved replacements are sent only when applied to rewrite source. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
 snippet-expanded dictation fields retain the existing 32 KiB UTF-8 history limit.
-Rendered hosted responses also have a 384 KiB bound. Excessive expansion returns
+Rendered computer responses also have a 384 KiB bound. Excessive expansion returns
 an explicit error without truncation. Account history
 uses an endpoint/user-scoped offline cache and durable pending changes; local
 records are never inferred to belong to the current account or uploaded.
@@ -100,20 +100,21 @@ atomic inbox file before confirming Saved. The containing app imports these
 additions into its scoped SQLite dictionary before dictation or dictionary
 access, and while its microphone session is active. Imported files are removed
 only after persistence. Account additions invalidate the synchronization interval
-so the next hosted dictation includes them. History and credentials remain
+so the next account-library operation includes them. History and credentials remain
 app-only; pending additions never cross account or guest scopes.
 
 `server/` uses Django, django-allauth headless email codes, DRF and PostgreSQL.
-The server owns provider selection, default prompts, billing bounds and
-per-account/global admission. Clients cannot select arbitrary models, endpoints,
-credentials or owners. Account text-action definitions accept bounded saved
-instructions; execution supplies their ID and revision. A PostgreSQL lock
-serializes quota reservations and cost settlement.
+It owns account authentication, bounded library synchronization, history and
+account deletion. Text-action definitions use compare-and-swap revisions;
+personal processing profiles remain on each computer. The inference retirement
+middleware rejects legacy processing and usage routes before body parsing,
+authentication, operation admission or provider work. Historical accounting and
+finance records remain readable; no migration deletes them.
 `shared/rewrite_prompts.py` owns transformation prompts and the composition of
-writing style and output language for desktop and hosted processing. Base rewrite
+writing style and output language for personal processing. Base rewrite
 and style rules do not select a language. The selected output preference supplies
 the language instruction after the task policy. The iOS app sends text and output
-preferences to the account or paired computer; it does not contain a second
+preferences to the paired computer; it does not contain a second
 provider client or embedded rewrite prompt. Dictation editing and selected-text
 rewriting share a meaning-first policy with the same organization rules in every
 output language. Known saved application rewrite defaults are refreshed when
@@ -128,11 +129,9 @@ Dictation validates against the snippet-expanded source at its processing owner,
 so exact snippets are not rejected by comparing them with an unexpanded transcript.
 See [server operations and release gates](../server/README.md).
 
-Sponsored processing uses funded individual weekly quotas with a common Monday
-00:00 UTC expiry. Operating provisions and existing commitments precede the
-80/20 regular/entry allocation. The server measures provider costs and returns
-versioned percentages and reset dates; clients show the reset in local time.
-See the [accepted funding contract](agents/plans/weekly-sponsored-usage/spec.md).
+Funded inference is retired. Existing funding and settlement tables and their
+migrations remain for historical records. Funding flags do not reopen inference
+endpoints. No user quota or donation creates inference capacity in this source.
 Public financial reporting separates project treasury entries from read-only
 Stripe balances and sanitized movements. API credentials and contributor identity
 stay private. A declared sponsorship or spending cap never becomes a receipt.
@@ -150,8 +149,8 @@ Legacy profiles retain their choices. The iOS app stores separate app-only
 presentation and setup preferences. General onboarding appears once when first
 shown and can be dismissed. Existing signed-in installations and legacy setup
 preferences migrate without another presentation. The guide can be replayed from
-Account without resetting that marker. Protected Router screens require an
-account session or a selected paired computer before the iOS tabs can be used.
+Account without resetting that marker. Protected Router screens require a selected paired computer before the iOS tabs
+can be used. A saved account session alone does not satisfy this guard.
 The iOS route guard checks the selected processing destination, so a completed
 legacy personal-key setup cannot enable processing. Its old history remains on the device
 and is never assigned to an account. The existing first-login import of local
@@ -166,17 +165,42 @@ sign-in screen. Once the selected destination is configured, the bottom tabs
 contain Dictation, Actions, Library and Settings. Library opens Dictionary and
 Snippets. Settings separates account, processing destination, dictation output,
 microphone and keyboard, and history and privacy. It also opens the explicit
-guide replay. The tabs, Settings and guide routes share the destination guard. In iOS account mode,
-sign-out or session expiry returns to the connection choice before tabs can be used.
+guide replay. The tabs, Settings and guide routes share the destination guard. An account
+transition invalidates active work and requires the connection to be checked again.
 
-An authenticated account uses Clarify-managed processing for dictation, imported
-audio, selected-text rewrite and translation. Personal provider and local-model
-controls are hidden in this mode. An expired managed session fails closed; it
-cannot fall back to a saved personal key. Signing out explicitly restores the
-personal configuration on desktop. The iOS account route stops microphone access
-when its session expires; it cannot fall back to a paired computer. In account
-mode, signing in activates account processing automatically,
-including for existing signed-in profiles. There is no separate activation step.
+Desktop setup guides language, a hardware-based speech recommendation, optional
+text service, verified installation and practice. Model names remain visible.
+`AppConfig.recognition_language` is separate from the interface and output language.
+Personal provider controls remain available when signed in. OpenCode runs on the
+user's computer with an isolated CLI configuration and a discovered zero-price
+catalog; free availability is limited by its provider. After explicit Connect,
+setup can copy a supported Windows executable into Clarify's runtime folder
+after verifying its checksum. If no verified runtime is available, setup can
+download the pinned CLI. A refusal never selects a paid route.
+OpenCode rewrites can reuse a zero-price model check for up to one minute for
+the same executable. An explicit catalog refresh always queries OpenCode.
+Each rewrite starts a separate credential-free session and confirms that the
+chosen model is still offered before sending text. The current zero-price check
+must still be valid at that point. A refusal clears the check and ends the request.
+OpenCode uses a private memory database and pipes for rewrite input and output.
+After successful session deletion, Clarify can keep one process for up to
+25 seconds between turns. It retires the process after six turns, when available
+RAM falls below 768 MiB at the end of a turn, or when session cleanup fails.
+The existing ChatGPT subscription connection is a separate text-only route.
+A keyless OpenAI-compatible endpoint must be literal loopback; its requests do
+not follow redirects. A missing optional text service preserves the transcript.
+
+The native Nemotron streaming engine accepts bounded mono 16 kHz PCM frames.
+The existing recorder remains the sole microphone owner. Cumulative partials are
+for display; only final text enters the existing publication workflow. Whisper
+remains available. The optional Apple SpeechAnalyzer adapter remains disabled
+until native build and device acceptance establish its supported route.
+Phone-to-computer incremental capture is separately disabled by default through
+`ClarifyExperimentalLiveCapture`, with foreground-only admission when enabled.
+The existing WAV path serves keyboard and background recording. An admitted live
+operation is not replayed as WAV. Cached asset readiness is checked outside the
+host lock; changed file identities invalidate it. Full integrity verification
+still precedes native loading.
 
 Shortcut capture is owned by the Qt Settings controller, including the React
 dialog's capture state. Capture temporarily releases native hotkeys and input
@@ -186,11 +210,10 @@ Late input events from the replaced hook are ignored; a registration collision
 can recover through the existing Apply transaction.
 
 Vocabulary sync runs after login and local edits, then at most once per minute
-while the app is active or before a hosted dictation. Failed attempts also use
+while the app is active or before an account-library operation. Failed attempts also use
 this interval. Conflicting edits require an explicit resolution. Each account
 has its own persistent cache; guest words, guest snippets, settings, keys and history
-remain on the device. Processing responses include the updated shared allowance,
-and a foreground refresh catches changes made on another device.
+remain on the device. A foreground refresh catches library changes made on another device.
 
 `shared/history.ts` owns the local-calendar history grouping and date labels used
 by mobile and desktop. Each UI owns its midnight refresh timer.
@@ -259,13 +282,22 @@ presentation. Account transitions stop personal hosting before changing owners.
 Application shutdown must drain mobile processing before closing shared providers.
 
 The iOS containing app's `ComputerConnection` owns camera pairing, private
-Keychain credentials and scoped HTTPS transport. `ProcessingDestination` selects
-it or the existing `CloudAccount` boundary. Computer mode needs no hosted
-account and cannot silently fall back to hosted processing. The existing
-recorder and keyboard bridge remain authoritative. The keyboard receives no
-connection credential. Computer history stays in its own scope on the iPhone;
-it does not enter account synchronization. Computer dictation uses the
-computer's dictionary and snippets.
+Keychain credentials and scoped HTTPS or WebRTC transport. `ProcessingDestination`
+requires that paired computer. The existing recorder and keyboard bridge remain
+authoritative. The keyboard receives no connection credential. Computer history
+stays in its own scope on the iPhone; it does not enter account synchronization.
+Computer dictation uses the computer's dictionary and snippets.
+
+`clarify/desktop/computer_webrtc.py` owns the opt-in WebRTC lifecycle and bounded
+per-peer workers. Electron main owns the hidden data-channel renderer. The exact
+operator HTTPS signaling URL must be configured; there is no enabled deployment
+by default. A Clarify account authorizes signaling and TURN credentials. The
+phone pins the host public key from trusted pairing. Device tokens still
+authorize processing. Direct traffic goes between peers; TURN forwards encrypted
+traffic when direct connectivity fails. New hosts do not create Cloudflare tunnels.
+The signaling service persists bounded enrollment and revocation in SQLite;
+short-lived tickets do not survive restart. VPS bandwidth remains an operating
+cost. Local transport tests do not establish cellular or production performance.
 
 See the [computer connection protocol](computer-connection.md) for wire bounds,
 certificate pinning, operation identity and open delivery evidence.
@@ -410,11 +442,11 @@ the result; closing or invalidating the preview cancels it without clipboard
 publication. Cancellation is cooperative around existing blocking HTTP calls;
 late cancelled or account-stale results are discarded.
 
-`clarify_account.py` implements the hosted catalog and execution protocol in
+`clarify_account.py` implements the account definition catalog in
 [server/TEXT_ACTIONS.md](../server/TEXT_ACTIONS.md). Account catalog writes use
 compare-and-swap revisions. Compensation also uses its accepted revision and
-cannot overwrite a later client change. Hosted execution uses service-owned
-models and credentials. Post-dictation selection replaces the existing
+cannot overwrite a later client change. Execution resolves a personal profile on the computer. The retired hosted
+execution method fails before provider work. Post-dictation selection replaces the existing
 refinement pass after one snippet expansion. Standalone snippets bypass it;
 cleanup permissions and original-text recovery remain in force.
 Cleanup modes that do not permit AI, a disabled review route, and local

@@ -98,6 +98,7 @@ export function Picker({
           {(item: Option) => (
             <ComboboxItem key={item.id} value={item}>
               <span className="min-w-0 flex-1 truncate">{literalLabels ? item.label : t(item.label)}</span>
+              {item.recommended && <span className="badge shrink-0">{t("setup_recommended")}</span>}
               <Check size={16} className={item.id === value ? "opacity-100" : "opacity-0"} aria-hidden />
             </ComboboxItem>
           )}

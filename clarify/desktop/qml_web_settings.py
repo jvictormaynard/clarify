@@ -32,6 +32,7 @@ PROPERTIES = (
     "practiceState",
     "accountState",
     "chatgptState",
+    "personalSetupState",
     "computerState",
     "historyState",
     "dirty",
@@ -86,6 +87,9 @@ PROPERTIES = (
     "providerError",
     "providerSupportsCustomEndpoint",
     "localProfiles",
+    "localModelIds",
+    "localModelDescription",
+    "localSupportsGpu",
     "localProfileIndex",
     "localDevices",
     "localDeviceIndex",
@@ -125,6 +129,7 @@ METHODS = frozenset(
         "cancelTextActionHotkeyCapture",
         "runTextAction",
         "completeOnboarding",
+        "personalSetupCommand",
         "practiceCommand",
         "beginHotkeyCapture",
         "cancelHotkeyCapture",
@@ -343,8 +348,15 @@ class SettingsProtocol:
                     or args[0] not in {"open", "close", "start", "stop", "cancel"}
                 ):
                     raise ValueError()
-                if method in {"chatgptCommand", "computerCommand"} and (
-                    len(args) != 2 or any(type(value) is not str for value in args)
+                if method in {
+                    "chatgptCommand",
+                    "computerCommand",
+                    "personalSetupCommand",
+                } and (len(args) != 2 or any(type(value) is not str for value in args)):
+                    raise ValueError()
+                if method == "personalSetupCommand" and (
+                    len(args) not in {1, 2}
+                    or any(type(value) is not str for value in args)
                 ):
                     raise ValueError()
                 if method in {"setDictionaryEntries", "setSnippets"} and (

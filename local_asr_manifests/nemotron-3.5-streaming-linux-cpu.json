@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "provider": "local_asr",
+  "engine": {
+    "name": "transcribe.cpp",
+    "version": "v0.4.2",
+    "source_url": "https://github.com/handy-computer/transcribe.cpp/tree/v0.4.2",
+    "license": "MIT"
+  },
+  "recommended_model": {
+    "id": "nemotron-3.5-streaming",
+    "display_name": "Nemotron 3.5 Streaming (provisional)",
+    "source_url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/tree/53ce288f69326b415aeef030cfcb02a08a8096dd",
+    "license": "OpenMDW-1.1"
+  },
+  "requirements": {
+    "platform": "linux x64",
+    "compute": "CPU, maximum 3 threads; provisional candidate",
+    "runtime": "transcribe.cpp 0.4.2; CPU acceleration",
+    "memory_bytes": 2000000000,
+    "disk_bytes": 1000000000,
+    "download_bytes": 773656571
+  },
+  "license_files": [
+    "local_asr_manifests/nemotron35-LICENSE.txt",
+    "local_asr_manifests/nemotron35-NOTICE.txt"
+  ],
+  "assets": {
+    "runtime": {
+      "filename": "transcribe-native-0.4.2-linux-x86_64-cpu-vulkan.tar.gz",
+      "url": "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.4.2/transcribe-native-0.4.2-linux-x86_64-cpu-vulkan.tar.gz",
+      "size": 22562331,
+      "sha256": "4fe87db8919ea34e461db7987713b580f54e6f3ed610457c5d8fb8eac1a15046",
+      "license": "MIT",
+      "source_url": "https://github.com/handy-computer/transcribe.cpp/releases/tag/v0.4.2",
+      "archive": "tar.gz"
+    },
+    "model": {
+      "filename": "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
+      "url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/53ce288f69326b415aeef030cfcb02a08a8096dd/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
+      "source_url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/tree/53ce288f69326b415aeef030cfcb02a08a8096dd",
+      "license": "OpenMDW-1.1",
+      "size": 751094240,
+      "sha256": "b94545b313b3223fda7b2857a52681da813935c2127643d1e9ff0c23d988089c"
+    }
+  },
+  "extracted_files": [
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/contract.json",
+      "path": "runtime/contract.json",
+      "size": 119,
+      "sha256": "4666bf7a174ee27c8e012437e2ba906a45d655b2f35435e6938eb99d5832588b"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-base.so",
+      "path": "runtime/libggml-base.so",
+      "size": 808688,
+      "sha256": "b0929df80d601dba4b01b6113c51aee9293495fc464b99390ccc6dbba9484a74"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-alderlake.so",
+      "path": "runtime/libggml-cpu-alderlake.so",
+      "size": 1286184,
+      "sha256": "b56d025b21816eaf1f549aa0fa637c0cc37ee738d351d168bbea5430bd4af921"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-cannonlake.so",
+      "path": "runtime/libggml-cpu-cannonlake.so",
+      "size": 1540136,
+      "sha256": "a5d29d4bbfc37a290b7880a22b5586aef1e5c3706131f7b540528e066f3b874a"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-cascadelake.so",
+      "path": "runtime/libggml-cpu-cascadelake.so",
+      "size": 1548328,
+      "sha256": "ded67e115564d1bea5d549ba84c9ed44f85df834dadcb4876a366d86280581c2"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-cooperlake.so",
+      "path": "runtime/libggml-cpu-cooperlake.so",
+      "size": 1548328,
+      "sha256": "05a6386b27603907f850d0919c900f3512ab2917fd02b5204e6fbc26f3b645ad"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-haswell.so",
+      "path": "runtime/libggml-cpu-haswell.so",
+      "size": 1290280,
+      "sha256": "d24cc57ceaa833054727041601819d800aebd799d28546f612ab1d0abec5d13d"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-icelake.so",
+      "path": "runtime/libggml-cpu-icelake.so",
+      "size": 1548328,
+      "sha256": "1715ad371a610172d8b60311e3454ca43d1b38981d68753c5e4c12b37c350eb3"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-ivybridge.so",
+      "path": "runtime/libggml-cpu-ivybridge.so",
+      "size": 1220648,
+      "sha256": "7dd083e3b9ac92eaf344c4ab283244e68416e8a4744aed559abc0dca9f816f91"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-piledriver.so",
+      "path": "runtime/libggml-cpu-piledriver.so",
+      "size": 1216552,
+      "sha256": "25a25b522a40dc7b0cd58d116e8d95ef99b98ad67385386352c4616926594ef8"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-sandybridge.so",
+      "path": "runtime/libggml-cpu-sandybridge.so",
+      "size": 1204264,
+      "sha256": "d14d7f79bb558ef0b06a21c70de9cd90738d27309ca20be7df66e6d677e65fda"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-sapphirerapids.so",
+      "path": "runtime/libggml-cpu-sapphirerapids.so",
+      "size": 1827080,
+      "sha256": "157547e794b37ccdb4d12ffdc94246b094db30e2e94848dbfd152008483da8b7"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-skylakex.so",
+      "path": "runtime/libggml-cpu-skylakex.so",
+      "size": 1540136,
+      "sha256": "52e3f8b8caf7a8e032ad92291c10bdd54c61ac18da2913a7686cb5a13fb2bea2"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-sse42.so",
+      "path": "runtime/libggml-cpu-sse42.so",
+      "size": 897032,
+      "sha256": "6c992b22142a24a5ebef8098fc3d2d8240c9d4295a0a77430f3637a41dc5c1f6"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-x64.so",
+      "path": "runtime/libggml-cpu-x64.so",
+      "size": 872488,
+      "sha256": "2c70e5112c4fcf7348152ff43b9fb4c011c24bb175549970d1f79c2c46e5b490"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-cpu-zen4.so",
+      "path": "runtime/libggml-cpu-zen4.so",
+      "size": 1548328,
+      "sha256": "578d4f16906dcb04df41026bba5f1d4b7275d70fd782a5bb836a4e9e651e62ae"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml-vulkan.so",
+      "path": "runtime/libggml-vulkan.so",
+      "size": 44039912,
+      "sha256": "23ab77defabd4b14186e204c11314c1a88ad28c7d6f16b8cb1d0d6e5eb3ab7b2"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libggml.so",
+      "path": "runtime/libggml.so",
+      "size": 220776,
+      "sha256": "48ed4b6ee4c88d7d9f49ca464c046c3f8a66a9ad1befb44229ae797ad51a4f68"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/libtranscribe.so",
+      "path": "runtime/libtranscribe.so",
+      "size": 2434312,
+      "sha256": "479b02b78bf1d5347ce6113e529c7537f82c2282333ebd7ecbe84c2bf3f3904c"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/licenses/LICENSE",
+      "path": "runtime/licenses/LICENSE",
+      "size": 1083,
+      "sha256": "86a53633b56f6b029d3cb42158bcc7aac0cdff898aceb13e83b93e368bbc4ac6"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/licenses/ggml/LICENSE",
+      "path": "runtime/licenses/ggml/LICENSE",
+      "size": 1078,
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/licenses/src/third_party/miniz/LICENSE",
+      "path": "runtime/licenses/src/third_party/miniz/LICENSE",
+      "size": 1162,
+      "sha256": "6f20fa7672b00e2e975c291df737cf227addf3ad32e36fef3fe0f416e4664d3d"
+    },
+    {
+      "archive_path": "transcribe-native-linux-x86_64-cpu-vulkan/licenses/src/third_party/silero_vad/LICENSE",
+      "path": "runtime/licenses/src/third_party/silero_vad/LICENSE",
+      "size": 1075,
+      "sha256": "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"
+    }
+  ]
+}

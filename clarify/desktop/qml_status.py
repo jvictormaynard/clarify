@@ -288,6 +288,7 @@ class QmlStatusPillController(QObject):
     audioLevelChanged = Signal()
     recordingReadyChanged = Signal()
     targetIconChanged = Signal()
+    liveTranscriptChanged = Signal()
 
     def __init__(
         self,
@@ -303,6 +304,7 @@ class QmlStatusPillController(QObject):
         self._recorder = recorder
         self._audio_level = 0.0
         self._recording_ready = False
+        self._live_transcript = ""
         self._fallback_icon = fallback_icon
         self._file_icons = QFileIconProvider()
         self._icon_resolver = icon_resolver or self._resolve_icon
@@ -352,6 +354,11 @@ class QmlStatusPillController(QObject):
         self.audioLevelChanged.emit()
 
     def _sample_level(self) -> None:
+        self._set_live_transcript(
+            str(getattr(self._recorder, "live_transcript", "") or "")
+            if self._bridge.recording
+            else ""
+        )
         self._set_recording_ready(
             bool(
                 self._bridge.recording
@@ -371,8 +378,18 @@ class QmlStatusPillController(QObject):
                 self._level_timer.start()
             return
         self._level_timer.stop()
+        self._set_live_transcript("")
         self._set_recording_ready(False)
         self._set_audio_level(0.0)
+
+    @Property(str, notify=liveTranscriptChanged)
+    def liveTranscript(self) -> str:
+        return self._live_transcript
+
+    def _set_live_transcript(self, text: str) -> None:
+        if text != self._live_transcript:
+            self._live_transcript = text
+            self.liveTranscriptChanged.emit()
 
     def _sync_target_icon(self) -> None:
         resolved = self._icon_resolver(str(self._bridge.targetExecutable or ""))
