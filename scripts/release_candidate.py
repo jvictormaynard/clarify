@@ -34,23 +34,19 @@ except ImportError:
     import release_delivery as release
 
 require = release.require
+allowed_assets = release.desktop_assets
 WORKFLOW = ".github/workflows/release.yml"
 BUILD_JOB = "Build desktop candidate"
+MACOS_BUILD_JOB = "Build macOS candidate inputs"
+MACOS_BUILD_STEPS = (
+    "Build Apple Silicon app",
+    "Package and verify macOS candidate inputs",
+    "Upload macOS candidate inputs",
+)
+MACOS_DOWNLOAD_STEP = "Download macOS candidate inputs"
+SEAL_STEP = "Seal desktop candidate"
 MANIFEST = "Clarify-candidate.json"
 MAX_BYTES = 1024 * 1024 * 1024
-BASE_ASSETS = release.ASSETS - {
-    "Clarify-portable-update.json",
-    "Clarify-portable-update.json.sig",
-}
-
-
-def allowed_assets(channel):
-    require(channel in {"preview", "stable"}, "Unknown candidate channel")
-    return set(
-        release.ASSETS
-        if channel == "stable"
-        else BASE_ASSETS | {"Clarify-preview.json"}
-    )
 
 
 def positive(value):
@@ -71,8 +67,7 @@ def digest(value):
 
 def identity(source, source_ref, run_id, attempt, channel, version):
     release.sha(source)
-    release.version(version)
-    allowed_assets(channel)
+    release.desktop_requires_macos(channel, version)
     run_id, attempt = positive(run_id), positive(attempt)
     require(attempt <= 100, "Candidate retry limit exceeded")
     if channel == "stable":
@@ -121,8 +116,8 @@ def file_record(path):
 def seal(inputs, output, expected):
     """Copy only final allowed files from build output into a new artifact root."""
     require(not output.exists(), "Candidate output already exists")
-    allowed = allowed_assets(expected["channel"])
-    forbidden = allowed_assets("stable") - allowed
+    allowed = allowed_assets(expected["channel"], expected["version"])
+    forbidden = release.WINDOWS_UPDATE_ASSETS - allowed
     require(
         not any((inputs / name).exists() for name in forbidden),
         "Preview must have no update metadata",
@@ -157,7 +152,7 @@ def verify_directory(directory, expected):
         ),
         "Candidate identity differs",
     )
-    allowed = allowed_assets(expected["channel"])
+    allowed = allowed_assets(expected["channel"], expected["version"])
     require(
         isinstance(document["assets"], dict) and set(document["assets"]) == allowed,
         "Candidate asset inventory differs",
@@ -178,24 +173,22 @@ def verify_directory(directory, expected):
     return document
 
 
-def extract(data, expected_digest, output):
+def extract(data, expected_digest, output, expected):
     require(
         "sha256:" + hashlib.sha256(data).hexdigest() == digest(expected_digest),
         "Downloaded artifact digest differs",
     )
-    allowed = allowed_assets("stable") | allowed_assets("preview") | {MANIFEST}
-    extract_files(data, allowed, output, required={MANIFEST})
+    allowed = allowed_assets(expected["channel"], expected["version"]) | {MANIFEST}
+    extract_files(data, allowed, output)
 
 
-def extract_files(data, allowed, output, *, required=None):
+def extract_files(data, allowed, output):
     require(not output.exists(), "Artifact extraction destination already exists")
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         entries = archive.infolist()
-        names = [entry.filename for entry in entries]
+        names = [entry.orig_filename for entry in entries]
         require(
-            len(names) == len(set(names))
-            and set(names) <= allowed
-            and (required or allowed) <= set(names),
+            len(names) == len(allowed) and set(names) == allowed,
             "Duplicate, escaping or unexpected archive paths",
         )
         require(
@@ -219,17 +212,41 @@ def extract_files(data, allowed, output, *, required=None):
                 stream.write(archive.read(entry))
 
 
-def producer_steps(channel):
+def producer_steps(channel, version):
     steps = [
         "Build portable executable",
         "Verify frozen portable replacement and recovery",
-        "Seal desktop candidate",
-        "Attest candidate provenance",
-        "Upload desktop candidate",
     ]
     if channel == "stable":
         steps.append("Sign portable update metadata")
+    if release.desktop_requires_macos(channel, version):
+        steps.append(MACOS_DOWNLOAD_STEP)
+    steps.extend([SEAL_STEP, "Attest candidate provenance", "Upload desktop candidate"])
     return steps
+
+
+def verify_producer_job(jobs, job_name, attempt, required_steps):
+    matches = [job for job in jobs if job.get("name") == job_name]
+    require(
+        len(matches) == 1
+        and matches[0].get("status") == "completed"
+        and matches[0].get("conclusion") == "success"
+        and matches[0].get("run_attempt") == attempt,
+        "Candidate build job is not successful: " + job_name,
+    )
+    verified = {}
+    for name in required_steps:
+        steps = [
+            step for step in matches[0].get("steps", []) if step.get("name") == name
+        ]
+        require(
+            len(steps) == 1
+            and steps[0].get("status") == "completed"
+            and steps[0].get("conclusion") == "success",
+            "Missing successful producer step: " + name,
+        )
+        verified[name] = steps[0]
+    return verified
 
 
 def authenticate(api, expected, artifact_id, artifact_digest):
@@ -260,24 +277,17 @@ def authenticate(api, expected, artifact_id, artifact_digest):
         "Unexpected producer workflow",
     )
     jobs = api.pages(f"/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
-    matches = [job for job in jobs if job.get("name") == BUILD_JOB]
-    require(
-        len(matches) == 1
-        and matches[0].get("status") == "completed"
-        and matches[0].get("conclusion") == "success"
-        and matches[0].get("run_attempt") == attempt,
-        "Candidate build job is not successful",
+    channel, version = expected["channel"], expected["version"]
+    windows_steps = verify_producer_job(
+        jobs, BUILD_JOB, attempt, producer_steps(channel, version)
     )
-    for name in producer_steps(expected["channel"]):
-        steps = [
-            step for step in matches[0].get("steps", []) if step.get("name") == name
-        ]
+    if release.desktop_requires_macos(channel, version):
         require(
-            len(steps) == 1
-            and steps[0].get("status") == "completed"
-            and steps[0].get("conclusion") == "success",
-            "Missing successful producer step: " + name,
+            positive(windows_steps[MACOS_DOWNLOAD_STEP].get("number"))
+            < positive(windows_steps[SEAL_STEP].get("number")),
+            "Download macOS candidate inputs before sealing the candidate",
         )
+        verify_producer_job(jobs, MACOS_BUILD_JOB, attempt, MACOS_BUILD_STEPS)
     artifact = api.request("GET", f"/actions/artifacts/{artifact_id}")
     listed = api.pages(f"/actions/runs/{run_id}/artifacts", "artifacts")
     name = f"desktop-candidate-{run_id}-{attempt}"
@@ -297,24 +307,26 @@ def authenticate(api, expected, artifact_id, artifact_digest):
 
 
 def acceptance(expected, artifact_digest, evidence, now=None):
-    release.exact_keys(
-        evidence,
-        {
-            "schema",
-            "source_sha",
-            "candidate_digest",
-            "windows_accepted",
-            "checked_at",
-            "report_url",
-        },
-    )
+    macos = release.desktop_requires_macos(expected["channel"], expected["version"])
+    fields = {
+        "schema",
+        "source_sha",
+        "candidate_digest",
+        "windows_accepted",
+        "checked_at",
+        "report_url",
+    }
+    if macos:
+        fields.add("macos_accepted")
+    release.exact_keys(evidence, fields)
     require(
         type(evidence["schema"]) is int
-        and evidence["schema"] == 1
+        and evidence["schema"] == (2 if macos else 1)
         and evidence["source_sha"] == expected["source_sha"]
         and evidence["candidate_digest"] == digest(artifact_digest)
-        and evidence["windows_accepted"] is True,
-        "Windows acceptance must cover the packaged candidate",
+        and evidence["windows_accepted"] is True
+        and (not macos or evidence["macos_accepted"] is True),
+        "Native acceptance must cover the packaged candidate",
     )
     require(
         isinstance(evidence["report_url"], str)
@@ -329,7 +341,7 @@ def acceptance(expected, artifact_digest, evidence, now=None):
     )
     require(
         0 <= ((now or datetime.now(timezone.utc)) - checked).total_seconds() <= 86400,
-        "Repeat Windows acceptance reporting within 24 hours",
+        "Repeat native acceptance reporting within 24 hours",
     )
 
 
@@ -362,8 +374,11 @@ def verify_acceptance_report(api, expected, artifact_digest, evidence, now=None)
         report.get("body", ""),
         re.DOTALL,
     )
+    require(len(blocks) == 1, "Canonical report must have one acceptance block")
+    reported = release.decode(blocks[0])
     require(
-        len(blocks) == 1 and release.decode(blocks[0]) == evidence,
+        reported == evidence
+        and all(type(reported[key]) is type(value) for key, value in evidence.items()),
         "Canonical report does not accept this exact candidate",
     )
     updated = datetime.strptime(report["updated_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
@@ -420,7 +435,8 @@ def download(api, path):
 
 
 def verify_provenance(directory, expected):
-    for name in sorted(allowed_assets(expected["channel"]) | {MANIFEST}):
+    allowed = allowed_assets(expected["channel"], expected["version"])
+    for name in sorted(allowed | {MANIFEST}):
         subprocess.run(
             [
                 "gh",
@@ -441,6 +457,54 @@ def verify_provenance(directory, expected):
             ],
             check=True,
         )
+
+
+def verify_macos_payload(directory):
+    package = directory / release.MACOS_ZIP
+    checksum = file_record(package)["sha256"]
+    line = f"{checksum}  {release.MACOS_ZIP}".encode("ascii")
+    with (directory / release.MACOS_CHECKSUM).open("rb") as stream:
+        require(
+            stream.read(len(line) + 3) in {line, line + b"\n", line + b"\r\n"},
+            "macOS ZIP checksum differs",
+        )
+    required = {
+        "Clarify.app/Contents/Info.plist",
+        "Clarify.app/Contents/MacOS/Clarify",
+        "Clarify.app/Contents/Helpers/Clarify Desktop.app/Contents/MacOS/Clarify Desktop",
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "Clarify-qt-NOTICES.txt",
+        "Clarify-settings-NOTICES.txt",
+        "Clarify-crypto-NOTICES.txt",
+        "Clarify-macos-NOTICES.txt",
+        "Clarify-macos.sbom.json",
+    }
+    with zipfile.ZipFile(package) as archive:
+        entries = archive.infolist()
+        names = {entry.filename for entry in entries}
+        files = {
+            entry.filename
+            for entry in entries
+            if not entry.is_dir()
+            and entry.file_size > 0
+            and stat.S_IFMT(entry.external_attr >> 16) in {0, stat.S_IFREG}
+        }
+        require(
+            len(names) == len(entries) and required <= files,
+            "macOS ZIP is missing app or distribution files, or has duplicate entries",
+        )
+        require(
+            sum(entry.file_size for entry in entries) <= MAX_BYTES
+            and all(
+                (name in required or name.startswith("Clarify.app/"))
+                and "\\" not in name
+                and not {"", ".", ".."}.intersection(name.removesuffix("/").split("/"))
+                for name in names
+            ),
+            "macOS ZIP contains unsafe paths or exceeds its expanded size limit",
+        )
+        require(archive.testzip() is None, "macOS ZIP is corrupt")
 
 
 def verify_payload(directory, expected, *, building=False):
@@ -573,6 +637,8 @@ def verify_payload(directory, expected, *, building=False):
             and preview["updater_enabled"] is False,
             "Preview identity differs",
         )
+    if release.desktop_requires_macos(expected["channel"], expected["version"]):
+        verify_macos_payload(directory)
 
 
 def verify_source(api, expected, *, building=False, allow_published=False):
@@ -808,6 +874,7 @@ def main():
                 download(api, f"/actions/artifacts/{positive(args.artifact_id)}/zip"),
                 args.artifact_digest,
                 directory,
+                expected,
             )
             result = publish(
                 api,
@@ -852,6 +919,14 @@ def main():
                 is None,
                 "Release exists; select and inspect its existing candidate",
             )
+            if output_file := os.environ.get("GITHUB_OUTPUT"):
+                macos = release.desktop_requires_macos(
+                    args.channel, expected["version"]
+                )
+                with Path(output_file).open(
+                    "a", encoding="utf-8", newline="\n"
+                ) as stream:
+                    stream.write(f"macos_required={json.dumps(macos)}\n")
         else:
             verify_payload(args.inputs, expected, building=True)
             seal(args.inputs, args.output, expected)

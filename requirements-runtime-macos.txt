@@ -1,0 +1,4 @@
+-r requirements.txt
+
+pyobjc-framework-Cocoa>=12,<13
+pyobjc-framework-Quartz>=12,<13

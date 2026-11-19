@@ -131,10 +131,10 @@ pyobjc-core==12.2.2
     #   pyobjc-framework-quartz
 pyobjc-framework-cocoa==12.2.2
     # via
-    #   -r requirements-macos.txt
+    #   -r requirements-runtime-macos.txt
     #   pyobjc-framework-quartz
 pyobjc-framework-quartz==12.2.2
-    # via -r requirements-macos.txt
+    # via -r requirements-runtime-macos.txt
 pyparsing==3.3.2
     # via pip-requirements-parser
 pyproject-hooks==1.2.0

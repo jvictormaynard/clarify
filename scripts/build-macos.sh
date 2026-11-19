@@ -12,7 +12,7 @@ python="$repo/.venv/bin/python"
 arch=x64
 if [[ $(uname -m) == arm64 ]]; then arch=arm64; fi
 
-npm --prefix desktop ci
+npm --prefix desktop ci --no-audit --no-fund
 npm --prefix desktop run build:electron
 
 shell_app="$repo/desktop/electron-dist/Clarify Desktop-darwin-$arch/Clarify Desktop.app"
@@ -37,6 +37,10 @@ app="$output/Clarify.app"
     "$repo/clarify/desktop/qml_app.py"
 
 contents="$app/Contents"
+# The cross-platform sounddevice wheel also contains Windows-only audio DLLs.
+for folder in Frameworks Resources; do
+    find "$contents/$folder/_sounddevice_data/portaudio-binaries" -name '*.dll' -exec rm {} +
+done
 mkdir -p "$contents/Helpers"
 ditto "$shell_app" "$contents/Helpers/Clarify Desktop.app"
 plist="$contents/Info.plist"

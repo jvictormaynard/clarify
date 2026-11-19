@@ -182,6 +182,21 @@ Python ou Node.js.
 Na primeira execução, o script cria um ambiente virtual e instala as
 dependências automaticamente.
 
+### Instalar no macOS
+
+As versões desktop após a v0.18.0 incluem um aplicativo para Macs com Apple
+Silicon. Baixe `Clarify-macos-arm64.zip` e `Clarify-macos-arm64.zip.sha256` da
+mesma versão na [página de releases](https://github.com/jvictormaynard/clarify/releases).
+Na pasta de downloads, confira o ZIP com
+`shasum -a 256 -c Clarify-macos-arm64.zip.sha256`. Extraia o arquivo e mova
+`Clarify.app` para Aplicativos.
+
+O aplicativo comunitário usa uma assinatura ad hoc. Se o Gatekeeper bloquear
+o aplicativo verificado, abra **Ajustes do Sistema → Privacidade e Segurança**
+e selecione **Abrir Mesmo Assim**. Permita o acesso ao microfone quando o macOS
+pedir. Para colar texto automaticamente, permita o acesso em **Acessibilidade**.
+Veja os atalhos no [guia do macOS](development.md#macos-setup).
+
 ### Compilar e executar no macOS
 
 Você pode compilar `Clarify.app` no Mac com Python 3.12 e Node.js 22.12 ou mais

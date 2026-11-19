@@ -112,7 +112,10 @@ For a source run, build the Electron shell with `npm --prefix desktop ci` and
 absolute path to use a separate profile for testing. Use a fake provider and audio
 fixtures. To update the macOS dependency lock, run
 `.venv/bin/python -m piptools compile --allow-unsafe --strip-extras --output-file=requirements-lock-macos.txt requirements-macos.txt`
-on macOS.
+on macOS. For the runtime-only lock, run the same command with
+`requirements-runtime-macos.txt`, `requirements-lock-runtime-macos.txt`, and
+without `--allow-unsafe`. The macOS release SBOM uses the runtime-only lock and
+the packaged Electron inventory.
 
 ## Settings development
 
