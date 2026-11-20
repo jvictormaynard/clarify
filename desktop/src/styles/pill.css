@@ -64,7 +64,7 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .pill-languages button:focus-visible { outline-offset: -2px; background: var(--accent); }
 .pill-menu { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); border-radius: 14px; padding: 6px; display: flex; flex-direction: column; width: 300px; max-height: calc(100vh - 64px); overflow-y: auto; animation: pill-menu-in 180ms cubic-bezier(.215,.61,.355,1); }
 .workflow-pill { flex-shrink: 0; }
-.pill-menu button { justify-content: flex-start; padding: 6px 10px; font-size: 14px; }
+.pill-menu button { flex-shrink: 0; justify-content: flex-start; padding: 6px 10px; font-size: 14px; }
 .pill-error { position: absolute; bottom: 52px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; border-radius: 12px; padding: 8px; max-width: 90%; font-size: 12px; color: var(--destructive); }
 html:has(.titlebar) .titlebar, html:has(.titlebar) [data-desktop-drag-region] { -webkit-app-region: drag; }
 .titlebar .window-controls, .titlebar button { -webkit-app-region: no-drag; }
