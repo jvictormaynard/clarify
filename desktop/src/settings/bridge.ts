@@ -167,6 +167,7 @@ export interface Settings {
   localBenchmarkBusy: boolean;
   localBenchmarkDetail: string;
   hotkeyCaptureAction: string;
+  hotkeyUnavailable?: string[];
   hotkeyActions: {
     id: string;
     label: string;

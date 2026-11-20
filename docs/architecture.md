@@ -1,8 +1,8 @@
 # Architecture
 
-Clarify has a local-first Windows desktop client, an iOS client in `mobile/`,
-and an optional account service in `server/`. All inference uses the user's
-computer, provider credentials, or connected subscription. Clarify does not fund
+Clarify has a local-first desktop client for Windows and macOS, an iOS client
+in `mobile/`, and an optional account service in `server/`. All inference uses
+the user's computer, provider credentials, or connected subscription. Clarify does not fund
 transcription or text processing. Signing in does not change provider routes.
 The iOS client requires an explicitly paired computer for processing; an account
 alone does not enable dictation. Existing account libraries and history remain
@@ -948,7 +948,7 @@ legacy plaintext value, reads it back through the secret store, and only then
 atomically removes that provider key from `config.json`. A backend, read-back,
 or cleanup failure keeps the legacy value recoverable.
 
-Experimental Linux and macOS source runs use a separate plaintext
+Linux and macOS use a separate plaintext
 `~/.clarify/secrets.json` fallback with mode `0600` where supported. This
 fallback is intentionally explicit; it does not claim OS-backed protection.
 
@@ -992,8 +992,8 @@ boundary.
 | Dictionary and snippets | `%APPDATA%\Clarify\dictionary.json` | Versioned local terms, aliases, and bounded replacement rules; no credentials or usage events |
 | Working audio | `%APPDATA%\Clarify\clarify-recording-*.wav` | One unique session-owned file, deleted after the provider no longer needs it |
 
-On non-Windows source runs, the equivalent data directory is
-`~/.clarify`.
+On macOS and Linux the data directory is `~/.clarify`. `CLARIFY_DATA_DIR`
+selects a separate profile.
 
 For API keys, documented environment variables (`GEMINI_API_KEY`, legacy
 `API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`) override the stored credential

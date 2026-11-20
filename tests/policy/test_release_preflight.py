@@ -26,23 +26,10 @@ PREFLIGHT = load_preflight()
 
 
 class ReleasePreflightVersionTests(unittest.TestCase):
-    def test_only_portable_assets_are_required_for_stable_publication(self):
-        self.assertIn("Clarify-qt-sources.zip", PREFLIGHT.STABLE_REQUIRED_ASSETS)
-        self.assertIn(
-            "Clarify-portable-update.json.sig", PREFLIGHT.STABLE_REQUIRED_ASSETS
-        )
-        self.assertFalse(
-            any(
-                name.endswith((".msi", ".cab"))
-                for name in PREFLIGHT.STABLE_REQUIRED_ASSETS
-            )
-        )
-        for name in (
-            "scripts/qt_distribution.py",
-            "scripts/qt_sources.json",
-            "docs/qt-distribution.md",
-        ):
-            self.assertIn(name, PREFLIGHT.REQUIRED_FILES)
+    def test_preflight_uses_the_current_desktop_release_inputs(self):
+        for name in PREFLIGHT.REQUIRED_FILES:
+            with self.subTest(name=name):
+                self.assertTrue((ROOT / name).is_file())
 
     def test_single_publisher_accepts_explicit_channels_and_rejects_automatic_triggers(
         self,

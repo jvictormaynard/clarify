@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import io
 import os
 from dataclasses import replace
 from pathlib import Path
 import subprocess
+import sys
 import threading
 import time
 from tempfile import TemporaryDirectory
 import unittest
+import wave
 from unittest.mock import patch
 
 from audio_file_batch import (
@@ -482,6 +485,52 @@ class AudioFileBatchTests(unittest.TestCase):
 
 
 class AudioConverterTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "darwin", "Requires macOS audio conversion")
+    def test_macos_batch_normalizes_stereo_audio_and_keeps_unsupported_files(self):
+        from array import array
+
+        gateway = _FakeGateway()
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            original_wav = root / "template.wav"
+            with wave.open(str(original_wav), "wb") as output:
+                output.setparams((2, 2, 48000, 0, "NONE", ""))
+                output.writeframes(
+                    array("h", ([0, 10000] * 48 + [0, -10000] * 48) * 50)
+                )
+            aiff = root / "stereo input.AIFF"
+            subprocess.run(
+                [
+                    "/usr/bin/afconvert",
+                    "-f",
+                    "AIFF",
+                    "-d",
+                    "BEI16",
+                    str(original_wav),
+                    str(aiff),
+                ],
+                check=True,
+                capture_output=True,
+            )
+            original_aiff = aiff.read_bytes()
+            wavpack = root / "unsupported.wv"
+            wavpack.write_bytes(b"wvpk")
+
+            service = AudioFileBatchService(gateway, temp_root=root / "temp")
+            result = service.run([aiff, wavpack], _selection())
+
+            self.assertEqual(len(result.succeeded), 1)
+            self.assertEqual(len(result.failed), 1)
+            self.assertIn("WavPack", result.failed[0].error)
+            self.assertEqual(aiff.read_bytes(), original_aiff)
+            self.assertEqual(wavpack.read_bytes(), b"wvpk")
+            self.assertEqual(list((root / "temp").iterdir()), [])
+            request, _, _ = gateway.requests[0]
+            with wave.open(io.BytesIO(request.audio_bytes), "rb") as normalized:
+                self.assertEqual(normalized.getparams()[:4], (1, 2, 16000, 1600))
+                pcm = memoryview(normalized.readframes(1600)).cast("h")
+                self.assertGreater(max(abs(sample) for sample in pcm), 100)
+
     @unittest.skipIf(os.name == "nt", "Windows trims trailing filename spaces")
     def test_converter_passes_normalized_source_type_to_sox(self):
         captured = {}

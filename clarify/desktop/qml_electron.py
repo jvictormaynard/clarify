@@ -6,6 +6,7 @@ import json
 import ctypes
 import os
 from pathlib import Path
+import platform
 import sys
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer
@@ -102,6 +103,20 @@ def desktop_executable() -> Path | None:
     if override:
         path = Path(override)
         return path if path.is_absolute() and path.is_file() else None
+    if sys.platform == "darwin":
+        executable = Path("Clarify Desktop.app/Contents/MacOS/Clarify Desktop")
+        if getattr(sys, "frozen", False):
+            path = Path(sys.executable).resolve().parent.parent / "Helpers" / executable
+        else:
+            arch = "arm64" if platform.machine() == "arm64" else "x64"
+            path = (
+                Path(__file__).resolve().parents[2]
+                / "desktop"
+                / "electron-dist"
+                / f"Clarify Desktop-darwin-{arch}"
+                / executable
+            )
+        return path if path.is_file() else None
     roots = [Path(sys.executable).parent]
     if getattr(sys, "_MEIPASS", None):
         roots.insert(0, Path(sys._MEIPASS))
@@ -135,6 +150,7 @@ class ElectronDesktopProcess(QObject):
         self.failed = False
         self._visible = False
         self._shutting_down = False
+        self._quit_requested = False
         self._recovering = False
         self._restart_attempts = 0
         self._stop_attempts = 0
@@ -476,7 +492,7 @@ class ElectronDesktopProcess(QObject):
                 return {**reply, "error": "Could not apply desktop command"}
         if method in {"quit", "toggleWindow"} and not args:
             if method == "quit":
-                QTimer.singleShot(0, self.application.quit)
+                self._request_quit()
             else:
                 self.toggle_pill()
             return {**reply, "result": True}
@@ -504,8 +520,19 @@ class ElectronDesktopProcess(QObject):
             for message in self._webrtc.drain():
                 self._send(message)
 
+    def _request_quit(self):
+        if self._quit_requested or self._shutting_down:
+            return
+        self._quit_requested = True
+        if sys.platform == "darwin":
+            # Leave the Qt loop without reentering Cocoa's application
+            # termination while the child process is being drained.
+            QTimer.singleShot(0, lambda: self.application.exit(0))
+        else:
+            QTimer.singleShot(0, self.application.quit)
+
     def _receive(self, request):
-        if not isinstance(request, dict):
+        if self._shutting_down or not isinstance(request, dict):
             return
         event = request.get("event")
         if event == "computer-webrtc" and self._webrtc is not None:
@@ -537,7 +564,7 @@ class ElectronDesktopProcess(QObject):
             self.bridge.closeSettings()
             return
         if event == "quit":
-            self.application.quit()
+            self._request_quit()
             return
         if type(request.get("id")) is not int:
             return
@@ -616,6 +643,10 @@ class ElectronDesktopProcess(QObject):
             timer.stop()
         self._close_settings_activity()
         if self.process.state() != QProcess.ProcessState.NotRunning:
+            if sys.platform == "darwin":
+                self._send({"event": "shutdown"})
+                if self.process.waitForFinished(1000):
+                    return
             self.process.terminate()
             if not self.process.waitForFinished(1000):
                 self.process.kill()

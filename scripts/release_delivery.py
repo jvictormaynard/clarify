@@ -28,6 +28,13 @@ REPOSITORY = "jvictormaynard/clarify"
 INTENT = ".github/release-intent.json"
 CI_PATH = ".github/workflows/ci.yml"
 WORKFLOWS = {"desktop": "release.yml", "mobile": "ios-testflight.yml"}
+LAST_WINDOWS_ONLY_DESKTOP_VERSION = "0.18.0"
+MACOS_ZIP = "Clarify-macos-arm64.zip"
+MACOS_CHECKSUM = MACOS_ZIP + ".sha256"
+WINDOWS_UPDATE_ASSETS = {
+    "Clarify-portable-update.json",
+    "Clarify-portable-update.json.sig",
+}
 ASSETS = {
     "Clarify.exe",
     "Clarify.exe.sha256",
@@ -35,9 +42,7 @@ ASSETS = {
     "Clarify-qt-sources.zip",
     "Clarify-windows-x64.zip",
     "sox-14.4.2-source.tar.gz",
-    "Clarify-portable-update.json",
-    "Clarify-portable-update.json.sig",
-}
+} | WINDOWS_UPDATE_ASSETS
 COMMON_CHECKS = {"CI required", "Repository and delivery policy"}
 COMMUNITY_NOTICE = """This is an unsigned community portable release.
 
@@ -77,6 +82,24 @@ def version(value):
     return parts
 
 
+def desktop_requires_macos(channel, target_version):
+    require(channel in {"preview", "stable"}, "Unknown candidate channel")
+    parts = version(target_version)
+    return channel == "preview" or parts > version(LAST_WINDOWS_ONLY_DESKTOP_VERSION)
+
+
+def desktop_assets(channel, target_version=LAST_WINDOWS_ONLY_DESKTOP_VERSION):
+    """The versionless stable inventory is the legacy Windows asset set."""
+    macos = desktop_requires_macos(channel, target_version)
+    assets = set(ASSETS)
+    if channel == "preview":
+        assets.difference_update(WINDOWS_UPDATE_ASSETS)
+        assets.add("Clarify-preview.json")
+    if macos:
+        assets.update({MACOS_ZIP, MACOS_CHECKSUM})
+    return assets
+
+
 def changelog_section(changelog, target):
     """Return one dated release section without adjacent versions or link indexes."""
     version(target)
@@ -111,10 +134,19 @@ def changelog_section(changelog, target):
 def community_release_notes(changelog, tag):
     require(isinstance(tag, str) and tag.startswith("v"), "Use a stable vX.Y.Z tag")
     section = changelog_section(changelog, tag[1:])
+    distribution = "The downloads on this page are for Windows.\n\n"
+    if desktop_requires_macos("stable", tag[1:]):
+        distribution = (
+            "Download `Clarify-windows-x64.zip` for Windows or "
+            f"`{MACOS_ZIP}` for a Mac with Apple Silicon and macOS 13 or later.\n\n"
+            f"Verify the macOS ZIP with `{MACOS_CHECKSUM}` before opening it.\n\n"
+            "#### Windows\n\n"
+        )
     return (
         section
         + f"\n\n[Full changelog](https://github.com/{REPOSITORY}/blob/{tag}/CHANGELOG.md)"
-        + "\n\n### Distribution\n\nThe downloads on this page are for Windows.\n\n"
+        + "\n\n### Distribution\n\n"
+        + distribution
         + COMMUNITY_NOTICE
         + "\n"
     )
@@ -597,11 +629,12 @@ def existing_publication(api, intent):
     if release is None:
         return False
     assets = [asset["name"] for asset in release.get("assets", [])]
+    expected = desktop_assets("stable", intent["version"])
     require(
         not release.get("draft")
         and not release.get("prerelease")
-        and len(assets) == len(ASSETS)
-        and set(assets) == ASSETS,
+        and len(assets) == len(expected)
+        and set(assets) == expected,
         "Existing release is incomplete; inspect it without replacing assets",
     )
     return True

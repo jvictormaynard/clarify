@@ -3,9 +3,9 @@
 This module is deliberately independent from Tk and the desktop application.
 It provides the narrow seam a future file-picker/drag-and-drop surface can use
 without creating a second provider implementation.  Imported files remain
-owned by the caller.  Non-WAV inputs are normalized through an injected
-converter (SoX in the packaged application) into a short-lived temporary WAV;
-the temporary directory is always removed after the typed provider call.
+owned by the caller. The converter normalizes supported non-WAV inputs into
+a temporary WAV. The service removes the temporary directory after the
+provider call.
 
 The service only accepts local paths.  It never resolves URLs or starts an
 unbounded queue.  At most ``max_workers`` provider operations are submitted at
@@ -270,8 +270,8 @@ def _default_sox_path() -> str:
     return "sox"
 
 
-class SoxAudioConverter:
-    """Normalize a supported local file to 16 kHz mono signed PCM WAV."""
+class _CommandAudioConverter:
+    """Run a local converter with a time limit and cooperative cancellation."""
 
     def __init__(
         self,
@@ -282,7 +282,7 @@ class SoxAudioConverter:
     ):
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
-        self.executable = str(executable or _default_sox_path())
+        self.executable = str(executable or self._default_executable())
         self.timeout_seconds = float(timeout_seconds)
         self._popen = popen or subprocess.Popen
 
@@ -297,21 +297,7 @@ class SoxAudioConverter:
         destination.parent.mkdir(parents=True, exist_ok=True)
         if cancel_token.cancelled:
             raise AudioBatchCancelledError("Audio conversion was cancelled")
-        args = [
-            self.executable,
-            "-t",
-            _sox_input_type(source),
-            str(source),
-            "-r",
-            "16000",
-            "-c",
-            "1",
-            "-b",
-            "16",
-            "-e",
-            "signed-integer",
-            str(destination),
-        ]
+        args = [self.executable, *self._arguments(source, destination)]
         kwargs: dict[str, Any] = {
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.PIPE,
@@ -359,6 +345,57 @@ class SoxAudioConverter:
         if not destination.is_file() or destination.stat().st_size == 0:
             raise AudioConversionError("Audio conversion produced no WAV output")
         return destination
+
+    def _default_executable(self) -> str:
+        raise NotImplementedError
+
+    def _arguments(self, source: Path, destination: Path) -> list[str]:
+        raise NotImplementedError
+
+
+class SoxAudioConverter(_CommandAudioConverter):
+    """Normalize a supported local file to 16 kHz mono signed PCM WAV with SoX."""
+
+    def _default_executable(self) -> str:
+        return _default_sox_path()
+
+    def _arguments(self, source: Path, destination: Path) -> list[str]:
+        return [
+            "-t",
+            _sox_input_type(source),
+            str(source),
+            "-r",
+            "16000",
+            "-c",
+            "1",
+            "-b",
+            "16",
+            "-e",
+            "signed-integer",
+            str(destination),
+        ]
+
+
+class AfconvertAudioConverter(_CommandAudioConverter):
+    """Normalize audio with the macOS system codecs."""
+
+    def _default_executable(self) -> str:
+        return "/usr/bin/afconvert"
+
+    def _arguments(self, source: Path, destination: Path) -> list[str]:
+        if _audio_extension(source) == ".wv":
+            raise UnsupportedAudioFormatError("WavPack is unavailable on macOS")
+        return [
+            "--mix",
+            "-c",
+            "1",
+            "-f",
+            "WAVE",
+            "-d",
+            "LEI16@16000",
+            str(source),
+            str(destination),
+        ]
 
 
 def _terminate_process(process: Any) -> None:
@@ -912,7 +949,11 @@ class AudioFileBatchService:
                 "retry_delay_seconds must be between 0 and 4 seconds"
             )
         self.gateway = gateway
-        self.converter = converter or SoxAudioConverter()
+        self.converter = converter or (
+            AfconvertAudioConverter()
+            if sys.platform == "darwin"
+            else SoxAudioConverter()
+        )
         self.max_workers = int(max_workers)
         self.max_files = int(max_files)
         self.max_attempts = int(max_attempts)

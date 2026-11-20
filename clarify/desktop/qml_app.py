@@ -124,8 +124,10 @@ try:
         QtStatisticsGateway,
         QtWorkflowScheduler,
         create_real_workflow_runtime,
+        create_runtime_repositories,
     )
-    from .qt_shell import WindowsGlobalHotkeyBackend  # noqa: E402
+    from .macos_hotkeys import MacGlobalHotkeyBackend, default_hotkeys  # noqa: E402
+    from .qt_shell import QtSingleInstanceGuard, WindowsGlobalHotkeyBackend  # noqa: E402
 except ImportError:  # PyInstaller analyzes this file as a standalone entry point.
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
@@ -147,8 +149,10 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
         QtStatisticsGateway,
         QtWorkflowScheduler,
         create_real_workflow_runtime,
+        create_runtime_repositories,
     )
-    from qt_shell import WindowsGlobalHotkeyBackend  # noqa: E402
+    from macos_hotkeys import MacGlobalHotkeyBackend, default_hotkeys  # noqa: E402
+    from qt_shell import QtSingleInstanceGuard, WindowsGlobalHotkeyBackend  # noqa: E402
 
 
 if os.environ.get("CLARIFY_IMPORT_SMOKE_TEST") == "1":
@@ -309,6 +313,8 @@ def _connect_shutdown(
     runtime,
     voice_translation=None,
     audio_batch=None,
+    *,
+    stop_shell=True,
 ) -> None:
     """Stop shell-owned native resources before the workflow runtime."""
 
@@ -316,7 +322,8 @@ def _connect_shutdown(
         app.aboutToQuit.connect(voice_translation.cancel)
     if audio_batch is not None:
         app.aboutToQuit.connect(audio_batch.cancel)
-    app.aboutToQuit.connect(shell.stop)
+    if stop_shell:
+        app.aboutToQuit.connect(shell.stop)
     app.aboutToQuit.connect(runtime.shutdown)
 
 
@@ -373,16 +380,38 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    instance_guard = None
+    if sys.platform == "darwin":
+        profile = Path(
+            os.environ.get("CLARIFY_DATA_DIR", "").strip() or Path.home() / ".clarify"
+        ).resolve()
+        profile.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.environ["CLARIFY_DATA_DIR"] = str(profile)
+        instance_guard = QtSingleInstanceGuard(lock_path=profile / "desktop.lock")
+        if not instance_guard.acquire():
+            return 0
     scheduler = QtWorkflowScheduler(app)
     try:
-        runtime = create_real_workflow_runtime(scheduler)
+        if instance_guard is None:
+            runtime = create_real_workflow_runtime(scheduler)
+        else:
+            runtime = create_real_workflow_runtime(
+                scheduler,
+                repositories=create_runtime_repositories(
+                    hotkey_defaults=default_hotkeys()
+                ),
+            )
     except QtRuntimeError as error:
+        if instance_guard is not None:
+            instance_guard.release()
         print(f"Clarify QML startup failed: {error}", file=sys.stderr)
         return 2
 
     workflow_service = runtime.workflow_service
     repositories = runtime.repositories
     if repositories is None:
+        if instance_guard is not None:
+            instance_guard.release()
         runtime.shutdown()
         print(
             "Clarify QML startup failed: runtime repositories are missing",
@@ -657,19 +686,24 @@ def main(argv: list[str] | None = None) -> int:
         None,
     )
     if window is None:
+        if instance_guard is not None:
+            instance_guard.release()
         runtime.shutdown()
         return 1
 
-    if sys.platform == "win32":
-        hotkeys = WindowsGlobalHotkeyBackend(
-            app,
-            settings=settings._text_actions.bindings()
+    if sys.platform in {"win32", "darwin"}:
+        from text_actions import native_bindings
+
+        bindings = (
+            settings._text_actions.bindings()
             if settings.textActionContext
-            else __import__("text_actions").native_bindings(
-                repositories.config.load(), ()
-            ),
-            parent=app,
+            else native_bindings(repositories.config.load(), ())
         )
+        if sys.platform == "darwin":
+            hotkeys = MacGlobalHotkeyBackend(bindings, parent=app)
+            hotkeys.availabilityChanged.connect(settings.setUnavailableHotkeys)
+        else:
+            hotkeys = WindowsGlobalHotkeyBackend(app, settings=bindings, parent=app)
     if hotkeys is not None:
 
         def sync_escape():
@@ -732,6 +766,7 @@ def main(argv: list[str] | None = None) -> int:
     shell = ElectronQtShell(
         window,
         desktop=web_settings,
+        instance_guard=instance_guard,
         hotkeys=hotkeys,
         visibility_hotkey_allowed=lambda: not bridge.recording and not practice.busy,
         parent=app,
@@ -748,9 +783,17 @@ def main(argv: list[str] | None = None) -> int:
     bridge.settingsRequested.connect(web_settings.show)
     app.aboutToQuit.connect(web_settings.shutdown)
     _ = files_visibility
-    _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
+    macos = instance_guard is not None
+    if macos:
+        app.aboutToQuit.connect(quick_paste.timer.stop)
+        app.aboutToQuit.connect(hotkeys.stop)
+    _connect_shutdown(
+        app, shell, runtime, voice_translation, audio_batch, stop_shell=not macos
+    )
     app.aboutToQuit.connect(settings.shutdown)
     app.aboutToQuit.connect(updates.shutdown)
+    if macos:
+        app.aboutToQuit.connect(shell.stop)
 
     shell_result = _start_shell_if_available(shell)
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:

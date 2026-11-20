@@ -70,11 +70,52 @@ the UI. For local automation, copy `.env.example` to `.env` and fill only the
 values you need. API-key environment variables override stored credentials for
 that process and are never persisted. Never commit `.env`.
 
-Windows uses current-user DPAPI for provider keys. Linux and macOS source runs
-use the explicit plaintext `~/.clarify/secrets.json` fallback because
-those platforms remain experimental; the file is written with owner-only
-permissions where supported. Tests inject an in-memory store or use temporary
+Windows uses current-user DPAPI for provider keys. On macOS and Linux, Clarify
+stores keys in `~/.clarify/secrets.json` with owner-only permissions. The file
+contains plaintext. Tests inject an in-memory store or use temporary
 directories and never access the developer's credential store.
+
+## macOS setup
+
+Use macOS 13 or later. Install Python 3.12 and Node.js 22.12 or later.
+Run these commands from the repository root.
+
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements-lock-macos.txt
+./scripts/build-macos.sh
+open dist/macos/Clarify.app
+```
+
+The build makes a local app bundle for the Mac's architecture. The menu bar icon
+opens Settings and quits Clarify. Use a Clarify account or configure a supported
+cloud provider. The bundled Local Whisper installer, launch at login, and desktop
+updates are available on Windows. On macOS, audio-file import uses the system's
+codecs. WavPack requires conversion before import.
+
+Allow microphone access when macOS asks during the first recording. To paste
+into another app or use actions on selected text, enable **Clarify** in
+**System Settings → Privacy & Security → Accessibility**. When Clarify cannot
+verify the paste target, use the result or paste it manually. Local builds use
+an ad hoc signature. If access stops after a rebuild, remove the old app from
+Accessibility, add the new app, and reopen it. Check Microphone access again
+before recording.
+
+New profiles use Control+Shift+L for dictation, Control+Shift+V for voice
+translation, and Control+Shift+R to expand or collapse the pill. Open **Shortcuts**
+in Settings to change the bindings. macOS accepts keyboard combinations with a
+modifier and a second key. Existing profiles keep their saved shortcuts.
+
+For a source run, build the Electron shell with `npm --prefix desktop ci` and
+`npm --prefix desktop run build:electron`, then run
+`.venv/bin/python clarify/desktop/qml_app.py`. Set `CLARIFY_DATA_DIR` to an
+absolute path to use a separate profile for testing. Use a fake provider and audio
+fixtures. To update the macOS dependency lock, run
+`.venv/bin/python -m piptools compile --allow-unsafe --strip-extras --output-file=requirements-lock-macos.txt requirements-macos.txt`
+on macOS. For the runtime-only lock, run the same command with
+`requirements-runtime-macos.txt`, `requirements-lock-runtime-macos.txt`, and
+without `--allow-unsafe`. The macOS release SBOM uses the runtime-only lock and
+the packaged Electron inventory.
 
 ## Settings development
 
@@ -387,16 +428,11 @@ the executable or hiding codec/runtime libraries in a generic property.
 The attestation is verifiable with GitHub's artifact-attestation tooling and is
 separate from the existing SHA-256 checksum.
 
-## Experimental Linux and macOS support
+## Experimental Linux support
 
-The source contains fallback clipboard and hotkey paths, but the polished and
-packaged product is currently Windows-first. Linux requires SoX, `xclip`,
-`xdotool`, Tk, PortAudio, and permissions suitable for global keyboard events.
-Wayland global shortcuts and paste automation are not supported. macOS is not
-packaged and may require Accessibility permission for simulated paste.
-
-Contributions that improve these platforms are welcome when they preserve the
-Windows path and include platform-specific validation.
+The legacy Linux source app requires SoX, `xclip`, `xdotool`, Tk, PortAudio,
+and permissions for global keyboard events. Wayland global shortcuts and paste
+automation are unsupported.
 
 ## Desktop presentation and engine
 

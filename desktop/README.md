@@ -38,6 +38,10 @@ $env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify De
 .\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
+On macOS, run `npm run build:electron` in this directory. The Qt engine finds
+the result for the current architecture under `electron-dist/`. See
+[macOS setup](../docs/development.md#macos-setup) to build the complete app bundle.
+
 `npm run dev` starts Vite for frontend work; it does not connect to user settings.
 The product shell requires its Python parent and private standard input/output
 protocol. There is no public Settings HTTP server.

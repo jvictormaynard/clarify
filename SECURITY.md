@@ -39,9 +39,9 @@ be coordinated after impact and remediation are understood.
   `%APPDATA%\Clarify\secrets.dpapi.json`; ordinary settings remain in
   `config.json`. Copying the encrypted file to another Windows user or machine
   does not make it decryptable.
-- Linux and macOS source runs are experimental and use a separately documented
-  plaintext `~/.clarify/secrets.json` fallback with owner-only permissions
-  where the filesystem supports them. Do not share that file.
+- Linux and macOS store provider keys in `~/.clarify/secrets.json`. The file
+  contains plaintext and uses owner-only permissions where the filesystem
+  supports them. Do not share that file.
 - Portable executables are not currently code-signed. Verify the SHA-256 file
   attached to a release.
 - The managed signing and secure update rollout is tracked in

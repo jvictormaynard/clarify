@@ -2,7 +2,8 @@
 
 Ordinary CI validates source. It does not publish a desktop release or upload an
 iOS app. Release preparation authorizes a selected source and version. A desktop
-candidate is built once, accepted on Windows, then published by a separate action.
+candidate is built once, accepted on each platform it includes, then published
+by a separate action.
 TestFlight is the production-identity iOS candidate. App Store work reuses its
 exact Apple build ID through a verified manual handoff.
 
@@ -102,7 +103,14 @@ The build packages once with the final channel/version identity. It retains
 locked dependencies, current audits, Settings payload verification, frozen
 portable replacement/recovery smoke checks, licenses, merged runtime SBOM,
 pinned Qt/SoX sources, checksums, signed stable update metadata and provenance.
-No new signed installer or paid service is introduced.
+New previews and stable versions after v0.18.0 include `Clarify-macos-arm64.zip`
+and its `.sha256` file. A GitHub-hosted Apple Silicon runner builds the app,
+checks both Mach-O executables and the app signature after extracting the ZIP,
+and runs an isolated packaged Qt startup check. The ZIP includes the app,
+licenses, Qt and dependency notices, and a macOS SBOM. The macOS job has read-only
+repository access. Its inputs join the Windows assets before sealing and
+attestation. If a retry requires a new attempt, rerun all jobs so both platform
+builds have the same run and attempt.
 
 `Clarify-candidate.json` records schema, repository, workflow, build job, exact
 source SHA/ref, run ID, attempt, channel, version, final tag and every allowed
@@ -111,23 +119,28 @@ contains this manifest and exactly those assets. Its immutable artifact ID and
 `sha256:<hex>` digest appear in the run summary. Provenance covers the manifest
 and every asset. Build outputs and candidate artifacts are never overwritten.
 
-Perform applicable Windows manual acceptance on the downloaded stable candidate
-after packaging. Verify its artifact digest and executable checksum first.
-Cover the native contracts affected by this release, including focus/hotkeys,
-Settings, startup and portable update behavior where applicable. Record results
-and limits in a fresh canonical issue or issue comment authored by a maintainer.
-Include exactly one fenced `clarify-candidate-acceptance` block:
+Perform manual acceptance on the downloaded stable candidate after packaging.
+Verify its artifact digest and each platform checksum first. On Windows, check
+focus, hotkeys, Settings, startup, and portable updates where applicable. On an
+Apple Silicon Mac, run the downloaded app. Check first launch, microphone and
+Accessibility permissions with an isolated profile, global shortcuts, paste,
+and shutdown. Record results and limits in a fresh canonical maintainer issue
+or comment. Include exactly one fenced `clarify-candidate-acceptance` block.
 
 ```clarify-candidate-acceptance
 {
-  "schema": 1,
+  "schema": 2,
   "source_sha": "<exact candidate source SHA>",
   "candidate_digest": "sha256:<artifact SHA-256>",
   "windows_accepted": true,
+  "macos_accepted": true,
   "checked_at": "<UTC YYYY-MM-DDTHH:MM:SSZ>",
   "report_url": "https://github.com/jvictormaynard/clarify/issues/123#issuecomment-456"
 }
 ```
+
+For the already built Windows-only stable candidate v0.18.0 and earlier
+Windows candidates, use schema `1` and omit `macos_accepted`.
 
 Both the check and the canonical report update must be within 24 hours at
 publication. Publication fetches that report, verifies its author permission and
@@ -146,6 +159,7 @@ attempt, successful build/smoke/seal/provenance/upload steps and immutable artif
 identity/digest. It verifies archive paths and regular files, exact manifest
 inventory, hashes and sizes, portable ZIP contents, pinned SoX source, checksums,
 provenance source/signer and stable Ed25519 metadata against the trusted pin.
+For macOS, it also checks the ZIP checksum and required contents.
 It repeats producer/byte/tag/state checks after verification. Stable also repeats
 reviewed-source and exact canonical CI checks and rejects a superseded version.
 

@@ -181,7 +181,9 @@ def merge_bom(base: dict, settings: dict) -> dict:
     return base
 
 
-def electron_inventory(desktop: Path, npm: dict, shell: Path) -> tuple[dict, str]:
+def electron_inventory(
+    desktop: Path, npm: dict, shell: Path, *, macos: bool = False
+) -> tuple[dict, str]:
     package = json.loads((desktop / "package.json").read_text(encoding="utf-8"))
     installed = json.loads(
         (desktop / "node_modules/electron/package.json").read_text(encoding="utf-8")
@@ -220,8 +222,13 @@ def electron_inventory(desktop: Path, npm: dict, shell: Path) -> tuple[dict, str
         key: value for key, value in os.environ.items() if key != "NODE_OPTIONS"
     }
     environment["ELECTRON_RUN_AS_NODE"] = "1"
+    executable = shell / (
+        "Clarify Desktop.app/Contents/MacOS/Clarify Desktop"
+        if macos
+        else "Clarify Desktop.exe"
+    )
     runtime = subprocess.run(
-        [str(shell / "Clarify Desktop.exe"), "-p", "JSON.stringify(process.versions)"],
+        [str(executable), "-p", "JSON.stringify(process.versions)"],
         env=environment,
         capture_output=True,
         text=True,
@@ -261,7 +268,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--desktop", type=Path)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--electron-shell", type=Path)
+    shells = parser.add_mutually_exclusive_group()
+    shells.add_argument("--electron-shell", type=Path)
+    shells.add_argument("--electron-macos-shell", type=Path)
     parser.add_argument("--merge-bom", type=Path)
     parser.add_argument("--settings-bom", type=Path)
     args = parser.parse_args()
@@ -288,18 +297,22 @@ def main() -> None:
         ],
         desktop,
     )
-    if not args.electron_shell:
+    shell_directory = args.electron_shell or args.electron_macos_shell
+    if not shell_directory:
         parser.error(
             "--electron-shell is required when generating the desktop inventory"
         )
-    shell = args.electron_shell.resolve(strict=True)
-    manifest = manifest_bytes(payload_manifest(shell))
+    shell = shell_directory.resolve(strict=True)
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / MANIFEST).write_bytes(manifest)
-    bom, notices = electron_inventory(desktop, npm, shell)
-    bom["metadata"]["component"]["hashes"] = [
-        {"alg": "SHA-256", "content": hashlib.sha256(manifest).hexdigest()}
-    ]
+    bom, notices = electron_inventory(
+        desktop, npm, shell, macos=bool(args.electron_macos_shell)
+    )
+    if args.electron_shell:
+        manifest = manifest_bytes(payload_manifest(shell))
+        (args.output_dir / MANIFEST).write_bytes(manifest)
+        bom["metadata"]["component"]["hashes"] = [
+            {"alg": "SHA-256", "content": hashlib.sha256(manifest).hexdigest()}
+        ]
     bom["metadata"]["properties"] = [
         {
             "name": "clarify:input-sha256:package-lock.json",
@@ -308,7 +321,6 @@ def main() -> None:
             ).hexdigest(),
         }
     ]
-    args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "Clarify-settings.sbom.json").write_text(
         json.dumps(bom, indent=2) + "\n", encoding="utf-8"
     )

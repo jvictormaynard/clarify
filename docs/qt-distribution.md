@@ -6,7 +6,7 @@ modules are Qt Base (Core, GUI, Widgets, Network, OpenGL), Qt Declarative
 (QML and Quick, controls, dialogs, layouts, effects and shapes), and Qt SVG.
 Clarify's MIT license does not replace the licenses of these libraries.
 
-The release supplies `Clarify-qt-sources.zip` alongside the executable. It
+The release supplies `Clarify-qt-sources.zip` alongside the platform downloads. It
 contains the complete upstream source archives for those modules, PySide and
 Shiboken, plus Qt Shader Tools and Qt Tools for rebuilding. The original build
 scripts, third-party sources and notices remain in those archives. These
@@ -16,8 +16,7 @@ additional sources do not mean their tools are linked into Clarify.
 with Qt 6.11.2. `Clarify-qt-NOTICES.txt` collects the upstream license texts,
 copyright notices and attribution records, conservatively including components
 not linked into the application. It is included in the portable package and
-release ZIP. The source ZIP is a separate download; no Qt source download occurs
-when an end user starts Clarify.
+both platform ZIPs. The source ZIP is a separate download.
 
 ## Inspect, modify and rebuild
 
@@ -43,6 +42,10 @@ source and notices files. This document does not add a license restriction.
    uses the pinned versions; keep version 6.11.2 for a same-version modified
    build, or explicitly update the version constraints, locks and source
    manifest when developing against a different version. Re-run the tests.
+
+On macOS, follow [macOS setup](development.md#macos-setup) to build `Clarify.app`
+with your modified wheels. The app loads shared Qt frameworks from the bundle.
+The build script applies an ad hoc signature for local use.
 
 The portable EXE expands its bundled shared libraries into a temporary directory
 at startup. Do not edit that temporary directory as a persistent replacement:
