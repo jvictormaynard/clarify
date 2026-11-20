@@ -628,6 +628,51 @@ class WorkflowServiceTests(WorkflowFixture, unittest.TestCase):
         self.assertIsNone(state.output_language_applied)
         self.assertEqual(state.output_language_status, "refinement_not_allowed")
 
+    def test_dictation_waits_for_hotkey_release_before_publication(self):
+        target = SelectionTarget(77, "editor.exe")
+        for outcome in ("release", "held", "switch", "cancel"):
+            with self.subTest(outcome=outcome):
+                self.setUp()
+                self.clipboard.alt_down = True
+                started = self.clock.now
+                write_result = self.clipboard.write_dictation_result
+
+                def sleep(seconds):
+                    self.clock.now += seconds
+                    if outcome == "held":
+                        return
+                    self.clipboard.alt_down = False
+                    if outcome == "switch":
+                        self.clipboard.window = 88
+                    elif outcome == "cancel":
+                        self.service.cancel_active()
+
+                def publish(destination, text):
+                    if destination is not None:
+                        self.assertFalse(self.clipboard.alt_pressed())
+                    return write_result(destination, text)
+
+                self.clock.sleep = sleep
+                self.clipboard.write_dictation_result = publish
+                self.service.dispatch(StartDictation(target, "prompt", "pt"))
+                self.service.dispatch(StopDictation())
+
+                if outcome == "cancel":
+                    self.assertEqual(self.service.state.phase, WorkflowPhase.READY)
+                    self.assertEqual(self.clipboard.writes, [])
+                    self.assertEqual(self.statistics.dictations, [])
+                    continue
+                self.assertGreater(self.clock.now, started)
+                self.assertEqual(self.clipboard.writes, ["Transcribed"])
+                self.assertEqual(
+                    self.clipboard.auto_pastes,
+                    ["Transcribed"] if outcome == "release" else [],
+                )
+                self.assertEqual(len(self.statistics.dictations), 1)
+                self.assertEqual(self.service.state.phase, WorkflowPhase.COMPLETED)
+                if outcome == "held":
+                    self.assertLessEqual(self.clock.now - started, 0.82)
+
     def test_prompt_dictation_forwards_raw_and_refinement_route_metadata(self):
         self.provider.transcribe = lambda _audio, _mode, _language: TranscriptionResult(
             "refined transcript",

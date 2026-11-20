@@ -99,6 +99,7 @@ class _GUIThreadInfo(ctypes.Structure):
         ("hwndMenuOwner", wintypes.HWND),
         ("hwndMoveSize", wintypes.HWND),
         ("hwndCaret", wintypes.HWND),
+        ("rcCaret", wintypes.RECT),
     ]
 
 
@@ -714,7 +715,20 @@ def paste_focused_control(
             and focused is not None
             and class_name in _CONFIRMABLE_PASTE_CLASSES
         ):
-            before = _control_state(user32, focused, timeout_ms)
+            # Bounded control queries can outlast a focus or clipboard change.
+            # Neither WM_PASTE nor key injection may follow either change.
+            try:
+                user32.GetClipboardSequenceNumber.restype = wintypes.DWORD
+                sequence = user32.GetClipboardSequenceNumber()
+                before = _control_state(user32, focused, timeout_ms)
+                if (
+                    not sequence
+                    or _focused_control_for_foreground(user32) != focused
+                    or user32.GetClipboardSequenceNumber() != sequence
+                ):
+                    return None
+            except (AttributeError, OSError, TypeError):
+                return None
             if before is None:
                 return send_ctrl_key("v")
             try:
