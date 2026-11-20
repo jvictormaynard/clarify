@@ -65,6 +65,13 @@ class ReleaseNotesTests(unittest.TestCase):
             notes,
         )
         self.assertIn("Windows SmartScreen", notes)
+        self.assertIn("Clarify-macos-arm64.zip", notes)
+        self.assertIn("Clarify-macos-arm64.zip.sha256", notes)
+        legacy = delivery.community_release_notes(
+            "## [0.18.0] - 2026-11-19\n\n- Correct startup.\n", "v0.18.0"
+        )
+        self.assertIn("The downloads on this page are for Windows.", legacy)
+        self.assertNotIn("Clarify-macos-arm64.zip", legacy)
         self.assertEqual(
             delivery.community_release_notes(
                 self.CHANGELOG.replace("\n", "\r\n"), "v1.2.4"
@@ -1087,6 +1094,12 @@ class ReleaseDeliveryTests(unittest.TestCase):
             "prerelease": False,
             "assets": [{"name": name} for name in delivery.ASSETS],
         }
+        with self.assertRaisesRegex(delivery.ReleaseError, "incomplete"):
+            self.promote()
+        self.release["assets"].extend(
+            {"name": name}
+            for name in ("Clarify-macos-arm64.zip", "Clarify-macos-arm64.zip.sha256")
+        )
         self.assertEqual(self.promote(), "already-published")
         self.assertEqual(self.mutations(), [])
 

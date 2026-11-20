@@ -92,6 +92,7 @@ class WorkflowPhase(str, Enum):
 class SelectionDisposition(str, Enum):
     PASTED = "pasted"
     COPIED = "copied"
+    PRESERVED = "preserved"
 
 
 class NoUsableAudioError(RuntimeError):
@@ -1709,9 +1710,10 @@ class WorkflowService:
             )
             return
         else:
-            status_key = (
-                None if disposition is SelectionDisposition.PASTED else copied_status
-            )
+            status_key = {
+                SelectionDisposition.COPIED: copied_status,
+                SelectionDisposition.PRESERVED: "clipboard_preserved",
+            }.get(disposition)
             with self._lock:
                 session.publication_finished = True
             self._transition(

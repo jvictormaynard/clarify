@@ -8,6 +8,8 @@ clipboard work, or statistics.
 
 from __future__ import annotations
 
+import sys
+
 from collections.abc import Callable
 from typing import Any
 
@@ -48,9 +50,12 @@ except ImportError:  # PyInstaller may analyze the spike as a standalone file.
 
 
 try:
-    from voice_translation import VoiceTranslationPhase
+    from voice_translation import VoiceTranslationPhase, VoiceTranslationPublication
 except ImportError:  # PyInstaller may analyze the spike as a package module.
-    from ...voice_translation import VoiceTranslationPhase  # type: ignore[no-redef]
+    from ...voice_translation import (  # type: ignore[no-redef]
+        VoiceTranslationPhase,
+        VoiceTranslationPublication,
+    )
 
 
 class QmlWorkflowBridge(QObject):
@@ -107,6 +112,7 @@ class QmlWorkflowBridge(QObject):
         "account_allocation_waiting": "Sua conta aguarda a próxima distribuição de cotas.",
         "account_authentication_required": "Entre na conta novamente.",
         "error": "The dictation could not be completed",
+        "clipboard_preserved": "Your result is ready",
         "no_audio": "No usable audio was captured",
         "refinement_failed": "Refinement failed. Original text is available.",
         "output_language_not_applied": "The output language was not applied. Original text was preserved.",
@@ -386,7 +392,7 @@ class QmlWorkflowBridge(QObject):
     def recoveryResultVisible(self) -> bool:
         return (
             self._state.phase is WorkflowPhase.COMPLETED
-            and self._state.status_key == "dictation_recovered"
+            and self._state.status_key in {"dictation_recovered", "clipboard_preserved"}
             and bool(self._state.result_text)
         )
 
@@ -505,7 +511,12 @@ class QmlWorkflowBridge(QObject):
         if bool(getattr(controller, "active", False)):
             return "voice_processing"
         if phase is VoiceTranslationPhase.COMPLETED:
-            # Publication already copied/pasted the result. Success is silent.
+            state = self._voice_workflow_state()
+            if (
+                getattr(state, "publication", None)
+                is VoiceTranslationPublication.REJECTED
+            ):
+                return "voice_result" if self._voice_result() else ""
             return ""
         if phase is VoiceTranslationPhase.FAILED:
             return "voice_result" if self._voice_result() else "voice_error"
@@ -1142,10 +1153,11 @@ class QmlWorkflowBridge(QObject):
         if result != "pasted":
             self._quick_feedback_id -= 1
             if result == "copied":
+                shortcut = "Command+V" if sys.platform == "darwin" else "Ctrl+V"
                 self._quick_feedback = (
-                    "Texto copiado. Use Ctrl+V para colar"
+                    f"Texto copiado. Use {shortcut} para colar"
                     if self._language == "pt"
-                    else "Text copied. Press Ctrl+V to paste"
+                    else f"Text copied. Press {shortcut} to paste"
                 )
             else:
                 self._quick_feedback = (

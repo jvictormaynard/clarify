@@ -1,4 +1,4 @@
-"""Windows input for the isolated packaged Electron smoke test."""
+"""Native input for the isolated packaged Electron smoke test."""
 
 import ctypes
 from ctypes import wintypes
@@ -10,8 +10,10 @@ _foreground_target = None
 
 def native_pill_input(request):
     global _foreground_target
+    if sys.platform == "darwin":
+        return _mac_pill_input(request)
     if sys.platform != "win32":
-        raise RuntimeError("Native desktop input requires Windows")
+        raise RuntimeError("Native desktop input requires Windows or macOS")
     user = ctypes.WinDLL("user32", use_last_error=True)
     user.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
     user.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
@@ -166,3 +168,36 @@ def native_pill_input(request):
         return matches[0] if matches else None
     finally:
         user.SetThreadDpiAwarenessContext(previous)
+
+
+def _mac_pill_input(request):
+    import Quartz as cg
+
+    action = request["action"]
+    if action == "move":
+        if not cg.CGPreflightPostEventAccess():
+            raise RuntimeError("Native pointer input requires Accessibility permission")
+        point = (request["x"], request["y"])
+        event = cg.CGEventCreateMouseEvent(
+            None, cg.kCGEventMouseMoved, point, cg.kCGMouseButtonLeft
+        )
+        cg.CGEventPost(cg.kCGHIDEventTap, event)
+        return None
+    if action != "bounds":
+        raise ValueError("Unsupported native macOS test input")
+    windows = cg.CGWindowListCopyWindowInfo(
+        cg.kCGWindowListOptionOnScreenOnly, cg.kCGNullWindowID
+    )
+    for window in windows:
+        bounds = window[cg.kCGWindowBounds]
+        if window[cg.kCGWindowOwnerPID] == request["pid"] and (
+            bounds["Width"],
+            bounds["Height"],
+        ) == (660, 272):
+            return {
+                "x": bounds["X"],
+                "y": bounds["Y"],
+                "width": bounds["Width"],
+                "height": bounds["Height"],
+            }
+    return None

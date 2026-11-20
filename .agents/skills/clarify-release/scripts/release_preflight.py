@@ -26,6 +26,10 @@ REQUIRED_FILES = (
     "requirements-lock-linux.txt",
     "requirements-lock-windows.txt",
     "requirements-lock-runtime-windows.txt",
+    "requirements-macos.txt",
+    "requirements-runtime-macos.txt",
+    "requirements-lock-macos.txt",
+    "requirements-lock-runtime-macos.txt",
     "scripts/check_runtime_lock.py",
     "scripts/format_staged.py",
     "scripts/install_bootstrap_tools.py",
@@ -33,15 +37,16 @@ REQUIRED_FILES = (
     "scripts/sox-runtime-manifest.json",
     "version.py",
     "scripts/build.ps1",
-    "scripts/build-settings.ps1",
+    "scripts/build-desktop.ps1",
+    "scripts/build-macos.sh",
+    "scripts/package-macos-release.sh",
     "scripts/check_settings_payload.py",
     "scripts/qt_distribution.py",
     "scripts/qt_sources.json",
     "docs/qt-distribution.md",
     "scripts/settings_inventory.py",
-    "desktop/licenses/manifest.json",
+    "desktop/licenses/source-components.json",
     "desktop/package-lock.json",
-    "desktop/src-tauri/Cargo.lock",
     ".github/actions/settings-build/action.yml",
     "docs/release-readiness.md",
     "scripts/build-installer.ps1",
@@ -61,17 +66,6 @@ REQUIRED_FILES = (
     ".github/workflows/release.yml",
     "scripts/release_candidate.py",
     "tests/policy/test_release_candidate.py",
-)
-
-STABLE_REQUIRED_ASSETS = (
-    "Clarify-portable-update.json",
-    "Clarify-portable-update.json.sig",
-    "Clarify-qt-sources.zip",
-    "Clarify.exe",
-    "Clarify.exe.sha256",
-    "Clarify.sbom.json",
-    "Clarify-windows-x64.zip",
-    "sox-14.4.2-source.tar.gz",
 )
 
 
@@ -149,6 +143,9 @@ def workflow_failures(workflow: str) -> list[str]:
         "attestations: read",
         "requirements-lock-windows.txt",
         "requirements-lock-runtime-windows.txt",
+        "requirements-lock-runtime-macos.txt",
+        "Package and verify macOS candidate inputs",
+        "Download macOS candidate inputs",
         "cyclonedx-py requirements requirements-lock-runtime-windows.txt",
         "attest-build-provenance@",
     ):
@@ -169,9 +166,7 @@ def workflow_failures(workflow: str) -> list[str]:
             failures.append(
                 "portable release workflow must not reference: " + forbidden
             )
-    build = workflow.split("  build_candidate:", 1)[-1].split(
-        "  publish_candidate:", 1
-    )[0]
+    build = workflow.split("  build_macos:", 1)[-1].split("  publish_candidate:", 1)[0]
     publish = workflow.split("  publish_candidate:", 1)[-1]
     if "contents: write" in build:
         failures.append("candidate build must have no release-write permission")

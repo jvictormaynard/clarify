@@ -9,6 +9,7 @@ compose it without importing another UI toolkit.
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import sys
 import tempfile
 import threading
@@ -28,6 +29,8 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
+
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
 from hotkey_config import HotkeyAction, HotkeySettings
 from windows_hotkeys import (
@@ -205,6 +208,15 @@ class QtSingleInstanceGuard:
         self._activation_event: Any | None = None
         self._activation_listener_thread: threading.Thread | None = None
         self._activation_listening = False
+        self._local_server: QLocalServer | None = None
+        self._local_name = None
+        if sys.platform == "darwin" and activation_api is None:
+            profile_id = hashlib.sha256(str(self.path.resolve()).encode()).hexdigest()[
+                :16
+            ]
+            self._local_name = str(
+                Path(tempfile.gettempdir()) / f"clarify-{profile_id}"
+            )
 
     @property
     def is_primary(self) -> bool:
@@ -239,8 +251,21 @@ class QtSingleInstanceGuard:
                     activation_api.set_event(activation_event)
                 finally:
                     activation_api.close(activation_event)
+            if self._local_name is not None:
+                socket = QLocalSocket()
+                socket.connectToServer(self._local_name)
+                socket.waitForConnected(200)
+                socket.disconnectFromServer()
             return False
 
+        if self._local_name is not None:
+            server = QLocalServer()
+            server.setSocketOptions(QLocalServer.SocketOption.UserAccessOption)
+            # The per-profile lock is already held. Remove a stale socket
+            # that may remain after an unclean exit.
+            QLocalServer.removeServer(self._local_name)
+            if server.listen(self._local_name):
+                self._local_server = server
         self._activation_event = activation_event
         self._acquired = True
         return True
@@ -251,6 +276,9 @@ class QtSingleInstanceGuard:
         if not self._acquired:
             return
         self.stop_activation_listener()
+        if self._local_server is not None:
+            self._local_server.close()
+            self._local_server = None
         try:
             if self._activation_event is not None:
                 self._activation_event_api().close(self._activation_event)
@@ -261,6 +289,20 @@ class QtSingleInstanceGuard:
 
     def start_activation_listener(self, callback: Callable[[], None]) -> None:
         """Notify a primary Qt shell when a later launch signals its event."""
+
+        server = self._local_server
+        if server is not None:
+
+            def activate_local_peer() -> None:
+                while server.hasPendingConnections():
+                    connection = server.nextPendingConnection()
+                    connection.disconnectFromServer()
+                    connection.deleteLater()
+                    callback()
+
+            server.newConnection.connect(activate_local_peer)
+            activate_local_peer()
+            return
 
         if (
             not self._acquired

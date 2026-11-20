@@ -58,6 +58,17 @@ The upstream Windows README names the codec and runtime projects used in that
 distribution and is preserved at `extra/sox-14.4.2/README.win32.txt` and inside
 the portable package.
 
+## Bundled in the macOS app
+
+The Apple Silicon app uses the Python, Qt, Electron, and Settings components
+listed above. It also includes PyObjC (MIT) for native Accessibility and pasteboard
+access, and PortAudio (MIT) for Core Audio input. The PortAudio copyright and
+license text are available with the app and in the repository.
+[PortAudio license](licenses/portaudio-MIT.txt)
+
+The macOS ZIP contains the runtime SBOM and separate Qt, Python, crypto, and
+Settings license notices. Both platforms use the same pinned Qt source archive.
+
 ## Optional local-ASR assets (not bundled)
 
 The Local Whisper provider can download the following assets after explicit

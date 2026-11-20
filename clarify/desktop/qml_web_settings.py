@@ -105,6 +105,7 @@ PROPERTIES = (
     "localAsrCloudRefinement",
     "hotkeyActions",
     "hotkeyCaptureAction",
+    "hotkeyUnavailable",
     "hotkeyActivationMode",
     "hotkeyPushToTalkSupported",
 )

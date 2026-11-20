@@ -5,7 +5,7 @@
 <h1 align="center">Clarify</h1>
 
 <p align="center">
-  Windows dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
+  Desktop dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
 </p>
 
 <p align="center">
@@ -219,13 +219,34 @@ dependency intent remains readable in `requirements.txt` and
 `requirements-dev.txt`; maintainers regenerate the matching lock with
 `python -m piptools compile` when that intent changes.
 
-Linux and macOS source paths are experimental. See
-[Development](docs/development.md#experimental-linux-and-macos-support) for
-their current limitations.
+### Install on macOS
+
+Desktop releases after v0.18.0 include a build for Apple Silicon Macs with
+macOS 13 or later. Open the
+[releases page](https://github.com/jvictormaynard/clarify/releases) and download
+`Clarify-macos-arm64.zip` and `Clarify-macos-arm64.zip.sha256` from the same release.
+In the download folder, verify the ZIP with
+`shasum -a 256 -c Clarify-macos-arm64.zip.sha256`. Extract it and move `Clarify.app`
+to Applications. The app includes its runtime.
+
+The community build uses an ad hoc signature. If Gatekeeper blocks the verified
+app, use **System Settings → Privacy & Security → Open Anyway**. Allow
+microphone access when prompted, and enable Accessibility for automatic paste.
+See [macOS setup](docs/development.md#macos-setup) for permissions and shortcuts.
+
+### Build and run on macOS
+
+Build `Clarify.app` on your Mac with Python 3.12 and Node.js 22.12 or later.
+See [macOS setup](docs/development.md#macos-setup) for the build steps, permissions,
+and default shortcuts.
+
+[Linux source support](docs/development.md#experimental-linux-support) is experimental.
 
 ## Usage
 
-| Shortcut | Action |
+See [macOS shortcuts](docs/development.md#macos-setup) for the Mac defaults.
+
+| Windows shortcut | Action |
 | --- | --- |
 | `Alt + L` (default) | Start or stop recording |
 | `Esc` | Cancel an active recording or close the translation language picker |

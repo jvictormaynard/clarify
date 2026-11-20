@@ -50,7 +50,7 @@ def inventory(output, bom=None):
                 "bom-ref": reference,
                 "purl": reference,
                 "licenses": [{"license": {"id": "Apache-2.0"}}],
-                "description": "Statically linked into the pinned cryptography Windows wheel.",
+                "description": "Statically linked into the pinned cryptography wheel.",
                 "externalReferences": [
                     {
                         "type": "website",

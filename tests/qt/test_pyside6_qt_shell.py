@@ -30,6 +30,7 @@ else:
     PYSIDE6_AVAILABLE = True
 
 if PYSIDE6_AVAILABLE:
+    from clarify.desktop.macos_hotkeys import MacGlobalHotkeyBackend, default_hotkeys
     from clarify.desktop.qt_shell import (
         ACTIVATION_EVENT_NAME,
         QtShell,
@@ -258,6 +259,54 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
         self.assertFalse(worker.is_alive())
         self.assertEqual(activation_api.set_calls, [])
         self.assertTrue(activation_api.assert_wait_finished)
+
+
+@unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
+class MacGlobalHotkeyBackendTests(unittest.TestCase):
+    def test_failed_reconfigure_keeps_the_previous_actions(self):
+        app = QApplication.instance() or QApplication([])
+        settings = default_hotkeys().with_hotkey(
+            HotkeyAction.VOICE_TRANSLATION, "XBUTTON1"
+        )
+        candidate = settings.with_hotkey(HotkeyAction.RECORDING, "Ctrl+Shift+M")
+        candidate = candidate.with_hotkey(HotkeyAction.VISIBILITY, "Ctrl+Shift+N")
+        registrations = {}
+        fail = False
+
+        def register(combo, number):
+            if fail and combo[0] == 45:  # N
+                raise OSError("claimed by another app")
+            registrations[combo] = number
+            return combo
+
+        def unregister(combo):
+            registrations.pop(combo)
+
+        native = SimpleNamespace(register=register, unregister=unregister, close=Mock())
+        backend = MacGlobalHotkeyBackend(
+            settings, native_factory=lambda _receive: native
+        )
+        actions = []
+        backend.triggered.connect(actions.append)
+        unavailable = []
+        backend.availabilityChanged.connect(unavailable.extend)
+        try:
+            backend.start(FakeWindow())
+            old = registrations.copy()
+            self.assertEqual(len(old), 4)
+            self.assertEqual(unavailable, ["Mouse 4"])
+            old_recording = next(
+                number for (code, _), number in old.items() if code == 37
+            )
+            fail = True
+            with self.assertRaisesRegex(OSError, "claimed by another app"):
+                backend.reconfigure(candidate)
+            self.assertEqual(registrations, old)
+            backend._receive(old_recording, True)
+            app.processEvents()
+            self.assertEqual(actions, [HotkeyAction.RECORDING.value])
+        finally:
+            backend.stop()
 
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")

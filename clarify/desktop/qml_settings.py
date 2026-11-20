@@ -572,6 +572,9 @@ class QmlSettingsController(QObject):
         self._practice_unsubscribe = None
         self._computer = None
         self.repositories = repositories
+        self._default_hotkeys = HotkeySettings.from_mapping(
+            getattr(repositories.config, "defaults", {}).get("hotkeys")
+        )
         self._recording_reprocessor = recording_reprocessor
         self._playback_lock = threading.Lock()
         self._playback_lease = None
@@ -786,9 +789,10 @@ class QmlSettingsController(QObject):
         )
         self._hotkey_settings_controller = HotkeySettingsController(
             self._config.hotkeys,
-            push_to_talk_supported=supports_push_to_talk(),
+            push_to_talk_supported=sys.platform == "darwin" or supports_push_to_talk(),
         )
         self._hotkey_capture_action = ""
+        self._unavailable_hotkeys: list[str] = []
         self._provider_api_key_draft = ""
         self._provider_base_url_draft = self._config_provider_base_url(
             self._selected_provider_id
@@ -1945,6 +1949,14 @@ class QmlSettingsController(QObject):
     def hotkeyPushToTalkSupported(self) -> bool:
         return self._hotkey_settings_controller.push_to_talk_supported
 
+    @Property("QStringList", notify=hotkeyChanged)
+    def hotkeyUnavailable(self) -> list[str]:
+        return list(self._unavailable_hotkeys)
+
+    def setUnavailableHotkeys(self, labels: list[str]) -> None:
+        self._unavailable_hotkeys = list(labels)
+        self.hotkeyChanged.emit()
+
     @Property(str, notify=hotkeyChanged)
     def hotkeyCaptureAction(self) -> str:
         return self._hotkey_capture_action
@@ -2875,7 +2887,9 @@ class QmlSettingsController(QObject):
 
         try:
             parsed = _hotkey_action(action)
-            settings = self._hotkey_settings_controller.reset(parsed)
+            settings = self._hotkey_settings_controller.capture(
+                parsed, self._default_hotkeys.definition(parsed)
+            )
         except (HotkeyValidationError, TypeError, ValueError) as error:
             self._set_error(error)
             return False
@@ -2886,7 +2900,7 @@ class QmlSettingsController(QObject):
     def resetAllHotkeys(self) -> bool:
         """Restore every action and the recording activation mode."""
 
-        settings = self._hotkey_settings_controller.reset_all()
+        settings = self._hotkey_settings_controller.replace(self._default_hotkeys)
         self.cancelHotkeyCapture()
         return self._update_config(replace(self._config, hotkeys=settings))
 
@@ -5242,13 +5256,16 @@ class QmlSettingsController(QObject):
                     raise ValueError("Invalid settings value") from None
                 if definition is None:
                     return lambda config: replace(
-                        config, hotkeys=config.hotkeys.reset(action)
+                        config,
+                        hotkeys=config.hotkeys.with_hotkey(
+                            action, self._default_hotkeys.definition(action)
+                        ),
                     )
                 return lambda config: replace(
                     config, hotkeys=config.hotkeys.with_hotkey(action, definition)
                 )
             if method == "resetAllHotkeys":
-                return lambda config: replace(config, hotkeys=HotkeySettings.defaults())
+                return lambda config: replace(config, hotkeys=self._default_hotkeys)
             return lambda config: replace(
                 config,
                 hotkeys=config.hotkeys.with_activation_mode(

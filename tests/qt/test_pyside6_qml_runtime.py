@@ -13,6 +13,7 @@ import threading
 import textwrap
 import time
 import unittest
+import wave
 from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -31,6 +32,7 @@ if PYSIDE6_AVAILABLE:
     from clarify.desktop.qml_runtime import (
         QtProviderGateway,
         QtRecorder,
+        QtRecordingAudioGateway,
         QtRecordingSession,
         QtHistoryRecorder,
         QtStatisticsGateway,
@@ -69,6 +71,9 @@ class QtRecordingSessionTests(unittest.TestCase):
     def setUp(self):
         # No test in this process may fall through to a real native backend.
         self.enterContext(patch("clarify.desktop.qml_runtime._sounddevice", None))
+        self.enterContext(
+            patch("clarify.desktop.qml_runtime.platform.system", return_value="Linux")
+        )
 
     def _drain_readiness(self, recorder):
         worker = recorder._readiness_worker
@@ -77,6 +82,167 @@ class QtRecordingSessionTests(unittest.TestCase):
             self.assertFalse(
                 worker.is_alive(), "readiness reader retained a stopped WAV"
             )
+
+    def test_macos_capture_uses_selected_stream_for_wav_levels_and_cues(self):
+        from array import array
+        from clarify.desktop import qml_runtime
+        from microphone_controls import MicrophoneDevice, MicrophoneInventory
+
+        selected = MicrophoneDevice(
+            "usb", "USB microphone", input_channels=1, backend_index=4
+        )
+        default = MicrophoneDevice(
+            "built-in", "Built-in microphone", input_channels=1, backend_index=0
+        )
+        inventory = MicrophoneInventory.from_records(
+            [default, selected], default_id="built-in"
+        )
+        config = SimpleNamespace(
+            current=lambda: AppConfig.from_mapping(
+                {
+                    "microphone": {"selected_id": "usb"},
+                }
+            )
+        )
+        stream = Mock(active=True)
+        backend = SimpleNamespace(
+            RawInputStream=Mock(return_value=stream), PortAudioError=OSError
+        )
+        sounded = threading.Event()
+        cue = Mock(side_effect=lambda starting: sounded.set() if starting else None)
+        pcm = array("h", [1024, -1024] * 256)
+
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(qml_runtime, "_data_directory", return_value=Path(directory)),
+            patch.object(qml_runtime.platform, "system", return_value="Darwin"),
+            patch.object(qml_runtime, "_sounddevice", backend),
+            patch.object(qml_runtime.subprocess, "Popen") as launch,
+        ):
+            recorder = QtRecorder(
+                config, SimpleNamespace(snapshot=lambda: inventory), cue_player=cue
+            )
+            recorder.sox = ""
+            gateway = QtRecordingAudioGateway(recorder)
+            self.assertIsNone(gateway.microphone_available())
+            backend.RawInputStream.assert_not_called()
+            session = gateway.create_session()
+            try:
+                session.start()
+                backend.RawInputStream.assert_called_once()
+                options = backend.RawInputStream.call_args.kwargs
+                self.assertEqual(options["device"], 4)
+                self.assertEqual(
+                    (options["channels"], options["samplerate"], options["dtype"]),
+                    (1, 16000, "int16"),
+                )
+                self.assertFalse(recorder.capture_active)
+                cue.assert_not_called()
+                options["callback"](pcm, len(pcm), None, None)
+                self.assertTrue(sounded.wait(1))
+                self.assertTrue(recorder.capture_active)
+                self.assertAlmostEqual(recorder.mic_level, 0.5)
+                snapshot = session.stop_for_cancel()
+                with wave.open(io.BytesIO(snapshot.audio_bytes), "rb") as wav:
+                    self.assertEqual(wav.getparams()[:4], (1, 2, 16000, len(pcm)))
+                    self.assertEqual(wav.readframes(len(pcm)), pcm.tobytes())
+                self.assertFalse(recorder.capture_active)
+                self.assertEqual(recorder.mic_level, 0.0)
+            finally:
+                session.cancel()
+                self._drain_readiness(recorder)
+            self.assertFalse(session.audio_path.exists())
+            stream.close.assert_called_once()
+            self.assertEqual(
+                cue.call_args_list,
+                [unittest.mock.call(True), unittest.mock.call(False)],
+            )
+            launch.assert_not_called()
+
+    def test_interrupted_macos_capture_saves_audio_without_returning_a_snapshot(self):
+        from clarify.desktop import qml_runtime
+        from recording_recovery import RecordingRecovery
+
+        stream = Mock(active=True)
+        backend = SimpleNamespace(RawInputStream=Mock(return_value=stream))
+        ready = threading.Event()
+        cue = Mock(side_effect=lambda starting: ready.set() if starting else None)
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(qml_runtime, "_data_directory", return_value=Path(directory)),
+            patch.object(qml_runtime.platform, "system", return_value="Darwin"),
+            patch.object(qml_runtime, "_sounddevice", backend),
+        ):
+            recorder = QtRecorder(cue_player=cue)
+            session = QtRecordingAudioGateway(recorder).create_session()
+            try:
+                session.start()
+                receive = backend.RawInputStream.call_args.kwargs["callback"]
+                receive(b"\0" * 1024, 512, None, None)
+                self.assertTrue(ready.wait(1))
+                stream.active = False
+                with self.assertRaises(MicrophoneUnavailableError):
+                    session.stop()
+                self.assertEqual(
+                    RecordingRecovery(Path(directory)).metadata(session.recovery_id)[
+                        "status"
+                    ],
+                    "failed",
+                )
+            finally:
+                session.cancel()
+                self._drain_readiness(recorder)
+            stream.close.assert_called_once()
+
+    def test_macos_cancel_during_native_open_releases_late_stream(self):
+        from clarify.desktop import qml_runtime
+
+        entered, release = threading.Event(), threading.Event()
+        stream = Mock(active=True)
+        cue = Mock()
+
+        def open_stream(**_options):
+            entered.set()
+            if not release.wait(3):
+                raise TimeoutError("native open was not released")
+            return stream
+
+        with (
+            TemporaryDirectory() as directory,
+            patch.object(qml_runtime, "_data_directory", return_value=Path(directory)),
+            patch.object(qml_runtime.platform, "system", return_value="Darwin"),
+            patch.object(
+                qml_runtime,
+                "_sounddevice",
+                SimpleNamespace(RawInputStream=open_stream, PortAudioError=OSError),
+            ),
+        ):
+            recorder = QtRecorder(cue_player=cue)
+            session = QtRecordingSession(recorder)
+            errors = []
+
+            def start():
+                try:
+                    session.start()
+                except Exception as error:
+                    errors.append(error)
+
+            starter = threading.Thread(target=start)
+            starter.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                session.cancel()
+                self.assertFalse(session.audio_path.exists())
+            finally:
+                release.set()
+                starter.join(2)
+            self.assertFalse(starter.is_alive())
+            self.assertFalse(session.audio_path.exists())
+            self.assertEqual(len(errors), 1)
+            self.assertIn("cancelled", str(errors[0]))
+            stream.start.assert_not_called()
+            stream.close.assert_called_once()
+            cue.assert_not_called()
 
     def test_dictation_cues_follow_pcm_readiness_and_stop_once(self):
         from clarify.desktop import qml_runtime
