@@ -8,7 +8,6 @@
 .library-page .library-refresh.button { width: 36px; height: 36px; padding: 8px; flex-shrink: 0; }
 .library-page .button, .library-editor .button { min-height: 36px; height: auto; padding: 8px 16px; border-radius: 8px; font-size: 14px; line-height: 20px; font-weight: 550; }
 .library-page input, .library-editor input { height: 36px; line-height: 24px; font-size: 16px; }
-.library-page > .dictionary-help { margin-top: 0; }
 .library-list { min-width: 0; border: 1px solid var(--border); border-radius: 16px; margin-bottom: 0; overflow: hidden; }
 .library-entry { display: flex; align-items: center; gap: 16px; padding: 16px; border-bottom: 1px solid var(--border); }
 .library-entry:last-child { border-bottom: 0; }

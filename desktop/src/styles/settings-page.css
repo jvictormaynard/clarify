@@ -1,0 +1,52 @@
+.settings-dialog-content:has([data-slot="settings-page"]) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-dialog-content > .page-content:has(> [data-slot="settings-page"]) {
+  flex: 1;
+  min-height: 0;
+}
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.settings-page-intro { margin: 0; flex-shrink: 0; }
+.settings-page-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  scrollbar-gutter: stable;
+}
+.settings-page-body > .settings-section { margin: 0; }
+.settings-page-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.settings-page-status {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-description);
+  color: var(--muted-foreground);
+}
+.settings-page-buttons {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}

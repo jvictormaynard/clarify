@@ -34,7 +34,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
     {account.error && <p role="alert" className="error">{t(account.error)}</p>}
     {account.syncError && <p role="alert" className="error">{t(account.syncError)}</p>}
     <fieldset className="account-sections" disabled={accountBusy || dirty}>
-      {!account.signedIn ? <Section className="account-card account-auth" title={<><LogIn size={16} aria-hidden="true" />{t("Entrar ou criar conta")}</>}>
+      {!account.signedIn ? <Section className="account-card" title={<><LogIn size={16} aria-hidden="true" />{t("Entrar ou criar conta")}</>}>
         {!account.endpoint && <p className="hint">{t("O serviço ainda não está configurado nesta versão. Os modos locais e com chave própria continuam disponíveis.")}</p>}
         <AccountSignIn account={account} command={command} busy={accountBusy}
           onContinueWithoutAccount={() => {
@@ -69,7 +69,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
           </Section>
           <Section title={t("Excluir conta")}>
             <p className="hint">{t("Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos.")}</p>
-            <Button className="destructive" onClick={() => setConfirmation("delete")}>{t("Excluir conta")}</Button>
+            <Button variant="destructive" onClick={() => setConfirmation("delete")}>{t("Excluir conta")}</Button>
           </Section>
         </SettingsDisclosure>
       </>}
@@ -81,7 +81,7 @@ export function AccountPage({ controller }: SettingsPageProps) {
         ? "Excluir a conta remove o dicionário, os snippets e o histórico compartilhados e o acesso ao serviço. Esta ação não pode ser desfeita. Os registros locais serão mantidos."
         : "Ao sair, o Clarify volta ao dicionário e ao processamento locais. As palavras da conta ficam separadas por conta neste computador.")}>
       <Button autoFocus disabled={submitting} onClick={() => { if (!submittingRef.current) setConfirmation(null); }}>{t("Cancelar")}</Button>
-      <Button className={confirmation === "delete" ? "destructive" : ""} disabled={submitting || accountBusy || dirty}
+      <Button variant={confirmation === "delete" ? "destructive" : "default"} disabled={submitting || accountBusy || dirty}
         onClick={() => void confirm()}>{t(confirmation === "delete" ? "Confirmar exclusão da conta" : "Sair da conta")}</Button>
     </Confirm>
   </div>;

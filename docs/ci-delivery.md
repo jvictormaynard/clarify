@@ -87,7 +87,7 @@ Component runners own collection and assertions.
 | `static` | Ruff lint and format for maintained Python, targeted mypy, compilation |
 | `python` | Unit, contract and integration suites; two shards on Linux and Windows |
 | `qt` | Qt/QML, DPI and retained GUI compatibility on both platforms; Windows contracts on Windows |
-| `settings_unit` | Types and headless units; no controller or browser |
+| `settings_unit` | UI design policy, shared-color synchronization, types and headless units; no controller or browser |
 | `settings_browser` | Production build and boot, browser behavior, isolated Python bridge |
 | `desktop_shell` | Windows Electron host tests, actual package build and native smoke with isolated Python fixture |
 | `package` | Electron shell, inventory, Windows EXE, embedded payload, startup, update recovery |

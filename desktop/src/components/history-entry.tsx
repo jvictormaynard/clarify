@@ -45,14 +45,14 @@ export function HistoryEntryActions({ entry, scope, isCurrent, onDelete, onRetry
   return <>
     <div className="history-row-tools">
       {entry.recording && onRetry && onUndo ? <HistoryAudioActions recording={entry.recording} busy={busy} canUndo={entry.originalDiffers} onRetry={onRetry} onUndo={onUndo} onDelete={onDelete}>
-        <Button variant="ghost" className="history-icon-action h-[30px] w-[30px] p-0" aria-label={t(copied ? "Copiado." : "Copiar resultado")} disabled={copying !== null} onClick={() => void copy("text")}>
+        <Button variant="ghost" size="history-icon" aria-label={t(copied ? "Copiado." : "Copiar resultado")} disabled={copying !== null} onClick={() => void copy("text")}>
           {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
         </Button>
       </HistoryAudioActions> : <>
-      <Button variant="ghost" className="history-icon-action h-[30px] w-[30px] p-0 pointer-coarse:h-11 pointer-coarse:w-11" aria-label={t(copied ? "Copiado." : "Copiar resultado")} title={t("Copiar resultado")} disabled={copying !== null} aria-busy={copying !== null} onClick={() => void copy("text")}>
+      <Button variant="ghost" size="history-icon" aria-label={t(copied ? "Copiado." : "Copiar resultado")} title={t("Copiar resultado")} disabled={copying !== null} aria-busy={copying !== null} onClick={() => void copy("text")}>
         {copying !== null ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : copied ? <Check size={16} className="history-copy-glyph" aria-hidden="true" /> : <Copy size={16} className="history-copy-glyph" aria-hidden="true" />}
       </Button>
-      <Button variant="ghost" className="history-icon-action history-delete h-[30px] w-[30px] p-0 pointer-coarse:h-11 pointer-coarse:w-11" aria-label={t("Excluir transcrição")} title={t("Excluir transcrição")} onClick={onDelete}><Trash2 size={16} aria-hidden="true" /></Button>
+      <Button variant="ghost" size="history-icon" className="history-delete" aria-label={t("Excluir transcrição")} title={t("Excluir transcrição")} onClick={onDelete}><Trash2 size={16} aria-hidden="true" /></Button>
       </>}
     </div>
     {error && <p role="alert" className="error">{error}</p>}
