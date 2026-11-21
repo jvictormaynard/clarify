@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { navigate, openStyleReview } from "./settings-navigation";
+import { navigate, openSettings, openStyleReview } from "./settings-navigation";
 
 let child: ChildProcessWithoutNullStreams;
 let id = 0;
@@ -357,8 +357,9 @@ test("ChatGPT profile models stay available without changing the Style draft", a
   await openStyleReview(page, "en");
   const prompt = page.getByRole("textbox", { name: "Instructions", exact: true });
   await prompt.fill("Keep this Style draft.");
-  await navigate(page, "Models and services");
-  await page.getByRole("button", { name: "Edit Rewriting profile", exact: true }).click();
+  const settings = await openSettings(page, "Models and services");
+  await settings.getByRole("tab", { name: "Text processing", exact: true }).click();
+  await settings.getByRole("button", { name: "Edit Rewriting profile", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Processing profile", exact: true });
   await editor.getByRole("combobox", { name: "Profile service", exact: true }).click();
   await page.getByRole("option", { name: "ChatGPT (subscription)", exact: true }).click();
