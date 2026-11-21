@@ -1,8 +1,8 @@
 html.pill-surface, .pill-surface body, .pill-surface #root { background: transparent; min-width: 0; overflow: hidden; }
-.pill-stage { height: 100vh; position: relative; color: #fff; font-family: var(--font-sans); font-weight: 400; }
+.pill-stage { height: 100vh; position: relative; color: var(--pill-foreground); font-family: var(--font-sans); font-weight: 400; }
 .pill-live-transcript { position: absolute; bottom: 52px; left: 50%; translate: -50% 0; width: min(460px, calc(100% - 24px)); max-height: min(140px, calc(100vh - 70px)); overflow: auto; padding: 12px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); color: var(--foreground); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: none; }
 .workflow-pill, .pill-menu, .pill-error { background: var(--background); border: 1px solid var(--border); }
-.workflow-pill { position: absolute; bottom: 6.4px; left: 50%; transform: translateX(-50%); border-radius: 20px; height: 36px; padding: 0; background: #0a0a0a; border-color: #1c1c1c; transition: width 280ms cubic-bezier(.215,.61,.355,1), height 280ms cubic-bezier(.215,.61,.355,1), border-color 180ms ease; }
+.workflow-pill { position: absolute; bottom: 6.4px; left: 50%; transform: translateX(-50%); border-radius: 20px; height: 36px; padding: 0; background: var(--pill-background); border-color: var(--pill-border); transition: width 280ms cubic-bezier(.215,.61,.355,1), height 280ms cubic-bezier(.215,.61,.355,1), border-color 180ms ease; }
 /* Use screen pixels for compact controls so icons and tooltips stay legible. */
 .workflow-pill:not(.pill-panel) { border-width: .8px; }
 .pill-content { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; }
@@ -11,7 +11,7 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .workflow-pill button { -webkit-app-region: no-drag; }
 .pill-idle { width: 112px; }
 .pill-capture { padding: 0; display: block; overflow: hidden; }
-.pill-capture[data-surface="recording"]:not([data-starting="true"]) { border-color: #666; }
+.pill-capture[data-surface="recording"]:not([data-starting="true"]) { border-color: var(--pill-recording-border); }
 .workflow-pill[data-starting="true"] { cursor: progress; }
 .workflow-pill[data-starting="true"] .pill-content { opacity: .45; }
 .pill-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -26,34 +26,34 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .pill-feedback-layer[data-visible="true"] { translate: 0 0; }
 .pill-feedback-label { min-width: 0; flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pill-feedback-actions { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
-.pill-stage .pill-undo { font-size: 12px; font-weight: 400; min-width: 52px; min-height: 26px; height: 26px; padding: 0 9px; border-radius: 8px; background: #ffffff0f; }
-.pill-stage .pill-undo:hover { background: #ffffff20; }
+.pill-stage .pill-undo { font-size: 12px; font-weight: 400; min-width: 52px; min-height: 26px; height: 26px; padding: 0 9px; border-radius: 8px; background: var(--pill-action); }
+.pill-stage .pill-undo:hover { background: var(--pill-action-hover); }
 .pill-motion-layer { display: flex; align-items: center; justify-content: center; left: 48px; right: auto; width: 52px; }
 .pill-motion-layer:has(.pill-spinner) { left: 48px; width: 18px; }
 .pill-stop { position: absolute; right: 4px; top: 3px; }
 .pill-stop svg { width: 10px; height: 10px; fill: currentColor; }
 .pill-stage .language-mark { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 18px; flex-shrink: 0; }
-.pill-stage .language-mark-original svg { width: 18px; height: 18px; color: #a3a3a3; }
+.pill-stage .language-mark-original svg { width: 18px; height: 18px; color: var(--muted-foreground); }
 .pill-language .language-mark { width: 24px; height: 18px; }
 .pill-stage .pill-language-menu { width: max-content; min-width: 164px; max-width: 196px; padding: 6px; }
 .pill-stage .pill-language-menu button { gap: 10px; height: 32px; flex-shrink: 0; border-radius: 7px; }
-.pill-language-menu button[aria-pressed="true"] { background: #ffffff0a; }
-.language-selected { margin-left: auto; color: #a3a3a3; width: 14px !important; height: 14px !important; }
+.pill-language-menu button[aria-pressed="true"] { background: var(--pill-selection); }
+.language-selected { margin-left: auto; color: var(--muted-foreground); width: 14px !important; height: 14px !important; }
 .pill-target-icon { position: absolute; left: 10px; top: 6px; width: 22px; height: 22px; object-fit: contain; }
 .pill-meter { display: flex; align-items: center; justify-content: space-around; width: 48px; height: 22px; }
-.pill-meter i { display: block; width: 2.5px; height: 4px; border-radius: 999px; background: #fff; }
+.pill-meter i { display: block; width: 2.5px; height: 4px; border-radius: 999px; background: var(--pill-foreground); }
 .workflow-pill[data-recording="true"]:has(.pill-stop) .pill-motion-layer:has(.pill-meter) { left: calc(50% - 26px); }
 .pill-motion-layer:has(.pill-typing) { left: 0; width: 100%; }
 .workflow-pill[data-target="true"] .pill-motion-layer:has(.pill-typing) { left: 38px; width: calc(100% - 38px); }
 .pill-typing { display: flex; align-items: center; justify-content: center; gap: 5px; height: 100%; }
-.pill-typing i { width: 5px; height: 5px; border-radius: 50%; background: #f5f5f5; animation: pill-type 1.2s ease-in-out infinite; }
+.pill-typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--foreground); animation: pill-type 1.2s ease-in-out infinite; }
 .pill-typing i:nth-child(2) { animation-delay: 150ms; }
 .pill-typing i:nth-child(3) { animation-delay: 300ms; }
-.pill-update-dot { position: absolute; right: 2px; top: 2px; width: 6px; height: 6px; border-radius: 50%; background: #ef4444; }
+.pill-update-dot { position: absolute; right: 2px; top: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--pill-update); }
 .pill-stage button { position: relative; }
 .pill-spinner { animation: pill-spin 1s linear infinite; }
 .pill-done-layer { left: 0; width: 100%; gap: 6px; font-size: 12px; font-weight: 400; }
-.pill-success { color: #f5f5f5; width: 17px !important; height: 17px !important; }
+.pill-success { color: var(--foreground); width: 17px !important; height: 17px !important; }
 .pill-panel { width: 400px; max-width: calc(100% - 16px); height: auto; border-radius: 18px; display: block; padding: 12px; }
 .pill-panel[data-surface="translation_picker"] { width: 224px; padding: 8px; border-radius: 14px; }
 .pill-result { white-space: pre-wrap; overflow: auto; max-height: 170px; font-size: 12px; user-select: text; }
@@ -75,13 +75,13 @@ html:has(.titlebar) .titlebar, html:has(.titlebar) [data-desktop-drag-region] { 
 
 /* The native window stays alive; only this dock changes presentation. */
 .workflow-pill.pill-collapsed { width: 52px; height: 12px; border-radius: 10px; }
-.dock-handle { position: absolute; left: 50%; top: 50%; width: 26px; height: 2px; border-radius: 2px; background: #878787; translate: -50% -50%; opacity: 0; transition: opacity 120ms ease; pointer-events: none; }
+.dock-handle { position: absolute; left: 50%; top: 50%; width: 26px; height: 2px; border-radius: 2px; background: var(--pill-handle); translate: -50% -50%; opacity: 0; transition: opacity 120ms ease; pointer-events: none; }
 .pill-collapsed .dock-handle { opacity: 1; }
 .pill-idle .pill-content { opacity: 1; transition: opacity 140ms ease 70ms; }
 .pill-collapsed .pill-content { opacity: 0; pointer-events: none; transition-delay: 0ms; }
 .pill-cancel { position: absolute; left: 4px; top: 3px; }
 .pill-tooltip { display: none; }
-.pill-idle .pill-tooltip { position: absolute; display: inline-flex; align-items: center; gap: 4px; bottom: calc(100% + 9px); left: 50%; translate: -50% 4px; opacity: 0; pointer-events: none; white-space: nowrap; background: #050505; color: #f5f5f5; border: 1px solid #292929; border-radius: 999px; padding: 7px 13px; font-size: 14px; line-height: 20px; font-weight: 400; box-shadow: 0 4px 14px #0004; transition: opacity 140ms ease, translate 140ms ease; }
+.pill-idle .pill-tooltip { position: absolute; display: inline-flex; align-items: center; gap: 4px; bottom: calc(100% + 9px); left: 50%; translate: -50% 4px; opacity: 0; pointer-events: none; white-space: nowrap; background: var(--pill-tooltip-background); color: var(--foreground); border: 1px solid var(--pill-tooltip-border); border-radius: 999px; padding: 7px 13px; font-size: 14px; line-height: 20px; font-weight: 400; box-shadow: var(--pill-tooltip-shadow); transition: opacity 140ms ease, translate 140ms ease; }
 .pill-tooltip kbd { font: inherit; }
 .pill-idle button:not([aria-expanded="true"]):hover .pill-tooltip, .pill-idle button:not([aria-expanded="true"]):focus-visible .pill-tooltip { opacity: 1; translate: -50% 0; transition-delay: 160ms; }
 @starting-style { .pill-motion-layer[data-visible="true"] { opacity: 0; translate: 0 3px; } }
@@ -92,7 +92,7 @@ html:has(.titlebar) .titlebar, html:has(.titlebar) [data-desktop-drag-region] { 
 .pill-stage .pill-language-menu button { height: 28px; }
 
 .pill-quick-menu { width: 240px; left: calc(50% - 72px); }
-.pill-menu .pill-submenu-chevron { margin-left: auto; width: 12px !important; height: 12px !important; color: #a3a3a3; }
+.pill-menu .pill-submenu-chevron { margin-left: auto; width: 12px !important; height: 12px !important; color: var(--muted-foreground); }
 .pill-submenu-trigger[aria-expanded="true"] { background: var(--accent); }
 .pill-menu.pill-submenu { width: 240px; max-width: calc(100% - 16px); max-height: calc(100vh - 16px); bottom: auto; transform: none; }
 .pill-submenu button { white-space: normal; text-align: left; line-height: 16px; }

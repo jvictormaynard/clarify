@@ -835,9 +835,9 @@ export function useSettings() {
       return call("savePreference", "setRouteEnabled", [enabled]);
     });
   };
-  const useLocalModel = async () => {
+  const useLocalModel = async (stillOnTab: () => boolean) => {
     const epoch = navigationEpoch.current;
-    if (await run("useLocalAsr") && epoch === navigationEpoch.current) await navigate("dictation");
+    if (await run("useLocalAsr") && epoch === navigationEpoch.current && stillOnTab()) await navigate("dictation");
   };
 
   const setLibraryPreference = async (library: "dictionary" | "snippets", index: number, field: "enabled" | "case_sensitive", value: boolean) => {

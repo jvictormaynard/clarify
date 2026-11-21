@@ -7,6 +7,7 @@
   "license_file": "licenses/mattpocock-skills-MIT.txt",
   "license_sha256": "0e7ac423bf2c6e223b7c5b156f8cf72da49d748e56a1641402c31f22ad07dbb5",
   "project_skills": [
+    "clarify-ui",
     "clarify-delivery",
     "clarify-release",
     "humanizer"

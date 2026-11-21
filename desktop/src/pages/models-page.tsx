@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import {
@@ -8,6 +9,8 @@ import {
   Row,
   Section,
   SettingsDisclosure,
+  SettingsPage,
+  SettingsTabs,
   Toggle,
 } from "../components/ui";
 import { Check, LoaderCircle, Download } from "lucide-react";
@@ -15,6 +18,7 @@ import { ChatGPTPlan } from "../components/chatgpt-plan";
 import { profileName } from "../settings/display-labels";
 
 export function ModelsPage({ controller }: SettingsPageProps) {
+  const tabRevision = useRef(0);
   const {
     state,
     run,
@@ -156,7 +160,10 @@ export function ModelsPage({ controller }: SettingsPageProps) {
               <Button
                 variant="primary"
                 disabled={state.localAsrBusy || state.localBenchmarkBusy}
-                onClick={() => void useLocalModel()}
+                onClick={() => {
+                  const revision = tabRevision.current;
+                  void useLocalModel(() => revision === tabRevision.current);
+                }}
               >{t("Usar este modelo")}</Button>
             )}
             {state.localAsrBusy ? (
@@ -225,14 +232,30 @@ export function ModelsPage({ controller }: SettingsPageProps) {
       </Section>
   );
   const localFirst = state.selectedScope === "transcription" && state.routeProviderId === "local_asr";
-  return <>{localFirst ? localSection : cloudSection}{localFirst ? cloudSection : localSection}
-    <Section title={t("Processamento de texto")}>
-      <p className="hint">{t("As ações usam estes perfis. Alterar um perfil não altera suas instruções.")}</p>
-      {(state.textActionProfiles ?? []).filter(profile => !profile.managed).map(profile => <Row key={profile.id}
-        title={profileName(profile.id)} hint={`${state.textActionProviders?.find(provider => provider.id === profile.providerId)?.label ?? profile.providerId} · ${profile.modelId || t("Sem modelo")}`}>
-        <Button aria-label={t("Editar perfil de {name}", { name: profileName(profile.id) })}
-          onClick={() => controller.textProfileEditor.open(profile)}>{t("Editar perfil")}</Button>
-      </Row>)}
-    </Section>
-  </>;
+  return (
+    <SettingsPage.Root>
+      <SettingsTabs.Root defaultValue="services" onValueChange={() => { tabRevision.current++; }}>
+        <SettingsTabs.List aria-label={t("Modelos e serviços")}>
+          <SettingsTabs.Tab value="services">{t("Serviços e modelos locais")}</SettingsTabs.Tab>
+          <SettingsTabs.Tab value="profiles">{t("Processamento de texto")}</SettingsTabs.Tab>
+        </SettingsTabs.List>
+        <SettingsTabs.Panel value="services">
+          {localFirst ? localSection : cloudSection}
+          {localFirst ? cloudSection : localSection}
+        </SettingsTabs.Panel>
+        <SettingsTabs.Panel value="profiles">
+          <Section>
+            <p className="hint">{t("As ações usam estes perfis. Alterar um perfil não altera suas instruções.")}</p>
+            {(state.textActionProfiles ?? []).filter(profile => !profile.managed).map(profile => (
+              <Row key={profile.id} title={profileName(profile.id)}
+                hint={`${state.textActionProviders?.find(provider => provider.id === profile.providerId)?.label ?? profile.providerId} · ${profile.modelId || t("Sem modelo")}`}>
+                <Button aria-label={t("Editar perfil de {name}", { name: profileName(profile.id) })}
+                  onClick={() => controller.textProfileEditor.open(profile)}>{t("Editar perfil")}</Button>
+              </Row>
+            ))}
+          </Section>
+        </SettingsTabs.Panel>
+      </SettingsTabs.Root>
+    </SettingsPage.Root>
+  );
 }

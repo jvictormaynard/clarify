@@ -214,7 +214,7 @@ export function Pill() {
   const collapsed = !dock.expanded && !capture && !result && !translation && !menu && !languageMenu && !error;
   return <main className="pill-stage" onPointerDownCapture={dock.press} onPointerUpCapture={dock.release} onPointerCancelCapture={dock.release}>
     <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-feedback-problem={problem} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
-      style={capture && !result && !translation ? {width} : undefined}
+      style={{ width: capture && !result && !translation ? width : undefined }}
       tabIndex={!capture && !result && !translation ? 0 : undefined}
       onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave}
       onFocusCapture={dock.expand}

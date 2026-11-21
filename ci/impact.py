@@ -291,7 +291,6 @@ def path_components(path: str) -> set[str]:
         # retain the Windows lane below.
         if path.startswith("desktop/src/pages/") or path in {
             "desktop/src/styles/pages.css",
-            "desktop/src/styles/snippets.css",
             "desktop/src/styles/provider-brands.css",
         }:
             return {"settings"}
