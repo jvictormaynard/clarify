@@ -407,6 +407,36 @@ class QmlClipboardMacOSTests(unittest.TestCase):
         )
         self.assertEqual([item.formats for item in self.items], original)
 
+    def test_dictation_can_paste_into_text_control_without_a_readable_range(self):
+        self.editor.pop("AXSelectedTextRange")
+        target = self.gateway.capture_target()
+
+        for role, expected_events in (
+            ("AXButton", []),
+            ("AXTextArea", [((123, (9, True)),), ((123, (9, False)),)]),
+        ):
+            with self.subTest(role=role):
+                self.editor["AXRole"] = role
+                self.assertEqual(
+                    self.gateway.write_dictation_result(target, "result"),
+                    SelectionDisposition.COPIED,
+                )
+                self.assertEqual(self.post.call_args_list, expected_events)
+                self.assertEqual(self.clipboard_text(), "result")
+
+        self.post.reset_mock()
+        self.assertEqual(
+            self.gateway.write_dictation_result(
+                target, "result", allow_unconfirmed=False
+            ),
+            SelectionDisposition.COPIED,
+        )
+        self.assertEqual(
+            self.gateway.publish("result", target, VoiceTranslationPublication.PASTED),
+            VoiceTranslationPublication.COPY_ONLY,
+        )
+        self.post.assert_not_called()
+
     def test_incomplete_snapshot_and_denied_access_allow_manual_copy(self):
         target = self.gateway.capture_target()
         for formats in (
