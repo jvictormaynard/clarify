@@ -3,15 +3,11 @@
 #include <cmath>
 #include <node_api.h>
 
-static bool ForegroundFillsScreen(NSScreen* screen, double primary_top) {
+static bool VisibleWindowFillsScreen(NSScreen* screen, double primary_top) {
   NSRect frame = screen.frame;
   CGFloat top = primary_top - NSMaxY(frame);
-  pid_t foreground = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
-  if (foreground <= 0)
-    return false;
-
-  // Some apps leave AppKit's system presentation options unchanged in fullscreen.
-  // Use the foreground window's geometry on this display, including the notch.
+  // A fullscreen Space can stay visible when the pill or another display has focus.
+  // Match the window to this display, including the notch.
   CFArrayRef windows = CGWindowListCopyWindowInfo(
       kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
       kCGNullWindowID);
@@ -19,8 +15,7 @@ static bool ForegroundFillsScreen(NSScreen* screen, double primary_top) {
     return false;
   bool fills_screen = false;
   for (NSDictionary* window in (__bridge NSArray*)windows) {
-    if ([window[(__bridge NSString*)kCGWindowOwnerPID] intValue] != foreground ||
-        [window[(__bridge NSString*)kCGWindowLayer] intValue] != 0)
+    if ([window[(__bridge NSString*)kCGWindowLayer] intValue] != 0)
       continue;
     CGRect bounds;
     NSDictionary* geometry = window[(__bridge NSString*)kCGWindowBounds];
@@ -58,7 +53,7 @@ static napi_value GetWorkArea(napi_env env, napi_callback_info info) {
 
       double primary_top = NSMaxY(screens.firstObject.frame);
       NSRect area = screen.visibleFrame;
-      if (!NSEqualRects(area, screen.frame) && ForegroundFillsScreen(screen, primary_top))
+      if (!NSEqualRects(area, screen.frame) && VisibleWindowFillsScreen(screen, primary_top))
         area = screen.frame;
       // AppKit uses a bottom-left origin. Electron uses the primary screen's top-left.
       double top = primary_top - NSMaxY(area);
