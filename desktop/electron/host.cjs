@@ -3,12 +3,19 @@ const path = require('node:path');
 const {pathToFileURL, fileURLToPath} = require('node:url');
 const {Bridge, validateRequest} = require('./bridge.cjs');
 
-async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage}, input = process.stdin, output = process.stdout, passiveWindow = process.platform === 'win32' ? require('./passive_window.node') : null) {
-  const isMac = process.platform === 'darwin';
+async function startHost(
+  {app, BrowserWindow, ipcMain, screen, session, Tray, Menu, nativeImage},
+  input = process.stdin,
+  output = process.stdout,
+  passiveWindow = process.platform === 'win32' ? require('./passive_window.node') : null,
+  macWorkArea = process.platform === 'darwin' ? require('./mac_work_area.node').getWorkArea : null,
+) {
+  const isMac = Boolean(macWorkArea);
   await app.whenReady();
   let stopping = false, settingsPatch = {}, workflowState = null, ready = false;
   const windows = {}, loaded = new Set(), wantsVisible = {settings: false};
   let tray, trayLocale, pillShown = false, pillFocusable = false, hitTimer, interactive = false, regions = [];
+  let placementTimer;
   const index = path.resolve(__dirname, '../dist/index.html');
   const icon = path.resolve(__dirname, '../icon.png');
   const urls = {settings: pathToFileURL(index).href, pill: pathToFileURL(index).href + '?surface=pill'};
@@ -35,14 +42,27 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
     const win = windows.pill;
     if (!loaded.has(win) || pillShown) return;
     pillShown = true;
+    if (isMac) {
+      clampPill();
+      // Space and Dock changes can leave Electron's display work area cached.
+      placementTimer ??= setInterval(clampPill, 250).unref();
+    }
     win.showInactive();
     clearInterval(hitTimer);
     hitTimer = setInterval(hitTest, 25); hitTimer.unref();
   };
-  const clampPill = () => {
+  const clampPill = (display) => {
     const win = windows.pill, bounds = win.getBounds();
-    const {workArea: area} = screen.getDisplayNearestPoint({x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height)});
-    win.setBounds({x: Math.round(area.x + (area.width - 660) / 2), y: area.y + area.height - 272, width: 660, height: 272});
+    display ??= screen.getDisplayNearestPoint({
+      x: Math.round(bounds.x + bounds.width / 2),
+      y: Math.round(bounds.y + bounds.height / 2),
+    });
+    const area = macWorkArea?.(display.id) ?? display.workArea;
+    const x = Math.round(area.x + (area.width - 660) / 2);
+    const y = Math.round(area.y + area.height - 272);
+    if (x !== bounds.x || y !== bounds.y || bounds.width !== 660 || bounds.height !== 272) {
+      win.setBounds({x, y, width: 660, height: 272});
+    }
   };
   const applyWindow = (action) => {
     if (action === 'settings-show') {
@@ -116,15 +136,18 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
       icon,
       // A macOS panel can take key focus without activating the app. The
       // passive pill also needs to receive the first click while inactive.
-      ...(isMac && pill ? {type: 'panel', acceptFirstMouse: true} : {}),
+      ...(isMac && pill ? {type: 'panel', acceptFirstMouse: true, enableLargerThanScreen: true} : {}),
       webPreferences: {preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false, devTools: false},
     });
     windows[surface] = win;
     if (!isMac) win.removeMenu();
     if (!pill) for (const event of ['maximize', 'unmaximize']) win.on(event, () => emit(win, 'clarify:window-event', 'resized'));
     if (pill) {
-      const {workArea} = screen.getPrimaryDisplay();
-      win.setBounds({x:Math.round(workArea.x + (workArea.width - 660) / 2), y:workArea.y + workArea.height - 272, width:660, height:272});
+      if (isMac) {
+        // The packaged presentation app is already an LSUIElement.
+        win.setVisibleOnAllWorkspaces(true, {visibleOnFullScreen: true, skipTransformProcessType: true});
+      }
+      clampPill(screen.getPrimaryDisplay());
       win.setIgnoreMouseEvents(true, {forward: true});
       // Keep native mouse capture while preventing activation from stealing the target app.
       passiveWindow?.setPassive(win.getNativeWindowHandle(), true);
@@ -211,6 +234,7 @@ async function startHost({app, BrowserWindow, ipcMain, screen, session, Tray, Me
     stopping = true;
     rtc.stop();
     clearInterval(hitTimer);
+    clearInterval(placementTimer);
     tray?.destroy();
     bridge.end();
   });

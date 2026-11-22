@@ -9,7 +9,7 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .pill-capture .pill-content { padding: 0; display: block; }
 .pill-panel .pill-content { width: 100%; height: auto; transform: none; display: block; padding: 0; }
 .workflow-pill button { -webkit-app-region: no-drag; }
-.pill-idle { width: 112px; }
+.pill-idle { width: 112px; transition-duration: 140ms, 140ms, 180ms; }
 .pill-capture { padding: 0; display: block; overflow: hidden; }
 .pill-capture[data-surface="recording"]:not([data-starting="true"]) { border-color: var(--pill-recording-border); }
 .workflow-pill[data-starting="true"] { cursor: progress; }
@@ -74,10 +74,10 @@ html:has(.titlebar) .titlebar, html:has(.titlebar) [data-desktop-drag-region] { 
 @media (prefers-reduced-motion: reduce) { .pill-stage *, .pill-stage *::before { animation: none !important; transition: none !important; } }
 
 /* The native window stays alive; only this dock changes presentation. */
-.workflow-pill.pill-collapsed { width: 52px; height: 12px; border-radius: 10px; }
+.workflow-pill.pill-collapsed { width: 52px; height: 12px; border-radius: 10px; transition-duration: 90ms, 90ms, 180ms; }
 .dock-handle { position: absolute; left: 50%; top: 50%; width: 26px; height: 2px; border-radius: 2px; background: var(--pill-handle); translate: -50% -50%; opacity: 0; transition: opacity 120ms ease; pointer-events: none; }
 .pill-collapsed .dock-handle { opacity: 1; }
-.pill-idle .pill-content { opacity: 1; transition: opacity 140ms ease 70ms; }
+.pill-idle .pill-content { opacity: 1; transition: opacity 90ms ease 20ms; }
 .pill-collapsed .pill-content { opacity: 0; pointer-events: none; transition-delay: 0ms; }
 .pill-cancel { position: absolute; left: 4px; top: 3px; }
 .pill-tooltip { display: none; }

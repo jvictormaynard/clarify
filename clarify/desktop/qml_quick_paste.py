@@ -107,7 +107,9 @@ class QuickPasteController(QObject):
                     self.clipboard.activate(target)
                 # This gateway rechecks focus before writing and before paste.
                 # A changed/closed target falls back to copy, never blind paste.
-                result = self.clipboard.write_dictation_result(target, text)
+                result = self.clipboard.write_dictation_result(
+                    target, text, allow_unconfirmed=False
+                )
                 finished(getattr(result, "value", str(result)))
             except Exception:
                 finished("failed")

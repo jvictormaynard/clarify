@@ -439,7 +439,9 @@ class QmlClipboardGateway(ClipboardGateway):
         self._run(command, input=str(text).encode(), check=True)
         return True
 
-    def _publish_macos(self, text, target, *, expected_selection=None):
+    def _publish_macos(
+        self, text, target, *, expected_selection=None, allow_unconfirmed=False
+    ):
         value = str(text)
         with self._lock:
             try:
@@ -464,6 +466,7 @@ class QmlClipboardGateway(ClipboardGateway):
                         value,
                         sequence,
                         expected_selection=expected_selection,
+                        allow_unconfirmed=allow_unconfirmed,
                         sleep=self._sleep,
                         monotonic=self._monotonic,
                     )
@@ -579,12 +582,14 @@ class QmlClipboardGateway(ClipboardGateway):
         return SelectionDisposition.COPIED
 
     def write_dictation_result(
-        self, target: SelectionTarget | None, text: str
+        self, target: SelectionTarget | None, text: str, *, allow_unconfirmed=True
     ) -> SelectionDisposition:
         """Publish dictation, pasting only into a verified native target."""
 
         if self._macos is not None:
-            return self._publish_macos(text, target)
+            return self._publish_macos(
+                text, target, allow_unconfirmed=allow_unconfirmed
+            )
         if not self.is_windows:
             self._write_visible_copy(text)
             return SelectionDisposition.COPIED
@@ -623,7 +628,7 @@ class QmlClipboardGateway(ClipboardGateway):
             paste_target = (
                 target if disposition is VoiceTranslationPublication.PASTED else None
             )
-            published = self.write_dictation_result(paste_target, value)
+            published = self._publish_macos(value, paste_target)
             return {
                 SelectionDisposition.PASTED: VoiceTranslationPublication.PASTED,
                 SelectionDisposition.COPIED: VoiceTranslationPublication.COPY_ONLY,
