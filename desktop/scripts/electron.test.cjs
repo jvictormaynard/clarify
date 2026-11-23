@@ -151,7 +151,7 @@ test('early meeting open reaches the workspace with the latest note and dock sto
 });
 test('macOS retains one right-aligned meeting window as the only capture owner', async () => {
   const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
-  const {windows, bridge} = await startHost(e, input, output, e.passiveWindow, 'darwin');
+  const {windows, bridge} = await startHost(e, input, output, e.passiveWindow, 'darwin', null);
   const {settings, pill} = windows;
   const sender = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
   const ready = win => e.handlers['clarify:renderer-ready'](sender(win));
