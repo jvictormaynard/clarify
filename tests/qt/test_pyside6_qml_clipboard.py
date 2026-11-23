@@ -323,7 +323,8 @@ class QmlClipboardMacOSTests(unittest.TestCase):
             "AXSelectedText": "draft",
         }
         self.ax = Mock()
-        self.ax.AXIsProcessTrusted.return_value = True
+        del self.ax.AXIsProcessTrusted
+        self.ax.AXIsProcessTrustedWithOptions.return_value = True
         self.ax.AXUIElementCreateApplication.return_value = "application"
         self.ax.AXUIElementCopyAttributeValue.side_effect = self.read_attribute
         self.ax.AXValueGetValue.side_effect = lambda value, *_: (True, value)
@@ -473,7 +474,7 @@ class QmlClipboardMacOSTests(unittest.TestCase):
                 )
                 self.assertEqual(self.clipboard_text(), "result")
 
-        self.ax.AXIsProcessTrusted.return_value = False
+        self.ax.AXIsProcessTrustedWithOptions.return_value = False
         target = self.gateway.capture_target()
         self.assertEqual(target.executable, self.app.executableURL().path())
         self.assertIsNone(self.gateway.capture_selection(target))

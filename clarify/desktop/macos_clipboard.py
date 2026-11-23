@@ -246,7 +246,7 @@ class MacOSClipboard:
 
         try:
             ax = _accessibility()
-            if ax.AXIsProcessTrusted():
+            if accessibility_allowed():
                 application = ax.AXUIElementCreateApplication(pid)
                 ax.AXUIElementSetMessagingTimeout(application, 0.08)
                 window = self._attribute(application, "AXFocusedWindow")
