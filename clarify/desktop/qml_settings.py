@@ -3772,7 +3772,9 @@ class QmlSettingsController(QObject):
                     "base_url": base_url,
                     "models": list(catalog.audio_models),
                     "text_models": list(catalog.text_models),
-                    "catalog": catalog if provider_id in {"chatgpt", "opencode"} else None,
+                    "catalog": catalog
+                    if provider_id in {"chatgpt", "opencode"}
+                    else None,
                 },
             )
 
@@ -5308,7 +5310,9 @@ class QmlSettingsController(QObject):
                     custom_endpoint="",
                     account_id="",
                 )
-                return replace(config, workflows=config.workflows.with_route(scope, route))
+                return replace(
+                    config, workflows=config.workflows.with_route(scope, route)
+                )
 
             return change_open_code_route
         if method == "useLocalAsr":

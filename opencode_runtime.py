@@ -181,7 +181,8 @@ def install(cancel_token=None):
 
     if not supported():
         raise ProviderConfigurationError(
-            "opencode", "OpenCode installation supports Windows and Linux x64 and Apple Silicon Macs."
+            "opencode",
+            "OpenCode installation supports Windows and Linux x64 and Apple Silicon Macs.",
         )
     with _installation_lock(check):
         check()

@@ -447,8 +447,12 @@ def main():
                     "opencode/fixture-free-b",
                 ),
             )
-            fixtures.enter_context(patch.object(adapter, "validate", return_value=catalog))
-            fixtures.enter_context(patch.object(adapter, "discover_models", return_value=catalog))
+            fixtures.enter_context(
+                patch.object(adapter, "validate", return_value=catalog)
+            )
+            fixtures.enter_context(
+                patch.object(adapter, "discover_models", return_value=catalog)
+            )
             if "--personal-catalog-error" in sys.argv:
                 from provider_types import ProviderConfigurationError
 
