@@ -47,6 +47,21 @@ class PracticeSettingsTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.addCleanup(self.settings.shutdown)
 
+    def test_guided_shortcut_test_detects_native_binding_without_recording(self):
+        self.practice._guided_shortcut_test = True
+        self.settings.completeOnboarding("byok", "gsk_test_only")
+        self.practice.handle_hotkey("recording_hotkey")
+        self.assertEqual(self.practice.snapshot()["shortcutTest"], "idle")
+        self.assertEqual(self.practice.workflow.state.phase.value, "ready")
+        self.assertFalse(self.practice.command("finish-shortcut"))
+        self.assertTrue(self.practice.command("test-shortcut"))
+        self.practice.handle_hotkey("recording_hold_press")
+        self.practice.handle_hotkey("recording_hold_release")
+        self.assertEqual(self.practice.snapshot()["shortcutTest"], "passed")
+        self.assertEqual(self.practice.workflow.state.phase.value, "ready")
+        self.assertTrue(self.practice.command("finish-shortcut"))
+        self.assertEqual(self.practice.snapshot()["shortcutTest"], "complete")
+
     def test_setup_opens_practice_only_after_storage_succeeds(self):
         from unittest.mock import patch
 

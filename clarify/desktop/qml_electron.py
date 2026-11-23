@@ -202,9 +202,9 @@ class ElectronDesktopProcess(QObject):
         self.flush_timer.timeout.connect(self._flush)
         # History revisions are derived from storage stamps, including changes
         # published by background account synchronization outside Qt signals.
-        self.history_timer = QTimer(self)
-        self.history_timer.setInterval(1000)
-        self.history_timer.timeout.connect(self._check_history)
+        self.settings_refresh_timer = QTimer(self)
+        self.settings_refresh_timer.setInterval(1000)
+        self.settings_refresh_timer.timeout.connect(self._refresh_visible_settings)
         self._connect_notifications(bridge, WORKFLOW_PROPERTIES, self._mark_workflow)
         self._connect_notifications(
             status,
@@ -307,7 +307,7 @@ class ElectronDesktopProcess(QObject):
             return False
         self._visible = True
         self._accepted_close = False
-        self.history_timer.start()
+        self.settings_refresh_timer.start()
         self._window_command("show")
         if self._ready:
             self._publish_settings(full=True)
@@ -326,16 +326,24 @@ class ElectronDesktopProcess(QObject):
         self.settings.cancelHotkeyCapture()
 
     def hide(self):
-        self.history_timer.stop()
+        self.settings_refresh_timer.stop()
         self._close_settings_activity()
         if self._visible:
             self._visible = False
             self._window_command("hide")
 
-    def _check_history(self):
-        if self._visible and self._last_settings is not None:
-            if self.settings.historyState != self._last_settings.get("historyState"):
-                self._mark_settings({"historyState"})
+    def _refresh_visible_settings(self):
+        if not self._visible or self._last_settings is None:
+            return
+        if self.settings.historyState != self._last_settings.get("historyState"):
+            self._mark_settings({"historyState"})
+        if sys.platform == "darwin" and self.settings.practiceState.get("open"):
+            # macOS can update access while System Settings still has focus.
+            if self.settings.dictationPermissions != self._last_settings.get(
+                "dictationPermissions"
+            ):
+                self._mark_settings({"dictationPermissions"})
+            self.settings.refresh_input_monitoring()
 
     def _window_command(self, action):
         if action == "hide" and self._accepting_close:
@@ -586,7 +594,7 @@ class ElectronDesktopProcess(QObject):
             self.startup_timer.stop()
             self.health_timer.start()
             if self._visible:
-                self.history_timer.start()
+                self.settings_refresh_timer.start()
             self._window_command("show" if self._visible else "hide")
             self._workflow_dirty = True
             self._flush()
@@ -641,14 +649,26 @@ class ElectronDesktopProcess(QObject):
         if request.get("channel", "settings") == "settings":
             reply = self.protocol.dispatch(request)
             result = reply.get("result")
+            permissions = {}
             if isinstance(result, dict) and request.get("method") in METHODS | {
                 "snapshot",
                 "poll",
             }:
+                previous = self._last_settings or {}
+                if self._visible and sys.platform == "darwin":
+                    # Some callers consume only part of a Settings reply. The
+                    # onboarding window and its guide also need the grant.
+                    permissions = {
+                        key: result[key]
+                        for key in ("dictationPermissions", "inputMonitoringStatus")
+                        if key in result and result[key] != previous.get(key)
+                    }
                 # Compare pushes with the state actually exposed by each reply,
                 # including a transient value that reverts before the next push.
-                self._last_settings = {**(self._last_settings or {}), **result}
+                self._last_settings = {**previous, **result}
             self._send(reply)
+            if permissions:
+                self._send({"event": "settings", "state": permissions})
         elif request.get("channel") == "workflow":
             self._send(self.dispatch_workflow(request))
         elif request.get("channel") == "meetings" and self.meetings is not None:
@@ -687,7 +707,7 @@ class ElectronDesktopProcess(QObject):
         for timer in (
             self.startup_timer,
             self.flush_timer,
-            self.history_timer,
+            self.settings_refresh_timer,
             self.health_timer,
         ):
             timer.stop()
@@ -717,7 +737,7 @@ class ElectronDesktopProcess(QObject):
         for timer in (
             self.startup_timer,
             self.flush_timer,
-            self.history_timer,
+            self.settings_refresh_timer,
             self.restart_timer,
             self.health_timer,
         ):

@@ -534,6 +534,7 @@ class QmlSettingsController(QObject):
     microphoneTestChanged = Signal()
     microphoneLevelChanged = Signal()
     hotkeyChanged = Signal()
+    dictationPermissionsChanged = Signal()
     _providerValidationFinished = Signal(str, int, bool, object)
     _localBenchmarkPublished = Signal(str)
     _microphoneTestFinished = Signal(int, bool, object)
@@ -549,7 +550,7 @@ class QmlSettingsController(QObject):
         microphone_backend: Any | None = None,
         microphone_inventory_source: Any | None = None,
         hotkey_applier: Callable[[HotkeySettings], Any] | None = None,
-        hotkey_capture_changed: Callable[[bool], None] | None = None,
+        hotkey_capture_changed: Callable[[bool], bool | None] | None = None,
         dictionary_service: DictionarySnippetService | None = None,
         account_service=None,
         account_can_change=None,
@@ -791,6 +792,12 @@ class QmlSettingsController(QObject):
             push_to_talk_supported=sys.platform == "darwin" or supports_push_to_talk(),
         )
         self._hotkey_capture_action = ""
+        self._native_hotkey_capture: dict[str, Any] = {}
+        self._native_hotkey_serial = 0
+        self._dictation_microphone_pending = False
+        self._input_monitoring_status = ""
+        self._input_monitoring_apply_pending = False
+        self._read_input_monitoring_permission()
         self._unavailable_hotkeys: list[str] = []
         self._provider_api_key_draft = ""
         self._provider_base_url_draft = self._config_provider_base_url(
@@ -1558,7 +1565,7 @@ class QmlSettingsController(QObject):
             if self._hotkey_capture_action:
                 raise ValueError("Finalize a captura de atalho atual.")
             if not self._text_action_capture_context and self._hotkey_capture_changed:
-                self._hotkey_capture_changed(True)
+                self._change_hotkey_capture(True)
             self._text_action_capture_context = context
             self.textActionsChanged.emit()
             return True
@@ -1570,7 +1577,7 @@ class QmlSettingsController(QObject):
     def endTextActionHotkeyCapture(self):
         try:
             if self._text_action_capture_context and self._hotkey_capture_changed:
-                self._hotkey_capture_changed(False)
+                self._change_hotkey_capture(False)
             self._text_action_capture_context = ""
             self.textActionsChanged.emit()
             return True
@@ -1959,6 +1966,168 @@ class QmlSettingsController(QObject):
     @Property(str, notify=hotkeyChanged)
     def hotkeyCaptureAction(self) -> str:
         return self._hotkey_capture_action
+
+    @Property("QVariantMap", notify=hotkeyChanged)
+    def nativeHotkeyCapture(self) -> dict[str, Any]:
+        return self._native_hotkey_capture
+
+    @Property("QVariantMap", notify=dictationPermissionsChanged)
+    def dictationPermissions(self) -> dict[str, str]:
+        if sys.platform != "darwin":
+            return {}
+        if __package__:
+            from .macos_clipboard import accessibility_allowed
+            from .macos_microphone_permission import microphone_permission_status
+        else:
+            from macos_clipboard import accessibility_allowed
+            from macos_microphone_permission import microphone_permission_status
+
+        microphone = microphone_permission_status()
+        return {
+            "accessibility": "allowed" if accessibility_allowed() else "settings",
+            "microphone": "pending"
+            if microphone == "request" and self._dictation_microphone_pending
+            else microphone,
+        }
+
+    @Slot(str, result=bool)
+    def dictationPermissionCommand(self, action: str) -> bool:
+        if sys.platform != "darwin" or action not in {
+            "check",
+            "accessibility",
+            "microphone",
+        }:
+            return False
+        self.dictationPermissionsChanged.emit()
+        if action == "check":
+            return self.inputMonitoringCommand("check")
+        status = self.dictationPermissions[action]
+        if status in {"allowed", "pending"}:
+            return True
+        if not self._preserve_practice_before_permission_request():
+            return False
+        if status == "request":
+            if __package__:
+                from .macos_microphone_permission import request_microphone_permission
+            else:
+                from macos_microphone_permission import request_microphone_permission
+
+            self._dictation_microphone_pending = True
+            try:
+                request_microphone_permission(self._dictation_microphone_finished)
+            except Exception as error:
+                self._dictation_microphone_pending = False
+                self._set_error(error)
+                return False
+            self.dictationPermissionsChanged.emit()
+            return True
+        pane = {
+            "accessibility": "Privacy_Accessibility",
+            "microphone": "Privacy_Microphone",
+        }[action]
+        return self._open_privacy_settings(pane)
+
+    def _dictation_microphone_finished(self, _allowed: bool) -> None:
+        self._dictation_microphone_pending = False
+        self.dictationPermissionsChanged.emit()
+
+    def _open_privacy_settings(self, pane: str) -> bool:
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        for extension in (
+            "com.apple.settings.PrivacySecurity.extension",
+            "com.apple.preference.security",
+        ):
+            if QDesktopServices.openUrl(
+                QUrl(f"x-apple.systempreferences:{extension}?{pane}")
+            ):
+                return True
+        self._set_error(ValueError("Não foi possível abrir os Ajustes do Sistema."))
+        return False
+
+    @Property(str, notify=hotkeyChanged)
+    def inputMonitoringStatus(self) -> str:
+        return self._input_monitoring_status
+
+    def _read_input_monitoring_permission(self, *, request=False):
+        if sys.platform != "darwin":
+            return
+        if __package__:
+            from .macos_keyboard import keyboard_access_allowed
+        else:
+            from macos_keyboard import keyboard_access_allowed
+
+        previous = self._input_monitoring_status
+        if keyboard_access_allowed(request=request):
+            self._input_monitoring_status = "allowed"
+        elif request or previous == "settings":
+            self._input_monitoring_status = "settings"
+        else:
+            self._input_monitoring_status = "request"
+
+    @Slot(str, result=bool)
+    def inputMonitoringCommand(self, action: str) -> bool:
+        if sys.platform != "darwin" or action not in {"check", "request", "open"}:
+            return False
+        previous = self._input_monitoring_status
+        if action != "check" and previous != "allowed":
+            if not self._preserve_practice_before_permission_request():
+                return False
+        self.refresh_input_monitoring(
+            request=action == "request" and previous == "request",
+            retry_unavailable=action == "check",
+        )
+        if action == "open" and self._input_monitoring_status != "allowed":
+            return self._open_privacy_settings("Privacy_ListenEvent")
+        return True
+
+    def refresh_input_monitoring(self, *, request=False, retry_unavailable=False):
+        previous = self._input_monitoring_status
+        self._read_input_monitoring_permission(request=request)
+        if previous != self._input_monitoring_status:
+            self._input_monitoring_apply_pending = (
+                self._input_monitoring_status == "allowed"
+            )
+            self.hotkeyChanged.emit()
+        if self._input_monitoring_status != "allowed":
+            return
+        retry = retry_unavailable and (
+            self._unavailable_hotkeys
+            or (
+                (self._hotkey_capture_action or self._text_action_capture_context)
+                and not self._native_hotkey_capture
+            )
+        )
+        if not (self._input_monitoring_apply_pending or retry):
+            return
+        if self._hotkey_capture_action or self._text_action_capture_context:
+            self._change_hotkey_capture(True)
+        elif self._hotkey_can_change():
+            self._apply_config_hotkeys(self._config_repository.load())
+        else:
+            return
+        self._input_monitoring_apply_pending = False
+
+    def _change_hotkey_capture(self, active: bool) -> None:
+        if active:
+            self._read_input_monitoring_permission()
+        native = self._hotkey_capture_changed and self._hotkey_capture_changed(active)
+        self._native_hotkey_capture = {"active": True} if active and native else {}
+        self.hotkeyChanged.emit()
+
+    def setNativeHotkeyCapture(self, shortcut: HotkeyDefinition) -> None:
+        if not self._native_hotkey_capture or not (
+            self._hotkey_capture_action or self._text_action_capture_context
+        ):
+            return
+        self._native_hotkey_serial += 1
+        self._native_hotkey_capture = {
+            "active": True,
+            "serial": self._native_hotkey_serial,
+            "shortcut": shortcut.to_mapping(),
+        }
+        self.hotkeyChanged.emit()
 
     @Property("QVariantMap", notify=providerStateChanged)
     def providerStates(self) -> dict[str, dict[str, Any]]:
@@ -2811,7 +2980,7 @@ class QmlSettingsController(QObject):
         if next_action != self._hotkey_capture_action:
             if not self._hotkey_capture_action and self._hotkey_capture_changed:
                 try:
-                    self._hotkey_capture_changed(True)
+                    self._change_hotkey_capture(True)
                 except Exception as error:
                     self._set_error(error)
                     return False
@@ -2828,7 +2997,7 @@ class QmlSettingsController(QObject):
         if self._hotkey_capture_action:
             if self._hotkey_capture_changed:
                 try:
-                    self._hotkey_capture_changed(False)
+                    self._change_hotkey_capture(False)
                 except Exception as error:
                     self._set_error(error)
                     return False
@@ -4326,6 +4495,32 @@ class QmlSettingsController(QObject):
     def onboardingRequired(self):
         return not self._config.onboarding_completed
 
+    @property
+    def onboardingPracticePending(self):
+        return (
+            self._config.onboarding_completed
+            and self._config.onboarding_practice_pending
+        )
+
+    def _set_onboarding_practice_pending(self, pending: bool) -> bool:
+        if self._config.onboarding_practice_pending == pending:
+            return True
+        if not self._persist_ui_preference(
+            lambda config: replace(config, onboarding_practice_pending=pending)
+        ):
+            return False
+        self._config = replace(self._config, onboarding_practice_pending=pending)
+        return True
+
+    def _preserve_practice_before_permission_request(self) -> bool:
+        if (
+            self._config.onboarding_completed
+            and self._practice is not None
+            and self._practice.open
+        ):
+            return self._set_onboarding_practice_pending(True)
+        return True
+
     def bindPractice(self, controller):
         if self._practice_unsubscribe is not None:
             self._practice_unsubscribe()
@@ -4345,6 +4540,10 @@ class QmlSettingsController(QObject):
     def practiceCommand(self, action):
         if self._practice is None:
             return False
+        if action == "done":
+            if not self._set_onboarding_practice_pending(False):
+                return False
+            action = "close"
         return self._practice.command(action)
 
     @Property("QVariantMap", notify=personalSetupStateChanged)
@@ -4777,6 +4976,7 @@ class QmlSettingsController(QObject):
                         "local_asr_device": device,
                         "local_asr_cloud_refinement": provider != "none",
                         "onboarding_completed": True,
+                        "onboarding_practice_pending": sys.platform == "darwin",
                     }
                     if provider != "none":
                         updates[provider] = replace(
@@ -4851,7 +5051,12 @@ class QmlSettingsController(QObject):
             elif mode != "meetings":
                 raise ValueError("Escolha uma opção para continuar.")
             persisted = self._config_repository.apply(
-                replace(config, onboarding_completed=True)
+                replace(
+                    config,
+                    onboarding_completed=True,
+                    onboarding_practice_pending=sys.platform == "darwin"
+                    and mode != "meetings",
+                )
             )
         except Exception as error:
             self._set_error(error)

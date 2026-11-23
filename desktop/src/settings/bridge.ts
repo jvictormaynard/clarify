@@ -92,6 +92,7 @@ export interface Settings {
   onboardingRequired: boolean;
   practiceState?: {
     open: boolean; phase?: string; text?: string; source?: string; status?: string; blocked?: string;
+    shortcutTest?: "idle" | "listening" | "passed" | "complete";
   };
   accountState?: {
     socialPending?: boolean;
@@ -167,6 +168,9 @@ export interface Settings {
   localBenchmarkBusy: boolean;
   localBenchmarkDetail: string;
   hotkeyCaptureAction: string;
+  dictationPermissions?: { accessibility?: "allowed" | "settings" | "request"; microphone?: "allowed" | "settings" | "request" | "pending" };
+  inputMonitoringStatus?: "" | "request" | "settings" | "allowed";
+  nativeHotkeyCapture?: { active?: boolean; serial?: number; shortcut?: HotkeyDefinition };
   hotkeyUnavailable?: string[];
   hotkeyActions: {
     id: string;
@@ -194,7 +198,7 @@ export type SettingsArguments = {
   endTextActionHotkeyCapture: [];
   cancelTextActionPreview: [];
   refreshTextActions: [];
-  practiceCommand: [action: "open" | "close" | "start" | "stop" | "cancel"];
+  practiceCommand: [action: "open" | "close" | "done" | "start" | "stop" | "cancel" | "test-shortcut" | "leave-shortcut" | "finish-shortcut"];
   computerCommand: [action: "enable" | "pair" | "stop" | "revoke" | "durable" | "close", value: string];
   personalSetupCommand: [action: "interface_language" | "recommend" | "prepare_speech" | "configure" | "connect_opencode" | "complete" | "cancel" | "reset_text_choice" | "cuda_license", value: string];
   completeOnboarding: [mode: "account" | "byok" | "local" | "meetings", key: string];
@@ -243,6 +247,8 @@ export type SettingsArguments = {
   setLocalStreaming: [value: boolean];
   setLocalAsrCloudRefinement: [value: boolean];
   setHotkey: [action: string, definition: { modifiers: string[]; key: string }];
+  dictationPermissionCommand: [action: "check" | "accessibility" | "microphone"];
+  inputMonitoringCommand: [action: "check" | "request" | "open"];
   beginHotkeyCapture: [action: string];
   cancelHotkeyCapture: [];
   setHotkeyActivationMode: [value: string];

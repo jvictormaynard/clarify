@@ -101,10 +101,18 @@ an ad hoc signature. If access stops after a rebuild, remove the old app from
 Accessibility, add the new app, and reopen it. Check Microphone access again
 before recording.
 
-New profiles use Control+Shift+L for dictation, Control+Shift+V for voice
-translation, and Control+Shift+R to expand or collapse the pill. Open **Shortcuts**
-in Settings to change the bindings. macOS accepts keyboard combinations with a
-modifier and a second key. Existing profiles keep their saved shortcuts.
+New Mac profiles use Fn for dictation. Hold Fn to speak and release it to
+finish. The defaults for voice translation and expanding or collapsing the
+pill are Control+Shift+V and Control+Shift+R. Open **Shortcuts**
+in Settings to change the bindings. Press and release a chord made of only
+modifier keys to capture it, for example Fn, Fn+Option, or Control+Option.
+Dictation setup requires Microphone access before the practice test. Accessibility
+is optional and enables automatic paste. The shortcut test listens for the
+chosen shortcut without recording.
+If the shortcut is unavailable, allow Clarify in Accessibility or Input
+Monitoring in System Settings.
+If the Globe key opens a macOS feature when you use Fn alone, set **Press 🌐
+key to** to **Do Nothing** under **System Settings → Keyboard**.
 
 For a source run, build the Electron shell with `npm --prefix desktop ci` and
 `npm --prefix desktop run build:electron`, then run

@@ -62,6 +62,8 @@
   "setLocalAsrCloudRefinement",
   "setHotkey",
   "beginHotkeyCapture",
+  "inputMonitoringCommand",
+  "dictationPermissionCommand",
   "cancelHotkeyCapture",
   "setHotkeyActivationMode",
   "resetHotkey",

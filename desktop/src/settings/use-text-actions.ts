@@ -30,6 +30,7 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const [capturing, renderCapturing] = useState(false);
   const [captureStarting, setCaptureStarting] = useState(false);
   const capturingRef = useRef(false);
+  const captureEnding = useRef(false);
   const captureEpoch = useRef(0);
   const modifier = useRef<string | null>(null);
   const [discardRequested, renderDiscardRequested] = useState(false);
@@ -56,18 +57,27 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const cancelCapture = useCallback(async () => {
     captureEpoch.current += 1; modifier.current = null;
     if (!capturingRef.current) return true;
-    const result = await run("endTextActionHotkeyCapture");
-    setCaptureStarting(false);
-    if (!result) {
-      renderCapturing(true); setError(t("Não foi possível restaurar os atalhos. Tente cancelar a captura novamente.")); return false;
-    }
-    capturingRef.current = false; renderCapturing(false);
-    return true;
+    if (captureEnding.current) return false;
+    captureEnding.current = true;
+    try {
+      const result = await run("endTextActionHotkeyCapture");
+      setCaptureStarting(false);
+      if (!result) {
+        renderCapturing(true); setError(t("Não foi possível restaurar os atalhos. Tente cancelar a captura novamente.")); return false;
+      }
+      capturingRef.current = false; renderCapturing(false);
+      return true;
+    } finally { captureEnding.current = false; }
   }, [run]);
   useEffect(() => {
     const hidden = () => { if (document.hidden) void cancelCapture(); };
+    const blur = () => { if (isMacDesktop()) void cancelCapture(); };
     document.addEventListener("visibilitychange", hidden);
-    return () => { document.removeEventListener("visibilitychange", hidden); };
+    window.addEventListener("blur", blur);
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("blur", blur);
+    };
   }, [cancelCapture]);
 
   const open = (action?: TextAction, duplicate = false, use = false) => {
@@ -149,8 +159,16 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
   const applyShortcut = async (shortcut: HotkeyDefinition) => {
     change({ shortcut }); await cancelCapture();
   };
+  const nativeCapture = state?.nativeHotkeyCapture;
+  useEffect(() => {
+    if (capturing && capturingRef.current && !captureEnding.current && nativeCapture?.shortcut && document.hasFocus() &&
+      document.activeElement?.hasAttribute("data-native-hotkey-capture")) {
+      void applyShortcut(nativeCapture.shortcut);
+    }
+  }, [nativeCapture, capturing]);
   const captureKey = async (event: KeyboardEvent<HTMLInputElement>) => {
-    if (!capturingRef.current) return;
+    if (!capturingRef.current || captureEnding.current) return;
+    if (isMacDesktop() && event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey) return;
     event.preventDefault(); event.stopPropagation();
     if (event.key === "Escape") { await cancelCapture(); return; }
     if (event.repeat) return;
@@ -165,7 +183,7 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
       modifiers: modifiers.filter(value => value.toUpperCase() !== key) });
   };
   const captureMouse = async (event: MouseEvent<HTMLInputElement>) => {
-    if (!capturingRef.current || isMacDesktop() || ![3, 4].includes(event.button)) return;
+    if (!capturingRef.current || captureEnding.current || isMacDesktop() || ![3, 4].includes(event.button)) return;
     event.preventDefault(); event.stopPropagation();
     await applyShortcut({ key: event.button === 3 ? "XBUTTON1" : "XBUTTON2",
       modifiers: [...(event.ctrlKey ? ["ctrl"] : []), ...(event.altKey ? ["alt"] : []),

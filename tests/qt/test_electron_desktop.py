@@ -485,10 +485,82 @@ class ElectronDesktopTests(unittest.TestCase):
             patch.object(self.settings, "_history_view", view),
             patch.object(self.settings, "library_snapshot", side_effect=AssertionError),
         ):
-            self.host._check_history()
+            self.host._refresh_visible_settings()
             self.host._flush()
         self.assertEqual(
             self.messages, [{"event": "settings", "state": {"historyState": revision}}]
+        )
+
+    def test_practice_publishes_macos_grants_without_window_focus(self):
+        self.host._ready = True
+        self.host._visible = True
+        self.host._workflow_dirty = False
+        self.host._last_settings = {
+            "historyState": self.settings.historyState,
+            "dictationPermissions": {
+                "accessibility": "settings",
+                "microphone": "request",
+            },
+            "inputMonitoringStatus": "settings",
+        }
+        self.settings._practice = Mock(snapshot=lambda: {"open": True})
+        self.settings._input_monitoring_status = "settings"
+        with (
+            patch.object(sys, "platform", "darwin"),
+            patch(
+                "clarify.desktop.macos_clipboard.accessibility_allowed",
+                return_value=True,
+            ),
+            patch(
+                "clarify.desktop.macos_microphone_permission.microphone_permission_status",
+                return_value="allowed",
+            ),
+            patch(
+                "clarify.desktop.macos_keyboard.input_monitoring_allowed",
+                return_value=True,
+            ),
+        ):
+            self.host._refresh_visible_settings()
+            self.host._flush()
+            updates = self.messages[-1]["state"]
+            self.assertEqual(
+                updates["dictationPermissions"],
+                {"accessibility": "allowed", "microphone": "allowed"},
+            )
+            self.assertEqual(updates["inputMonitoringStatus"], "allowed")
+            self.messages.clear()
+            self.host._refresh_visible_settings()
+            self.host._flush()
+            self.assertEqual(self.messages, [])
+
+    def test_settings_reply_cannot_consume_a_macos_grant_before_the_refresh(self):
+        self.host._visible = True
+        self.host._last_settings = {
+            "dictationPermissions": {
+                "accessibility": "settings",
+                "microphone": "allowed",
+            },
+            "inputMonitoringStatus": "settings",
+        }
+        grant = {"accessibility": "allowed", "microphone": "allowed"}
+        result = {"dictationPermissions": grant, "inputMonitoringStatus": "settings"}
+        with (
+            patch.object(sys, "platform", "darwin"),
+            patch.object(
+                self.host.protocol, "dispatch", return_value={"id": 1, "result": result}
+            ),
+        ):
+            self.host._receive(
+                {
+                    "id": 1,
+                    "channel": "settings",
+                    "method": "inputMonitoringCommand",
+                    "args": ["check"],
+                }
+            )
+        self.assertEqual(
+            self.messages[-1],
+            {"event": "settings", "state": {"dictationPermissions": grant}},
         )
 
     def test_settings_channel_reuses_strict_existing_allowlist(self):

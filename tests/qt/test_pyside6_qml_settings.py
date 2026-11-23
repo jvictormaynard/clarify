@@ -593,6 +593,139 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 worker.join(2)
                 self.assertFalse(worker.is_alive())
 
+    def test_dictation_permission_commands_prompt_and_recheck_mac_access(self):
+        from clarify.desktop.qml_web_settings import SettingsProtocol
+
+        with TemporaryDirectory() as directory:
+            controller = self._controller(_repositories(directory))
+            protocol = SettingsProtocol(controller)
+            try:
+                with (
+                    patch.object(qml_settings.sys, "platform", "darwin"),
+                    patch(
+                        "clarify.desktop.macos_clipboard.accessibility_allowed",
+                        return_value=False,
+                    ) as ax,
+                    patch(
+                        "clarify.desktop.macos_keyboard.input_monitoring_allowed",
+                        return_value=False,
+                    ) as keyboard,
+                    patch(
+                        "clarify.desktop.macos_microphone_permission.microphone_permission_status",
+                        return_value="request",
+                    ) as mic,
+                    patch(
+                        "clarify.desktop.macos_microphone_permission.request_microphone_permission"
+                    ) as request,
+                    patch(
+                        "PySide6.QtGui.QDesktopServices.openUrl", return_value=True
+                    ) as open_url,
+                ):
+
+                    def command(action):
+                        reply = protocol.dispatch(
+                            {"method": "dictationPermissionCommand", "args": [action]}
+                        )
+                        return reply["result"]["dictationPermissions"]
+
+                    self.assertEqual(
+                        command("check"),
+                        {"accessibility": "settings", "microphone": "request"},
+                    )
+                    ax.assert_called_with()
+                    self.assertEqual(
+                        command("accessibility")["accessibility"], "settings"
+                    )
+                    self.assertEqual(
+                        open_url.call_args.args[0].query(), "Privacy_Accessibility"
+                    )
+                    keyboard.assert_called_with()
+                    keyboard.reset_mock()
+                    ax.return_value = True
+                    self.assertEqual(command("microphone")["microphone"], "pending")
+                    self.assertEqual(command("microphone")["microphone"], "pending")
+                    request.assert_called_once()
+                    mic.return_value = "settings"
+                    request.call_args.args[0](False)
+                    self.assertEqual(command("microphone")["microphone"], "settings")
+                    self.assertEqual(
+                        open_url.call_args.args[0].query(), "Privacy_Microphone"
+                    )
+                    mic.return_value = "allowed"
+                    self.assertEqual(
+                        command("check"),
+                        {"accessibility": "allowed", "microphone": "allowed"},
+                    )
+                    self.assertEqual(controller.inputMonitoringStatus, "allowed")
+                    keyboard.assert_not_called()
+            finally:
+                controller.shutdown()
+
+    def test_input_monitoring_requests_once_and_opens_the_specific_settings_pane(self):
+        from unittest.mock import Mock
+
+        from clarify.desktop.qml_web_settings import SettingsProtocol
+
+        with TemporaryDirectory() as directory:
+            apply_hotkeys = Mock()
+            can_change = Mock(return_value=False)
+            controller = self._controller(
+                _repositories(directory),
+                hotkey_applier=apply_hotkeys,
+                hotkey_can_change=can_change,
+            )
+            protocol = SettingsProtocol(controller)
+            try:
+                with (
+                    patch.object(qml_settings.sys, "platform", "darwin"),
+                    patch(
+                        "clarify.desktop.macos_clipboard.accessibility_allowed",
+                        return_value=False,
+                    ),
+                    patch(
+                        "clarify.desktop.macos_microphone_permission.microphone_permission_status",
+                        return_value="allowed",
+                    ),
+                    patch(
+                        "clarify.desktop.macos_keyboard.input_monitoring_allowed",
+                        return_value=False,
+                    ) as permission,
+                    patch(
+                        "PySide6.QtGui.QDesktopServices.openUrl", return_value=True
+                    ) as open_url,
+                ):
+
+                    def command(action):
+                        reply = protocol.dispatch(
+                            {"method": "inputMonitoringCommand", "args": [action]}
+                        )
+                        return reply["result"]["inputMonitoringStatus"]
+
+                    self.assertEqual(command("check"), "request")
+                    self.assertEqual(command("request"), "settings")
+                    self.assertEqual(command("request"), "settings")
+                    self.assertEqual(command("open"), "settings")
+                    self.assertEqual(
+                        open_url.call_args.args[0].query(), "Privacy_ListenEvent"
+                    )
+                    self.assertEqual(
+                        [
+                            call.kwargs
+                            for call in permission.call_args_list
+                            if call.kwargs
+                        ],
+                        [{"request": True}],
+                    )
+                    permission.return_value = True
+                    self.assertEqual(command("check"), "allowed")
+                    apply_hotkeys.assert_not_called()
+                    can_change.return_value = True
+                    controller.refresh_input_monitoring()
+                    controller.refresh_input_monitoring()
+                    apply_hotkeys.assert_called_once()
+            finally:
+                controller.shutdown()
+
     def test_rpc_capture_pauses_and_restores_inputs_on_save_or_cancel(self):
         from clarify.desktop.qml_web_settings import SettingsProtocol
 

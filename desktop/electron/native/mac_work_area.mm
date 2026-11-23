@@ -3,6 +3,52 @@
 #include <cmath>
 #include <node_api.h>
 
+static napi_value JsBounds(napi_env env, CGRect bounds) {
+  napi_value result;
+  napi_create_object(env, &result);
+  const char* keys[] = {"x", "y", "width", "height"};
+  const double values[] = {
+      CGRectGetMinX(bounds), CGRectGetMinY(bounds),
+      CGRectGetWidth(bounds), CGRectGetHeight(bounds)};
+  for (size_t i = 0; i < 4; ++i) {
+    napi_value value;
+    napi_create_double(env, values[i], &value);
+    napi_set_named_property(env, result, keys[i], value);
+  }
+  return result;
+}
+
+static napi_value GetSystemSettingsBounds(napi_env env, napi_callback_info) {
+  @autoreleasepool {
+    NSRunningApplication* foreground = NSWorkspace.sharedWorkspace.frontmostApplication;
+    if ([foreground.bundleIdentifier isEqualToString:@"com.apple.systempreferences"]) {
+      // Window geometry is available before any privacy grants. No window pixels are read.
+      CFArrayRef windows = CGWindowListCopyWindowInfo(
+          kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+          kCGNullWindowID);
+      if (windows) {
+        for (NSDictionary* window in (__bridge NSArray*)windows) {
+          if ([window[(__bridge NSString*)kCGWindowOwnerPID] intValue] != foreground.processIdentifier ||
+              [window[(__bridge NSString*)kCGWindowLayer] intValue] != 0)
+            continue;
+          CGRect bounds;
+          NSDictionary* geometry = window[(__bridge NSString*)kCGWindowBounds];
+          if (geometry &&
+              CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)geometry, &bounds) &&
+              CGRectGetWidth(bounds) >= 400 && CGRectGetHeight(bounds) >= 300) {
+            CFRelease(windows);
+            return JsBounds(env, bounds);
+          }
+        }
+        CFRelease(windows);
+      }
+    }
+  }
+  napi_value result;
+  napi_get_undefined(env, &result);
+  return result;
+}
+
 static bool VisibleWindowFillsScreen(NSScreen* screen, double primary_top) {
   NSRect frame = screen.frame;
   CGFloat top = primary_top - NSMaxY(frame);
@@ -57,16 +103,7 @@ static napi_value GetWorkArea(napi_env env, napi_callback_info info) {
         area = screen.frame;
       // AppKit uses a bottom-left origin. Electron uses the primary screen's top-left.
       double top = primary_top - NSMaxY(area);
-      napi_value result;
-      napi_create_object(env, &result);
-      const char* keys[] = {"x", "y", "width", "height"};
-      const double values[] = {NSMinX(area), top, NSWidth(area), NSHeight(area)};
-      for (size_t i = 0; i < 4; ++i) {
-        napi_value value;
-        napi_create_double(env, values[i], &value);
-        napi_set_named_property(env, result, keys[i], value);
-      }
-      return result;
+      return JsBounds(env, CGRectMake(NSMinX(area), top, NSWidth(area), NSHeight(area)));
     }
   }
 
@@ -80,6 +117,9 @@ static napi_value Init(napi_env env, napi_value exports) {
   napi_value function;
   napi_create_function(env, "getWorkArea", NAPI_AUTO_LENGTH, GetWorkArea, nullptr, &function);
   napi_set_named_property(env, exports, "getWorkArea", function);
+  napi_create_function(env, "getSystemSettingsBounds", NAPI_AUTO_LENGTH, GetSystemSettingsBounds,
+                       nullptr, &function);
+  napi_set_named_property(env, exports, "getSystemSettingsBounds", function);
   return exports;
 }
 

@@ -3,9 +3,27 @@
 from __future__ import annotations
 
 import ctypes as ct
+from dataclasses import dataclass
 from itertools import count
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal
+
+if __package__:
+    from .macos_keyboard import (
+        FLAGS_CHANGED,
+        KEY_DOWN,
+        KEY_UP,
+        TAP_DISABLED,
+        open_keyboard_listener,
+    )
+else:
+    from macos_keyboard import (
+        FLAGS_CHANGED,
+        KEY_DOWN,
+        KEY_UP,
+        TAP_DISABLED,
+        open_keyboard_listener,
+    )
 
 from hotkey_config import (
     ActivationMode,
@@ -88,20 +106,28 @@ _KEYS.update(
     SPACE=49, TAB=48, ENTER=36, ESCAPE=53, LEFT=123, RIGHT=124, DOWN=125, UP=126
 )
 _MODIFIERS = {"win": 1 << 8, "shift": 1 << 9, "alt": 1 << 11, "ctrl": 1 << 12}
+_FLAGS = {
+    "fn": 1 << 23,
+    "ctrl": 1 << 18,
+    "alt": 1 << 19,
+    "shift": 1 << 17,
+    "win": 1 << 20,
+}
+_FLAGS_MASK = sum(_FLAGS.values())
 _ESCAPE = (_KEYS["ESCAPE"], 0)
+_KEYBOARD_ESCAPE = 0
 _NOT_HANDLED = -9874
 _PRESSED, _RELEASED = 5, 6
 _SIGNATURE = int.from_bytes(b"Clrf")
 
 
 def default_hotkeys() -> HotkeySettings:
-    # Option alone types characters such as @ on some macOS keyboard layouts.
-    return HotkeySettings(
-        {
-            action: HotkeyDefinition(frozenset({"ctrl", "shift"}), shortcut.key)
-            for action, shortcut in HotkeySettings.defaults().hotkeys.items()
-        }
-    )
+    bindings = {
+        action: HotkeyDefinition(frozenset({"ctrl", "shift"}), shortcut.key)
+        for action, shortcut in HotkeySettings.defaults().hotkeys.items()
+    }
+    bindings[HotkeyAction.RECORDING] = HotkeyDefinition(frozenset(), "FN")
+    return HotkeySettings(bindings, ActivationMode.PUSH_TO_TALK)
 
 
 class _EventType(ct.Structure):
@@ -211,16 +237,39 @@ class _CarbonHotkeys:
         self._remove_handler(self._handler)
 
 
+@dataclass(frozen=True)
+class _ModifierChord:
+    flags: int
+
+    def definition(self):
+        modifiers = [name for name, flag in _FLAGS.items() if self.flags & flag]
+        key = modifiers.pop().upper()
+        return HotkeyDefinition(frozenset(modifiers), key)
+
+
 def _bindings(settings):
     desired = {}
     unsupported = {}
+    special = {}
     for action, shortcut in settings.hotkeys.items():
         code = _KEYS.get(shortcut.key)
-        if code is None:
+        key_modifier = _FLAGS.get(shortcut.key.lower())
+        if key_modifier is not None:
+            flags = sum(_FLAGS[name] for name in shortcut.modifiers)
+            chord = _ModifierChord(flags | key_modifier)
+            special.setdefault(chord, []).append((action, shortcut))
+            continue
+        if code is None or shortcut.uses_fn:
             unsupported[action] = shortcut
             continue
         combo = code, sum(_MODIFIERS[modifier] for modifier in shortcut.modifiers)
         desired[combo] = (action.value, shortcut.display)
+    for chord, entries in special.items():
+        if len(entries) > 1:
+            unsupported.update(entries)
+            continue
+        action, shortcut = entries[0]
+        desired[chord] = (action.value, shortcut.display)
     return desired, unsupported
 
 
@@ -230,13 +279,33 @@ class MacGlobalHotkeyBackend(QObject):
     triggered = Signal(str)
     restarted = Signal()
     availabilityChanged = Signal(list)
+    shortcutCaptured = Signal(object)
     _native_event = Signal(int, int, bool)
+    _keyboard_action = Signal(int, int, bool)
 
-    def __init__(self, settings, *, native_factory=_CarbonHotkeys, parent=None):
+    def __init__(
+        self,
+        settings,
+        *,
+        native_factory=_CarbonHotkeys,
+        keyboard_factory=open_keyboard_listener,
+        parent=None,
+    ):
         super().__init__(parent)
         self._settings = settings
         self._native_factory = native_factory
+        self._keyboard_factory = keyboard_factory
         self._native = None
+        self._keyboard = None
+        self._keyboard_generation = 0
+        self._keyboard_bindings = {}
+        self._keyboard_timer = QTimer(self, singleShot=True, interval=200)
+        self._keyboard_timer.timeout.connect(self._start_modifier_hold)
+        self._modifier_flags = 0
+        self._modifier_blocked = False
+        self._modifier_chord = None
+        self._keyboard_down = set()
+        self._keyboard_hold = None
         self._registered = {}
         self._actions = {}
         self._unavailable = []
@@ -247,6 +316,9 @@ class MacGlobalHotkeyBackend(QObject):
         self._generation = 0
         self._numbers = count(1)
         self._native_event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
+        self._keyboard_action.connect(
+            self._dispatch_keyboard, Qt.ConnectionType.QueuedConnection
+        )
 
     def start(self, _window):
         return self._configure(self._settings, allow_unavailable=True)
@@ -261,7 +333,7 @@ class MacGlobalHotkeyBackend(QObject):
             for action, shortcut in unsupported.items()
         ):
             raise HotkeyValidationError(
-                "Choose a modifier and a letter, number, or function key for macOS.",
+                "This shortcut is unsupported or already assigned on macOS.",
                 code="unsupported_key",
             )
         if self._capturing and not allow_unavailable:
@@ -286,8 +358,9 @@ class MacGlobalHotkeyBackend(QObject):
             if recovering:
                 self.stop()
             raise
-        self._release_hold()
         self._settings = settings
+        self._reset_keyboard()
+        self._release_hold()
         unavailable.extend(shortcut.display for shortcut in unsupported.values())
         if unavailable != self._unavailable:
             self._unavailable = unavailable
@@ -304,31 +377,145 @@ class MacGlobalHotkeyBackend(QObject):
             desired = {**desired, _ESCAPE: ("escape", "Escape")}
         additions = {}
         unavailable = []
-        for combo, (action, label) in desired.items():
-            if combo in self._registered:
-                continue
-            number = next(self._numbers)
-            try:
-                handle = self._native.register(combo, number)
-            except OSError as error:
-                if action == "escape":
+        try:
+            for combo, (action, label) in desired.items():
+                if combo in self._registered:
                     continue
-                if combo in optional:
-                    unavailable.append(label)
-                    continue
-                for _, handle in additions.values():
+                number = next(self._numbers)
+                try:
+                    if isinstance(combo, _ModifierChord):
+                        self._open_keyboard()
+                        handle = None
+                    else:
+                        handle = self._native.register(combo, number)
+                except OSError as error:
+                    if action == "escape":
+                        continue
+                    if combo in optional:
+                        unavailable.append(label)
+                        continue
+                    raise OSError(f"Could not register {label}. {error}") from None
+                additions[combo] = (number, handle)
+        except Exception:
+            for _, handle in additions.values():
+                if handle is not None:
                     self._native.unregister(handle)
-                raise OSError(f"Could not register {label}. {error}") from None
-            additions[combo] = (number, handle)
+            if not self._keyboard_bindings and not self._capturing:
+                self._close_keyboard()
+            raise
         self._registered.update(additions)
         for combo in self._registered.keys() - desired.keys():
             number, handle = self._registered.pop(combo)
             self._key_down.discard(number)
-            self._native.unregister(handle)
+            if handle is not None:
+                self._native.unregister(handle)
         self._actions = {
             number: desired[combo][0] for combo, (number, _) in self._registered.items()
         }
+        self._keyboard_bindings = {
+            combo: number
+            for combo, (number, _) in self._registered.items()
+            if isinstance(combo, _ModifierChord)
+        }
+        if not capturing and not self._keyboard_bindings:
+            self._close_keyboard()
         return unavailable
+
+    def _open_keyboard(self):
+        if self._keyboard is None:
+            self._keyboard = self._keyboard_factory(self._keyboard_event)
+
+    def _close_keyboard(self):
+        if self._keyboard is not None:
+            self._keyboard.close()
+            self._keyboard = None
+
+    def _reset_keyboard(self, flags=None):
+        self._keyboard_generation += 1
+        self._key_down.difference_update(self._keyboard_bindings.values())
+        self._keyboard_timer.stop()
+        self._modifier_chord = self._keyboard_hold = None
+        self._keyboard_down.clear()
+        if flags is None:
+            flags = self._keyboard.flags() if self._keyboard is not None else 0
+        self._modifier_flags = flags & _FLAGS_MASK
+        self._modifier_blocked = bool(self._modifier_flags)
+
+    def _is_hold(self, number):
+        return (
+            self._actions.get(number) == HotkeyAction.RECORDING.value
+            and self._settings.activation_mode is ActivationMode.PUSH_TO_TALK
+        )
+
+    def _start_modifier_hold(self):
+        number = self._keyboard_bindings.get(self._modifier_chord)
+        if self._is_hold(number):
+            self._keyboard_hold = number
+            self._emit_keyboard_action(number, True)
+
+    def _emit_keyboard_action(self, number, pressed):
+        self._keyboard_action.emit(self._keyboard_generation, number, pressed)
+
+    def _dispatch_keyboard(self, generation, number, pressed):
+        if generation != self._keyboard_generation or self._capturing:
+            return
+        if number == _KEYBOARD_ESCAPE:
+            self.triggered.emit("escape")
+        else:
+            self._dispatch(self._generation, number, pressed)
+
+    def _release_keyboard_hold(self):
+        if self._keyboard_hold is not None:
+            self._emit_keyboard_action(self._keyboard_hold, False)
+            self._keyboard_hold = None
+
+    def _finish_chord(self, chord):
+        if self._capturing:
+            self.shortcutCaptured.emit(chord.definition())
+        else:
+            number = self._keyboard_bindings.get(chord)
+            if number is not None and not self._is_hold(number):
+                self._emit_keyboard_action(number, True)
+                self._emit_keyboard_action(number, False)
+
+    def _keyboard_event(self, kind, code, flags, repeat):
+        if kind in TAP_DISABLED:
+            if self._held in self._keyboard_bindings.values():
+                self._release_hold()
+            self._reset_keyboard(flags)
+            return
+        flags &= _FLAGS_MASK
+        if kind == FLAGS_CHANGED:
+            previous, self._modifier_flags = self._modifier_flags, flags
+            if flags == previous:
+                return
+            self._keyboard_timer.stop()
+            self._release_keyboard_hold()
+            if previous & ~flags:
+                if self._modifier_chord is not None:
+                    self._finish_chord(self._modifier_chord)
+                self._modifier_chord = None
+                self._modifier_blocked = bool(flags)
+            elif not self._modifier_blocked and not self._keyboard_down:
+                self._modifier_chord = _ModifierChord(flags)
+                if self._is_hold(self._keyboard_bindings.get(self._modifier_chord)):
+                    self._keyboard_timer.start()
+            return
+        if kind == KEY_UP:
+            self._keyboard_down.discard(code)
+            return
+        if repeat:
+            return
+        self._keyboard_timer.stop()
+        self._modifier_chord = None
+        self._modifier_blocked = bool(flags)
+        # Carbon only registers unmodified Escape. A held chord may still
+        # have modifiers down when the user cancels.
+        if kind == KEY_DOWN and code == _ESCAPE[0] and self._keyboard_hold is not None:
+            self._emit_keyboard_action(_KEYBOARD_ESCAPE, True)
+        self._release_keyboard_hold()
+        if kind == KEY_DOWN:
+            self._keyboard_down.add(code)
 
     def set_recording_active(self, active):
         self._recording_active = bool(active)
@@ -342,9 +529,20 @@ class MacGlobalHotkeyBackend(QObject):
 
     def set_capture_active(self, active):
         if self._capturing == bool(active):
-            return
+            if active and self._native is not None and self._keyboard is None:
+                try:
+                    self._open_keyboard()
+                except OSError:
+                    return False
+                self._reset_keyboard()
+            return self._capturing and self._keyboard is not None
         if self._native is not None:
             if active:
+                try:
+                    self._open_keyboard()
+                except OSError:
+                    # Ordinary shortcuts can still be captured by the renderer.
+                    pass
                 self._replace({}, capturing=True)
             else:
                 self._configure(self._settings, allow_unavailable=True)
@@ -352,6 +550,8 @@ class MacGlobalHotkeyBackend(QObject):
         self._generation += 1
         self._key_down.clear()
         self._release_hold()
+        self._reset_keyboard()
+        return self._capturing and self._keyboard is not None
 
     def _dispatch(self, generation, number, pressed):
         if generation != self._generation or self._capturing:
@@ -365,10 +565,7 @@ class MacGlobalHotkeyBackend(QObject):
         if action is None or number in self._key_down:
             return
         self._key_down.add(number)
-        if (
-            action == HotkeyAction.RECORDING.value
-            and self._settings.activation_mode is ActivationMode.PUSH_TO_TALK
-        ):
+        if self._is_hold(number):
             self._held = number
             action = "recording_hold_press"
         self.triggered.emit(action)
@@ -383,10 +580,14 @@ class MacGlobalHotkeyBackend(QObject):
         self._key_down.clear()
         self._held = None
         self._capturing = False
+        self._close_keyboard()
+        self._reset_keyboard()
         if self._native is not None:
             for _, handle in self._registered.values():
-                self._native.unregister(handle)
+                if handle is not None:
+                    self._native.unregister(handle)
             self._native.close()
             self._native = None
         self._registered.clear()
         self._actions.clear()
+        self._keyboard_bindings.clear()

@@ -9,10 +9,15 @@ contextBridge.exposeInMainWorld('clarifyDesktop', Object.freeze({
   separateMeetingWindow: process.platform === 'darwin' || process.platform === 'win32',
   call: (channel, method, args) => ipcRenderer.invoke('clarify:call', channel, method, args),
   window: (method, value) => ipcRenderer.invoke('clarify:window', method, value),
+  dragInstalledApp: () => ipcRenderer.send('clarify:drag-installed-app'),
   subscribe: (listener) => subscribe('clarify:state', listener),
   onWindow: (listener) => subscribe('clarify:window-event', listener),
   ready: () => ipcRenderer.invoke('clarify:renderer-ready'),
 }));
+
+ipcRenderer.on('clarify:permission-guide-presented', () => {
+  document.documentElement.classList.add('permission-guide-presented');
+});
 
 ipcRenderer.on('clarify:stop-audio', (_event, lease) => {
   if (typeof lease !== 'string') return;

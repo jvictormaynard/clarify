@@ -3,9 +3,10 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {PassThrough, Writable} = require('node:stream');
 const {EventEmitter, once} = require('node:events');
-const {readFileSync} = require('node:fs');
+const {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} = require('node:fs');
+const {tmpdir} = require('node:os');
 const {runInNewContext} = require('node:vm');
-const {resolve} = require('node:path');
+const {join, resolve} = require('node:path');
 const {Bridge, MAX_FRAME, validateRequest} = require('../electron/bridge.cjs');
 const {startHost} = require('../electron/host.cjs');
 
@@ -53,13 +54,15 @@ test('bridge bounds frames, arguments and call lifetime', async () => {
 });
 function fakeElectron() {
   let contentsID = 0;
+  const created = [];
   const handlers = {}, app = new EventEmitter(); app.whenReady = async () => {}; app.quit = () => { app.quits = (app.quits || 0) + 1; };
   app.setActivationPolicy = policy => { app.activationPolicy = policy; };
   class Window extends EventEmitter {
-    constructor(options) { super(); this.options = options; this.focusable = options.focusable; this.messages = []; this.webContents = new EventEmitter();
+    constructor(options) { super(); created.push(this); this.options = options; this.focusable = options.focusable; this.messages = []; this.webContents = new EventEmitter();
       Object.assign(this.webContents, {id: ++contentsID, mainFrame: {url: ''}, send: (topic, value, target) => this.messages.push(target === undefined ? {topic,value} : {topic,value,target}), setWindowOpenHandler: fn => this.open = fn, forcefullyCrashRenderer: () => this.emit('watchdog-crash')}); }
     loadURL(url) { this.webContents.mainFrame.url = url; return Promise.resolve(); }
     isDestroyed() { return false; } removeMenu() {} setPosition(x, y) { this.position = {x, y}; } setAlwaysOnTop() {}
+    destroy() { this.hide(); this.destroyed = true; }
     minimize() { this.minimized = true; this.focused = false; }
     restore() { this.minimized = false; }
     isMinimized() { return !!this.minimized; }
@@ -83,7 +86,7 @@ function fakeElectron() {
     setVisibleOnAllWorkspaces(visible, options) { this.workspaces = {visible, options}; }
     getNativeWindowHandle() { return Buffer.alloc(8); }
   }
-  return {passiveWindow: {changes: [], setPassive(_handle, value) {this.changes.push(value);}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
+  return {passiveWindow: {changes: [], setPassive(_handle, value) {this.changes.push(value);}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn, on: (key, fn) => handlers[key] = fn}, handlers, created,
     screen: {events:{}, on(name, callback) {this.events[name]=callback;}, reads: 0, cursor: {x:100,y:100}, getCursorScreenPoint() { this.reads++; return this.cursor; }, getPrimaryDisplay: () => ({workArea: {x:0,y:0,width:1920,height:1080}}), getDisplayNearestPoint() {return this.getPrimaryDisplay();}, getDisplayMatching() {return this.getPrimaryDisplay();}},
     session: {defaultSession: {
       setPermissionRequestHandler(fn) { handlers.permission = fn; },
@@ -92,6 +95,44 @@ function fakeElectron() {
       webRequest: {onBeforeRequest(fn) { handlers.content = fn; }}
     }}};
 }
+test('macOS permission guide starts a native app drag and closes when access is confirmed', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'clarify-permission-guide-'));
+  t.after(() => rmSync(directory, {recursive: true, force: true}));
+  const bundle = join(directory, 'Clarify.app'), contents = join(bundle, 'Contents');
+  mkdirSync(join(contents, 'MacOS'), {recursive: true});
+  writeFileSync(join(contents, 'MacOS/Clarify'), '');
+  const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
+  e.app.isPackaged = true;
+  e.app.getPath = key => {
+    assert.equal(key, 'exe');
+    return join(contents, 'Helpers/Clarify Desktop.app/Contents/MacOS/Clarify Desktop');
+  };
+  const icon = {isEmpty: () => false};
+  e.nativeImage = {createFromPath: () => ({resize: () => icon})};
+  const {windows, bridge} = await startHost(e, input, output, null, 'darwin', null,
+    () => ({x: 20, y: 40, width: 800, height: 600}));
+  t.after(() => bridge.end());
+  const event = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
+  input.write('{"window":"settings-show"}\n');
+  e.handlers['clarify:renderer-ready'](event(windows.settings));
+  assert.equal(e.handlers['clarify:window'](event(windows.settings), 'canDragInstalledApp'), true);
+  // macOS may report the owner as invisible when System Settings covers it.
+  windows.settings.visible = false;
+  e.handlers['clarify:window'](event(windows.settings), 'showPermissionGuide', {permission: 'accessibility', locale: 'pt'});
+  const panel = e.created.at(-1);
+  assert.equal(new URL(panel.webContents.mainFrame.url).searchParams.get('locale'), 'pt');
+  assert.equal(panel.options.focusable, false);
+  panel.emit('ready-to-show');
+  assert.equal(panel.inactive, true);
+  assert.deepEqual(panel.position, {x: 836, y: 460});
+  const dragged = [];
+  panel.webContents.startDrag = item => dragged.push(item);
+  e.handlers['clarify:drag-installed-app']({...event(panel), senderFrame: {url: panel.webContents.mainFrame.url}});
+  e.handlers['clarify:drag-installed-app'](event(panel));
+  assert.deepEqual(dragged, [{file: bundle, icon}]);
+  input.write(JSON.stringify({event: 'settings', state: {dictationPermissions: {accessibility: 'allowed'}}}) + '\n');
+  assert.equal(panel.destroyed, true);
+});
 test('meeting capture permission is scoped to an admitted recording and the workspace frame', async () => {
   const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
   const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow, 'linux');
