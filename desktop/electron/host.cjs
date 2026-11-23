@@ -50,7 +50,7 @@ async function startHost(
   if (isMac && app.isPackaged) {
     const executable = app.getPath('exe');
     const bundle = path.resolve(path.dirname(executable), '../../../../..');
-    const helper = 'Contents/Helpers/Clarify Desktop.app/Contents/MacOS/Clarify Desktop';
+    const helper = path.join('Contents', 'Helpers', 'Clarify Desktop.app', 'Contents', 'MacOS', 'Clarify Desktop');
     if (bundle.endsWith('.app') && path.relative(bundle, executable) === helper
         && existsSync(path.join(bundle, 'Contents/MacOS/Clarify'))) {
       const image = nativeImage.createFromPath(icon).resize({width: 64, height: 64});

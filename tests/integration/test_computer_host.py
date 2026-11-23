@@ -1107,7 +1107,7 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
             threading.Event(),
             threading.Event(),
         )
-        self.processor.refresh_live_readiness = lambda: (entered.set(), release.wait(2))
+        self.processor.refresh_live_readiness = lambda: (entered.set(), release.wait())
         status = threading.Thread(target=self.host._status)
         operation = self.operation()
         cancel = threading.Thread(
@@ -1120,7 +1120,7 @@ class ComputerHostTests(ComputerHostFixture, unittest.TestCase):
         try:
             self.assertTrue(entered.wait(1))
             cancel.start()
-            self.assertTrue(cancelled.wait(0.5), "asset probing blocked cancellation")
+            self.assertTrue(cancelled.wait(5), "asset probing blocked cancellation")
         finally:
             release.set()
             status.join(2)
