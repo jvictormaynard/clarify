@@ -61,12 +61,12 @@ export function HistoryAudioActions({ recording, busy, canUndo = false, onRetry,
         {processing ? <LoaderCircle size={15} className="spin" aria-hidden="true" /> : <RotateCcw size={15} aria-hidden="true" />}
         {t(processing ? "Processando…" : "Tentar novamente")}
       </Button>}
-      <Button variant="ghost" className="history-icon-action h-[30px] w-[30px] p-0" disabled={loading} aria-label={t(playing ? "Pausar áudio" : "Reproduzir áudio")} title={t(playing ? "Pausar áudio" : "Reproduzir áudio")} onClick={() => void useAudio()}>
+      <Button variant="ghost" size="history-icon" disabled={loading} aria-label={t(playing ? "Pausar áudio" : "Reproduzir áudio")} title={t(playing ? "Pausar áudio" : "Reproduzir áudio")} onClick={() => void useAudio()}>
         {loading ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
       </Button>
       {children}
       <Menu>
-        <MenuTrigger render={<Button variant="ghost" className="history-icon-action h-[30px] w-[30px] p-0" aria-label={t("Mais opções")} title={t("Mais opções")} />}><MoreVertical size={16} aria-hidden="true" /></MenuTrigger>
+        <MenuTrigger render={<Button variant="ghost" size="history-icon" aria-label={t("Mais opções")} title={t("Mais opções")} />}><MoreVertical size={16} aria-hidden="true" /></MenuTrigger>
         <MenuPopup>
           <MenuItem disabled={busy || processing || !canUndo} title={t("Mostra a transcrição original neste dispositivo.")} onClick={onUndo}><Undo2 aria-hidden="true" />{t("Desfazer edição de IA")}</MenuItem>
           {!retryVisible && <MenuItem disabled={busy || processing} onClick={onRetry}><RotateCcw aria-hidden="true" />{t("Tentar transcrição novamente")}</MenuItem>}

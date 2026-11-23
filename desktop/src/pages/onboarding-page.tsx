@@ -245,7 +245,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
                 {textError && <p className="error setup-error" role="alert">{t(textError)}</p>}
                 {provider === "chatgpt" && <>
                   <ChatGPTPlan controller={controller} setup />
-                  {selected?.connected && <Button disabled={pending} loading={controller.validatingProvider} onClick={() => void controller.validateProvider()}>{t("Atualizar modelos ChatGPT")}</Button>}
+                  {selected?.connected && <Button disabled={pending && !controller.validatingProvider} loading={controller.validatingProvider} onClick={() => void controller.validateProvider()}>{t("Atualizar modelos ChatGPT")}</Button>}
                 </>}
                 {!["none", "chatgpt", "opencode"].includes(provider) && <>
               {provider === "openai" && state.providerSupportsCustomEndpoint && <SettingsDisclosure title={t("setup_custom_endpoint")} className="setup-endpoint" open={endpointOpen} onOpenChange={setEndpointOpen}>
@@ -253,7 +253,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
                 <p className="hint">{t("setup_local_endpoint_hint")}</p>
               </SettingsDisclosure>}
               <Field title={t("Chave de API")} type="password" autoComplete="off" value={controller.apiKey} onChange={event => controller.setApiKey(event.target.value)} />
-              <Button variant={selected?.connected ? "default" : "primary"} loading={controller.validatingProvider} disabled={pending || controller.validatingProvider} onClick={() => void controller.validateProvider()}>{t("Validar e salvar chave")}</Button>
+              <Button variant={selected?.connected ? "default" : "primary"} loading={controller.validatingProvider} disabled={pending && !controller.validatingProvider} onClick={() => void controller.validateProvider()}>{t("Validar e salvar chave")}</Button>
                 </>}
                 {selected?.connected && <Button onClick={() => setConnectionOpen(false)}>{t("Continuar")}</Button>}
               </div>

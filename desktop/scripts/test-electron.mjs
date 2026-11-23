@@ -125,6 +125,7 @@ try {
   await expect(pill.getByRole('button', {name:'Start recording',exact:true})).toHaveCount(0);
   await pill.screenshot({path:join(evidence,'dock-collapsed.png'),omitBackground:true});
   await hoverDock();
+  await expect.poll(async () => (await pill.locator('.workflow-pill').boundingBox())?.height).toBe(36);
   const idleBounds = await pill.locator('.workflow-pill').boundingBox();
   expect(idleBounds.width).toBeLessThan(140);
   await expect(pill.getByText('Ready to capture your voice', {exact:true})).toHaveCount(0);

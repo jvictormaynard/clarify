@@ -2,14 +2,16 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { AccessibilityInfo, ActivityIndicator, Animated, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, useColorScheme, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { t } from '../i18n';
+import colors from '../../../shared/ui-colors.json';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 
 export function usePalette() {
   const dark = useColorScheme() === 'dark';
-  return { dark, background: dark ? '#000000' : '#fafafa', card: dark ? '#111111' : '#ffffff',
-    text: dark ? '#f5f5f5' : '#181818', muted: dark ? '#a3a3a3' : '#626262', line: dark ? '#252525' : '#e5e5e5', controlBorder: dark ? '#525252' : '#999999',
-    warning: dark ? '#fbbf24' : '#a65300', warningSoft: dark ? '#382900' : '#fff3e5',
-    accent: dark ? '#f5f5f5' : '#181818', accentSoft: dark ? '#292929' : '#ededed', danger: dark ? '#f87171' : '#b91c1c' };
+  const palette = colors[dark ? 'dark' : 'light'];
+  return { dark, background: palette.background, card: palette.surface,
+    text: palette.foreground, muted: palette.mutedForeground, line: palette.border, controlBorder: palette.controlBorder,
+    warning: palette.warning, warningSoft: palette.warningSurface,
+    accent: palette.accent, accentSoft: palette.accentSurface, danger: palette.destructive };
 }
 
 export function useReducedMotion() {
@@ -63,10 +65,10 @@ export function Button({ children, onPress, disabled = false, destructive = fals
 }) {
   const c = usePalette();
   const onImage = useContext(ButtonSurface) === 'image';
-  const color = onImage ? '#000000' : primary ? c.background : destructive ? c.danger : c.text;
+  const color = onImage ? colors.dark.background : primary ? c.background : destructive ? c.danger : c.text;
   return <Pressable testID={testID} accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress}
-    style={({ pressed }) => [ui.button, { borderWidth: StyleSheet.hairlineWidth, borderColor: onImage ? '#ffffff' : primary ? c.text : c.line,
-      backgroundColor: onImage ? '#ffffff' : primary ? c.text : c.card, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 }]}>
+    style={({ pressed }) => [ui.button, { borderWidth: StyleSheet.hairlineWidth, borderColor: onImage ? colors.light.surface : primary ? c.text : c.line,
+      backgroundColor: onImage ? colors.light.surface : primary ? c.text : c.card, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 }]}>
     <Text style={[ui.buttonText, { color }]}>{children}</Text>
     {loading && <ActivityIndicator size="small" color={color} style={{ position: 'absolute', right: 16 }} />}
   </Pressable>;

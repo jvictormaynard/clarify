@@ -182,11 +182,11 @@ export function HistoryPage({ controller, renderEntryAction }: SettingsPageProps
         ? "A exclusão das transcrições da conta será sincronizada nos seus dispositivos. Os registros locais serão removidos apenas deste computador."
         : "Esta ação remove os registros deste computador.") + (entries.find(entry => entry.id === deletion?.id)?.recording ? " " + t("O áudio salvo neste dispositivo também será excluído.") : "")}>
       <Button autoFocus disabled={deleting} onClick={() => setDeletion(null)}>{t("Cancelar")}</Button>
-      <Button className="destructive" disabled={deleting || deletion?.context !== context} onClick={() => void confirm()}>{t("Excluir")}</Button>
+      <Button variant="destructive" disabled={deleting || deletion?.context !== context} onClick={() => void confirm()}>{t("Excluir")}</Button>
     </Confirm>
     <Confirm open={deletingRecording !== null} onOpenChange={open => { if (!open && !recoveryBusy) setDeletingRecording(null); }} title={t("Excluir gravação")} description={t("Esta ação remove o áudio salvo deste computador.")}>
       <Button disabled={recoveryBusy} onClick={() => setDeletingRecording(null)}>{t("Cancelar")}</Button>
-      <Button className="destructive" disabled={recoveryBusy} onClick={() => { if (deletingRecording) void recover("delete", deletingRecording); }}>{t("Excluir")}</Button>
+      <Button variant="destructive" disabled={recoveryBusy} onClick={() => { if (deletingRecording) void recover("delete", deletingRecording); }}>{t("Excluir")}</Button>
     </Confirm>
   </div>;
 }

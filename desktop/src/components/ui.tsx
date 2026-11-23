@@ -9,11 +9,14 @@ import { Textarea as TextareaControl } from "./primitives/textarea";
 export { Confirm } from "./confirm";
 export { Picker } from "./picker";
 export { SettingsDisclosure } from "./settings-disclosure";
+export { SettingsPage } from "./settings-page";
+export { SettingsTabs } from "./primitives/tabs";
 
 const variants = {
   default: "outline",
   primary: "default",
   ghost: "ghost",
+  destructive: "outline",
 } as const;
 
 export function Button({
@@ -21,17 +24,20 @@ export function Button({
   className,
   type = "button",
   loading = false,
+  size = "default",
   children,
   ...props
 }: ComponentProps<"button"> & {
   variant?: keyof typeof variants | "text";
   loading?: boolean;
+  size?: "default" | "history-icon" | "multiline";
 }) {
   const buttonProps = {
     ...props,
-    disabled: props.disabled || loading,
+    disabled: props.disabled,
     "aria-busy": loading,
     type,
+    loading,
   };
   const content = <>{loading && <span className="button-spinner" aria-hidden="true" />}{children}</>;
 
@@ -43,7 +49,10 @@ export function Button({
     <ButtonControl
       {...buttonProps}
       variant={variants[variant]}
-      className={cn("button", variant !== "default" && variant, className)}
+      className={cn("button", variant !== "default" && variant,
+        size === "history-icon" && "history-icon-action h-[30px] w-[30px] p-0 pointer-coarse:h-11 pointer-coarse:w-11",
+        size === "multiline" && "h-auto sm:h-auto max-w-full justify-start whitespace-normal px-2 py-1 text-left",
+        className)}
     >{content}</ButtonControl>
   );
 }
@@ -54,7 +63,7 @@ export function Input({
   unstyled = false,
   ...props
 }: ComponentProps<"input"> & { shellClassName?: string; unstyled?: boolean }) {
-  return <InputControl {...props} nativeInput unstyled={unstyled} className={cn("control", shellClassName)} inputClassName={className} />;
+  return <InputControl {...props} nativeInput unstyled={unstyled} className={cn("control", shellClassName)} inputClassName={cn(unstyled && "p-0 bg-transparent", className)} />;
 }
 
 export function TextArea({
@@ -63,7 +72,7 @@ export function TextArea({
   unstyled = false,
   ...props
 }: ComponentProps<"textarea"> & { shellClassName?: string; unstyled?: boolean }) {
-  return <TextareaControl {...props} unstyled={unstyled} className={cn("control", shellClassName)} textareaClassName={className} />;
+  return <TextareaControl {...props} unstyled={unstyled} className={cn("control", shellClassName)} textareaClassName={cn(unstyled && "p-0 bg-transparent", className)} />;
 }
 
 type RowProps = {

@@ -25,6 +25,7 @@ Node.js 22 or newer:
 
 ```powershell
 npm ci
+npm run lint:ui
 npm run typecheck
 npm run test:unit
 npm run build
@@ -64,7 +65,8 @@ continue to decide those effects.
 
 ## Validation
 
-`test:unit` covers hooks, queues and operation ownership. `test:browser` and
+`lint:ui` enforces the shared control and color policy. `typecheck` includes it.
+`test:unit` covers hooks, queues, operation ownership and lint policy fixtures. `test:browser` and
 `test:boot` use isolated Python fixtures and synthetic devices. `test:electron`
 checks the host protocol. The Windows packaged smoke test verifies the actual
 host and private pipes, including native passive focus and hit testing.

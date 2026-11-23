@@ -16,6 +16,8 @@
 }
 
 @theme inline {
+  --color-window-control-hover: var(--window-control-hover);
+  --color-window-close: var(--window-close);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

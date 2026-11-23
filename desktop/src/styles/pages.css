@@ -1,4 +1,3 @@
-.dictionary-list,
 .history-list,
 .history-empty,
 .account-page .danger-zone,
@@ -6,7 +5,7 @@
   border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--card) 40%, transparent);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  box-shadow: var(--shadow-card);
 }
 
 .usage-progress {
@@ -219,85 +218,6 @@
   margin: 0 0 var(--space-5);
 }
 
-.dictionary-add,
-.dictionary-line,
-.dictionary-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.dictionary-add {
-  margin: 16px 0;
-}
-
-.dictionary-add > .control,
-.dictionary-line > .control,
-.dictionary-term {
-  flex: 1;
-  min-width: 0;
-}
-
-.dictionary-search {
-  margin: 16px 0 8px;
-  padding: 0 10px;
-  min-height: 32px;
-  border: 1px solid var(--input);
-  border-radius: var(--control-radius, var(--radius-control));
-  background: color-mix(in srgb, var(--input) 32%, transparent);
-  color: var(--muted-foreground, var(--color-text-muted));
-}
-
-.dictionary-search input {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: 0;
-  color: var(--foreground, var(--color-text));
-  padding: 6px 0;
-  font: inherit;
-  font-size: var(--font-size-description);
-}
-
-.dictionary-search [data-slot="input-control"] {
-  flex: 1;
-  min-width: 0;
-}
-.dictionary-search:focus-within {
-  outline: 2px solid var(--ring, var(--color-focus));
-  outline-offset: 2px;
-}
-.dictionary-search input:focus-visible { outline: none; }
-.dictionary-search > .hint {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-.dictionary-entry {
-  min-width: 0;
-  padding: 14px 16px;
-}
-.dictionary-entry + .dictionary-entry {
-  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-}
-.dictionary-term:not(:focus):not(:hover) {
-  background: transparent;
-  border-color: transparent;
-}
-
-.dictionary-entry > .settings-disclosure {
-  margin: 10px -16px -14px;
-}
-
-.dictionary-empty {
-  margin: 0;
-  padding: 32px 16px;
-  text-align: center;
-}
-
-.dictionary-help {
-  margin-top: 32px;
-}
-
 .history-page { min-width: 0; }
 .history-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px; }
 .history-heading > .history-date { flex-shrink: 0; }
@@ -463,13 +383,11 @@
   .history-meta { column-gap: 10px; }
 }
 @media (max-width: 639px) {
-  .dictionary-entry,
   .history-row,
   .danger-zone .settings-disclosure-content > section,
   .mic-test,
   .installation,
   .service-actions { padding-inline: 12px; }
-  .dictionary-entry > .settings-disclosure { margin-inline: -12px; }
   .history-disclosure { margin-inline: -12px; }
   .history-comparison { padding-inline: 12px; }
   .onboarding.onboarding-page { padding-inline: 20px; }
@@ -482,7 +400,7 @@
 }
 .computer-pairing { padding-inline: 24px; display: grid; gap: 16px; min-height: 0; overflow-y: auto; }
 .computer-devices li { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.computer-qr { width: fit-content; max-width: 100%; padding: 12px; background: white; border-radius: 8px; }
+.computer-qr { width: fit-content; max-width: 100%; padding: 12px; background: var(--qr-background); border-radius: 8px; }
 .computer-qr img { display: block; max-width: 100%; height: auto; }
 .computer-devices { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; }
 .computer-devices span { overflow-wrap: anywhere; }

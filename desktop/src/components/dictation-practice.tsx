@@ -157,7 +157,7 @@ export function DictationPractice({ controller }: SettingsPageProps) {
           <div className="onboarding-composer-header"><Mail size={16} aria-hidden="true" /><span>{t("E-mail de prática")}</span></div>
           <label className="onboarding-composer-subject">
             <span>{t("practice_subject_label")}:</span>
-            <Input unstyled className="p-0 bg-transparent" aria-label={t("practice_subject_label")} readOnly value={t("practice_subject_text")} />
+            <Input unstyled aria-label={t("practice_subject_label")} readOnly value={t("practice_subject_text")} />
           </label>
           <div className="onboarding-composer-body">
             {recording ? <>
@@ -165,7 +165,7 @@ export function DictationPractice({ controller }: SettingsPageProps) {
               <p className="onboarding-reading" aria-live="polite"><q><em>{t("practice_read_text")}</em></q></p>
             </> : processing ?
               <p role="status">{t(waiting ? "practice_waiting" : "practice_processing")}</p> : practice?.text ?
-              <TextArea unstyled shellClassName="w-full" className="p-0 resize-none bg-transparent" aria-label={t("practice_result")} readOnly value={practice.text} rows={4} /> : <>
+              <TextArea unstyled shellClassName="w-full" className="resize-none" aria-label={t("practice_result")} readOnly value={practice.text} rows={4} /> : <>
               <ShortcutKeys shortcut={shortcut} />
               <p>{shortcut ? t(state.hotkeyActivationMode === "push_to_talk" ? "practice_shortcut_hold" : "practice_shortcut_toggle", { shortcut }) : t("Definir atalho")}</p>
             </>}

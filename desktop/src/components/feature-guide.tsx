@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Tooltip } from "@base-ui/react/tooltip";
+import { Tooltip } from "./primitives/tooltip";
 import { ArrowLeft, ArrowRight, Check, Copy, Info, Mic, Sparkles, X } from "lucide-react";
 import { t } from "../i18n";
 import { Button } from "./ui";

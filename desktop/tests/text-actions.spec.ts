@@ -42,6 +42,10 @@ test("text profiles: Cancel keeps the route and Save preserves unrelated Style i
   await prompt.fill("Pending style instructions.");
   const original = (await settingsFixture.rpc("snapshot")).textActionProfiles;
   const settings = await openSettings(page, "Modelos e serviços");
+  await settings.getByRole("tab", { name: "Serviços e modelos locais" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(settings.getByRole("tab", { name: "Processamento de texto" })).toBeFocused();
+  await expect(settings.getByRole("tab", { name: "Processamento de texto" })).toHaveAttribute("aria-selected", "true");
   await settings.getByRole("button", { name: "Editar perfil de Reescrita", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Perfil de processamento", exact: true });
   await dialog.getByRole("button", { name: "Modelo e endereço personalizados", exact: true }).click();

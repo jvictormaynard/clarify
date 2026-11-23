@@ -86,7 +86,7 @@ class QuickActionsTests(unittest.TestCase):
             hide.assert_called_once()
             clipboard.activate.assert_called_once_with(external)
             clipboard.write_dictation_result.assert_called_once_with(
-                external, "Transcript"
+                external, "Transcript", allow_unconfirmed=False
             )
             finished.assert_called_once_with("pasted")
         finally:
@@ -135,7 +135,9 @@ class QuickActionsTests(unittest.TestCase):
         try:
             controller.paste("Transcript", finished)
             clipboard.activate.assert_not_called()
-            clipboard.write_dictation_result.assert_called_once_with(None, "Transcript")
+            clipboard.write_dictation_result.assert_called_once_with(
+                None, "Transcript", allow_unconfirmed=False
+            )
             finished.assert_called_once_with("copied")
         finally:
             controller.timer.stop()

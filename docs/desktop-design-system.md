@@ -46,7 +46,12 @@ License. Exact provenance is in
 
 ## Tokens and typography
 
-`desktop/src/styles/tokens.css` owns the semantic values. Earlier `--color-*`
+`shared/ui-colors.json` owns the semantic dark and light colors shared by
+desktop and mobile. Mobile reads it directly. `npm run colors:sync` in
+`desktop/` generates `styles/shared-colors.css`; do not edit that output.
+`desktop/src/styles/tokens.css` maps the shared roles and owns desktop surfaces,
+effects and geometry. Native mobile keeps its existing surface and contrast choices.
+Earlier `--color-*`
 names remain aliases for page styles. Do not create a second palette in a page.
 `styles.css` maps the semantic roles into Tailwind utilities. Document defaults
 use the base layer, shared and feature layouts use the components layer, and
@@ -101,6 +106,50 @@ finish before it unmounts. Reduced motion removes these transitions. Keep the
 existing Clarify surface colors, glass effects, focus rings and draft guards.
 Static reference inspection does not prove every runtime or native interaction.
 
+## Component ownership and design decisions
+
+These rules adapt T3 Code's [Web UI guidance](https://github.com/pingdotgg/t3code/blob/e8bfabaa398f98031bf09c0f1496225e38365cbf/docs/internals/web-ui.md)
+and [component ownership and performance guidance](https://github.com/pingdotgg/t3code/blob/e8bfabaa398f98031bf09c0f1496225e38365cbf/AGENTS.md#taste).
+The existing T3 MIT notice is in `desktop/licenses/t3code-MIT.txt`.
+Clarify's geometry, CSS layers, native focus contracts and motion values in this
+document remain authoritative. Keep the current React memoization patterns;
+T3's compiler-specific rules do not apply to Clarify.
+
+- Search the facade, primitives and an existing page before adding a control.
+  Shared controls own their appearance. Select a `variant` or `size`; add a
+  reusable treatment there when no option fits. Put placement and surrounding
+  spacing on the parent. A feature-specific treatment stays with its feature.
+- Compose shared parts instead of copying markup and classes. Extend existing
+  search, library, disclosure and dialog owners before adding another pattern.
+  Keep state, draft handling and commands with their existing controller.
+- Use the existing typography, spacing and semantic roles. Keep a clear primary
+  action, quiet secondary actions and visible state. Add borders, cards, icons
+  and motion only when they explain grouping, action or state. Follow the task
+  navigation defined here; do not add navigation for unsupported features.
+- Keep keyboard operation, accessible names, focus return and reduced motion.
+  Check empty, loading, disabled, error, long-content and translated states where
+  applicable. Verify the full flow in its real container, including cancel and undo.
+- Bound list and payload work. Keep paged history, debounced search and deferred
+  detail loading. Avoid continuous decorative repainting. Measure a performance
+  problem before adding caches or abstractions; do not replace existing guide
+  artwork or animations as part of unrelated work.
+
+`npm run lint:ui` in `desktop/` checks control restyling, Tailwind colors and
+arbitrary visual values, static inline styling, Base UI import boundaries, shared-color synchronization,
+and literal colors in application CSS. `npm run typecheck` runs it too, so the
+existing `settings_unit` CI task enforces the policy. The lint fixtures check
+that rejected and permitted patterns still work.
+
+The lint contracts name existing feature-owned CSS classes. Additions need a
+clear owner and a reason; do not widen contracts or suppress rules to pass a
+check. Unstyled disclosure parts accept feature styling. Native titlebar controls
+retain their own scoped contract. Runtime meters, waveform timing, native input
+style forwarding and pill positioning have narrow inline-style exceptions. Flags and provider marks retain fixed SVG colors.
+The CSS check permits literals only in the palette, generated shared colors,
+provider branding and the existing guide/phone illustration files. Keep those
+exceptions confined to their existing purpose. Lint does not judge hierarchy,
+CSS overrides through allowed feature classes, or usability; rendered review does.
+
 ## Reusable controls
 
 `components/primitives/` contains the reusable Base UI components. Their
@@ -135,6 +184,30 @@ Pages use the feature-facing facade in `components/ui.tsx`:
 - `Picker`: searchable combobox with stable option IDs, keyboard selection,
   selected state, refresh, empty state and focus return.
 
+## Settings page composition
+
+Use `SettingsPage.Root` and `Body` when a settings page needs to keep controls
+outside the scrolling content. Keep the shell header and navigation. Use
+`Intro` for a brief instruction only when it helps users complete the task.
+The Models and services page uses `SettingsTabs` to separate services and local
+models from text processing profiles. Use the same segmented tabs for related
+views that replace one another. Arrow keys switch tabs. Use buttons for actions.
+
+Put connection status, recovery and advanced options beside the control they
+affect. Show a default or recommendation only when the product supplies one.
+Keep local and cloud processing choices clear. Group related inputs in one
+`Section` and reveal optional details when users need them.
+
+The Settings dialog owns its save/discard footer and draft guards. A self-contained
+form can use `SettingsPage.Actions` outside `Body` for pending changes. Show it
+only while it has an action to offer. Do not repeat the current setup in a
+persistent footer.
+
+Use the shared loading state for actions such as Refresh. Loading keeps
+keyboard focus on the control, exposes its busy state, and blocks repeat
+activation. Use native `disabled` when an action is unavailable. Verify the
+actions and focus in the real shell at normal and compact sizes.
+
 `components/settings-navigation.tsx` renders grouped page buttons from the shared
 button styles. Navigation remains available while a preference, refresh, or
 text save is pending. The sidebar starts with Home and uses direct task
@@ -143,7 +216,7 @@ Dialogs and dropdowns retain their own keyboard handling.
 
 `components/titlebar.tsx` owns the native drag region, identity, page context and
 existing minimize, maximize and close commands. Page geometry belongs in
-`styles/pages.css` and `styles/snippets.css`; window geometry belongs in
+`styles/pages.css` and `styles/libraries.css`; window geometry belongs in
 `styles/layout.css`. Reuse the facade instead of copying control styles.
 
 ## Settings organization

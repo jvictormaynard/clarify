@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { test, expect, settingsScenario } from "./settings-fixture";
 import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure, settingsSectionLabel } from "./settings-navigation";
@@ -358,6 +358,36 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
     const activeLocal = await page.getByRole("heading", { name: /^Modelos locais/ }).boundingBox();
     const otherCloud = await page.getByRole("heading", { name: /^Serviços na nuvem/ }).boundingBox();
     expect(activeLocal!.y).toBeLessThan(otherCloud!.y);
+  });
+
+  test("settings organization: a completed local selection preserves a later tab choice", async ({ page }) => {
+    const settings = await openSettings(page, "Modelos e serviços");
+    const profiles = settings.getByRole("tab", { name: "Processamento de texto" });
+    let release!: () => void;
+    let started!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    const usesLocalModel = (request: Request) => {
+      const command = request.postDataJSON();
+      return command?.method === "savePreference" && command.args?.[0] === "useLocalAsr";
+    };
+    await page.route("**/__test_rpc", async route => {
+      if (usesLocalModel(route.request())) { started(); await held; }
+      await route.fallback();
+    });
+    const reply = page.waitForResponse(response =>
+      response.url().endsWith("/__test_rpc") && usesLocalModel(response.request()));
+    try {
+      await settings.getByRole("button", { name: "Usar este modelo", exact: true }).click();
+      await entered;
+      await profiles.click();
+    } finally { release(); }
+    await (await reply).finished();
+    await expect(profiles).toHaveAttribute("aria-selected", "true");
+    await expect(settings.getByRole("button", { name: "Editar perfil de Reescrita" })).toBeVisible();
+    await settings.getByRole("tab", { name: "Serviços e modelos locais" }).click();
+    const sections = settings.getByRole("tabpanel").locator("section");
+    await expect(sections.first()).toHaveAttribute("id", "local-models");
   });
 
   test("settings organization: local cleanup setup opens and activates the local review context", async ({ page }) => {

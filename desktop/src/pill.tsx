@@ -113,7 +113,7 @@ export function Pill() {
       if (first) { focusSubmenu.current = false; first.focus({preventScroll:true}); }
     }
   }, [menu, submenu, state.microphoneDevices, state.microphoneInventoryBusy, state.textActions]);
-  const dock = useDockPresentation(() => { setMenu(false); setLanguageMenu(false); setSubmenu(null); });
+  const dock = useDockPresentation(() => { setMenu(false); setLanguageMenu(false); setSubmenu(null); }, menu || languageMenu);
   const [completion, setCompletion] = useState("");
   const seenCompletion = useRef("");
   const feedbackLabel = useRef<HTMLSpanElement>(null);
@@ -192,20 +192,30 @@ export function Pill() {
   }, [state.feedbackVisible, state.feedbackOperationId, state.canRetryTranscription, state.recoveryResultVisible, state.cancellationVisible, state.refinementFailed]);
   // Native hit testing must follow the painted edges throughout expansion.
   useLayoutEffect(() => {
+    const host = electron();
+    if (!host) return;
     const elements = Array.from(document.querySelectorAll('[data-pill-interactive]'));
-    const update = () => void electron()?.window('regions', elements.map(element => {
-      const bounds = element.getBoundingClientRect();
-      const padding = element.hasAttribute("data-dock-hover-target") ? 8 : 0;
-      const x = Math.max(0, bounds.x - padding), y = Math.max(0, bounds.y - padding);
-      return {x, y, width: Math.min(innerWidth, bounds.right + padding) - x, height: Math.min(innerHeight, bounds.bottom + padding) - y};
-    }));
+    let previousRegions = '';
+    const update = () => {
+      const regions = elements.map(element => {
+        const bounds = element.getBoundingClientRect();
+        const padding = element.hasAttribute("data-dock-hover-target") ? 8 : 0;
+        const x = Math.max(0, bounds.x - padding), y = Math.max(0, bounds.y - padding);
+        return {x, y, width: Math.min(innerWidth, bounds.right + padding) - x, height: Math.min(innerHeight, bounds.bottom + padding) - y};
+      });
+      const serialized = JSON.stringify(regions);
+      if (serialized === previousRegions) return;
+      previousRegions = serialized;
+      void host.window('regions', regions);
+    };
     const observer = new ResizeObserver(update);
     window.addEventListener('resize', update);
     elements.forEach(element => observer.observe(element)); update();
     let frame = 0;
     const until = performance.now() + 400;
     const animateRegions = () => { update(); if (performance.now() < until) frame = requestAnimationFrame(animateRegions); };
-    frame = requestAnimationFrame(animateRegions);
+    // Menu entrance motion translates the bounds without changing their size.
+    if (menu || languageMenu) frame = requestAnimationFrame(animateRegions);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', update); };
   }, [state.surface, menu, languageMenu, submenu, submenuPosition, completion, error, dock.expanded, state.feedbackVisible, meetingActivity, meetingId]);
   const button = (label: string, icon: React.ReactNode, method: Method, disabled = false) => <button type="button" aria-label={t(label)} disabled={disabled} onClick={() => run(method)}>{icon}<span className="pill-tooltip">{method === 'startRecordingFromButton' ? <>{t('Ditar')}{state.recordingShortcut && <kbd>{state.recordingShortcut}</kbd>}</> : t(label)}</span></button>;
@@ -221,7 +231,7 @@ export function Pill() {
   const collapsed = !dock.expanded && !capture && !result && !translation && !menu && !languageMenu && !error;
   return <main className="pill-stage" onPointerDownCapture={dock.press} onPointerUpCapture={dock.release} onPointerCancelCapture={dock.release}>
     <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-feedback-problem={problem} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
-      style={capture && !result && !translation ? {width} : undefined}
+      style={{ width: capture && !result && !translation ? width : undefined }}
       tabIndex={!capture && !result && !translation ? 0 : undefined}
       onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave}
       onFocusCapture={dock.expand}

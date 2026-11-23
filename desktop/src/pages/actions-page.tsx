@@ -22,13 +22,13 @@ export function ActionsPage({ controller: c }: SettingsPageProps) {
       refreshLabel={t("Atualizar ações")} busy={busy} onRefresh={() => c.textActions.refresh()} />
 
     {c.state.textActionsError && <p className="error" role="alert">{t(c.state.textActionsError)}</p>}
-    <Section title={t("Minhas ações")} className="action-catalog">
+    <Section title={t("Minhas ações")}>
       {!actions.length && <p className="hint">{c.state.textActionsBusy ? t("Carregando…") : t("Crie uma ação para usar suas instruções em outros aplicativos.")}</p>}
       {actions.length > 0 && !visible.length && <p className="hint">{t("Nenhum resultado encontrado.")}</p>}
       {visible.map(action => {
         return <div className="text-action-row" key={action.id} id={`text-action-${action.id}`}>
           <div className="text-action-summary">
-            <h3 aria-label={actionDisplayName(action)}><Button variant="ghost" className="action-launch h-auto sm:h-auto max-w-full justify-start whitespace-normal px-2 py-1 text-left" disabled={!c.state.textActionContext || busy}
+            <h3 aria-label={actionDisplayName(action)}><Button variant="ghost" size="multiline" disabled={!c.state.textActionContext || busy}
               aria-label={`${t("Usar ação")}: ${actionDisplayName(action)}`} onClick={() => c.textActions.use(action)}>{actionDisplayName(action)}</Button></h3>
             {!action.enabled && <span className="hint">{t("Desativada")}</span>}
           </div>

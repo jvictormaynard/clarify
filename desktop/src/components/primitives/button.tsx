@@ -66,9 +66,28 @@ type ButtonSize = NonNullable<VariantProps<typeof buttonVariants>["size"]>;
 interface ButtonProps extends useRender.ComponentProps<"button"> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  loading?: boolean;
 }
 
-function Button({ className, variant, size, render, ...props }: ButtonProps) {
+function loadingProps(props: useRender.ComponentProps<"button">, loading: boolean) {
+  return {
+    ...props,
+    "aria-disabled": props.disabled || loading || props["aria-disabled"],
+    "aria-busy": loading || props["aria-busy"],
+    onClickCapture: (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (loading) { event.preventDefault(); event.stopPropagation(); return; }
+      props.onClickCapture?.(event);
+    },
+    onKeyDownCapture: (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (loading && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault(); event.stopPropagation(); return;
+      }
+      props.onKeyDownCapture?.(event);
+    },
+  };
+}
+
+function Button({ className, variant, size, render, loading = false, ...props }: ButtonProps) {
   const typeValue: React.ButtonHTMLAttributes<HTMLButtonElement>["type"] = render
     ? undefined
     : "button";
@@ -81,7 +100,7 @@ function Button({ className, variant, size, render, ...props }: ButtonProps) {
 
   return useRender({
     defaultTagName: "button",
-    props: mergeProps<"button">(defaultProps, props),
+    props: mergeProps<"button">(defaultProps, loadingProps(props, loading)),
     render,
   });
 }
@@ -108,8 +127,9 @@ export function InlineButton({
   className,
   tone,
   render,
+  loading = false,
   ...props
-}: useRender.ComponentProps<"button"> & VariantProps<typeof inlineButtonVariants>) {
+}: useRender.ComponentProps<"button"> & VariantProps<typeof inlineButtonVariants> & { loading?: boolean }) {
   const defaultProps = {
     className: cn(inlineButtonVariants({ tone }), className),
     "data-slot": "inline-button",
@@ -117,7 +137,7 @@ export function InlineButton({
   };
   return useRender({
     defaultTagName: "button",
-    props: mergeProps<"button">(defaultProps, props),
+    props: mergeProps<"button">(defaultProps, loadingProps(props, loading)),
     render,
   });
 }

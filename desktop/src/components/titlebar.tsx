@@ -60,18 +60,18 @@ export function Titlebar({
       {pageLabel && <div className="titlebar-context" data-desktop-drag-region><span data-desktop-drag-region>{pageLabel}</span></div>}
       <div className="titlebar-actions">{actions}</div>
       <div className="window-controls">
-        <Button variant="ghost" size="icon" className="h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-white/5 [&:active:not([aria-haspopup])]:scale-100" aria-label={t("Minimizar")} onClick={() => void action("minimize")}>
+        <Button variant="ghost" size="icon" className="h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-window-control-hover [&:active:not([aria-haspopup])]:scale-100" aria-label={t("Minimizar")} onClick={() => void action("minimize")}>
           <Minus className="size-3.5" size={14} />
         </Button>
         <Button variant="ghost" size="icon"
-          className="h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-white/5 [&:active:not([aria-haspopup])]:scale-100"
+          className="h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-window-control-hover [&:active:not([aria-haspopup])]:scale-100"
           aria-label={maximized ? t("Restaurar janela") : t("Maximizar")}
           onClick={() => void action("toggleMaximize")}
         >
           {maximized ? <Copy className="size-3" size={12} /> : <Square className="size-3" size={12} />}
         </Button>
         <Button variant="ghost" size="icon"
-          className="window-close h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-[#b93640] hover:text-white [&:active:not([aria-haspopup])]:scale-100"
+          className="window-close h-full w-11.5 sm:h-full sm:w-11.5 rounded-none border-0 p-0 hover:bg-window-close hover:text-primary-foreground [&:active:not([aria-haspopup])]:scale-100"
           aria-label={t("Fechar janela")}
           onClick={onClose}
         >

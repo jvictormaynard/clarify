@@ -335,7 +335,15 @@ class MacOSClipboard:
         return expected if expected != value else None
 
     def paste(
-        self, target, text, sequence, *, expected_selection, sleep, monotonic
+        self,
+        target,
+        text,
+        sequence,
+        *,
+        expected_selection,
+        allow_unconfirmed,
+        sleep,
+        monotonic,
     ) -> bool:
         quartz = _quartz()
         if not quartz.CGPreflightPostEventAccess():
@@ -350,7 +358,11 @@ class MacOSClipboard:
         if not self.is_current(target):
             return False
         expected_value = self._expected_paste_value(target.element, text)
-        if expected_value is None:
+        if expected_value is None and (
+            not allow_unconfirmed
+            or self._attribute(target.element, "AXRole")
+            not in ("AXTextField", "AXTextArea")
+        ):
             return False
         events = [
             quartz.CGEventCreateKeyboardEvent(None, _ANSI_V_KEY, down)
@@ -376,6 +388,10 @@ class MacOSClipboard:
         for event in events:
             quartz.CGEventPostToPid(target.pid, event)
 
+        # A text control can handle Paste without exposing a readable value
+        # and selection range. Keep the result on the clipboard in that case.
+        if expected_value is None:
+            return False
         deadline = monotonic() + 0.25
         while monotonic() < deadline and self.is_current(target):
             if self._attribute(target.element, "AXValue") == expected_value:

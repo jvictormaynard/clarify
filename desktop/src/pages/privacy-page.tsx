@@ -65,13 +65,13 @@ export function PrivacyPage({ controller }: SettingsPageProps) {
         value={retention} onChange={event => setRetention(event.target.value)} />}
     </>}
     <p className="hint">{t("Limpar histórico remove os textos. Os áudios restantes continuam como itens no histórico até você excluir.")}</p>
-    <div className="privacy-history-actions"><Button className="destructive" disabled={!context || deleting} onClick={() => setConfirmation(context)}>{t("Limpar histórico")}</Button></div>
+    <div className="privacy-history-actions"><Button variant="destructive" disabled={!context || deleting} onClick={() => setConfirmation(context)}>{t("Limpar histórico")}</Button></div>
     <Confirm open={confirmation !== null && confirmation === context} onOpenChange={open => { if (!open && !pending.current) setConfirmation(null); }}
       title={t("Limpar histórico")} description={t(managed
         ? "A exclusão das transcrições da conta será sincronizada nos seus dispositivos. Os registros locais serão removidos apenas deste computador."
         : "Esta ação remove os registros deste computador.")}>
       <Button autoFocus disabled={deleting} onClick={() => setConfirmation(null)}>{t("Cancelar")}</Button>
-      <Button className="destructive" disabled={deleting || confirmation !== context} onClick={() => void clear()}>{t("Excluir")}</Button>
+      <Button variant="destructive" disabled={deleting || confirmation !== context} onClick={() => void clear()}>{t("Excluir")}</Button>
     </Confirm>
   </Section><Diagnostics /></>;
 }

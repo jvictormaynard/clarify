@@ -80,6 +80,7 @@ function fakeElectron() {
     isFocused() { return !!this.focused; }
     setIgnoreMouseEvents(value) { this.ignores = value; }
     setFocusable(value) { this.focusable = value; }
+    setVisibleOnAllWorkspaces(visible, options) { this.workspaces = {visible, options}; }
     getNativeWindowHandle() { return Buffer.alloc(8); }
   }
   return {passiveWindow: {changes: [], setPassive(_handle, value) {this.changes.push(value);}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
@@ -482,9 +483,42 @@ test('the worklet sends no audio during model startup and drains only admitted s
   assert.equal(messages.length, 26);
   assert.equal(messages[25], 'overload');
 });
+
+test('macOS pill follows the usable area when entering and leaving fullscreen', async t => {
+  t.mock.timers.enable({apis: ['setInterval']});
+  const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
+  output.resume();
+  const desktop = {x: 0, y: 24, width: 1920, height: 980};
+  const display = {id: 42, workArea: desktop};
+  e.screen.getPrimaryDisplay = e.screen.getDisplayNearestPoint = () => display;
+  let workArea = desktop;
+  const {windows: {pill}, bridge} = await startHost(e, input, output, null, 'darwin', id => {
+    assert.equal(id, 42);
+    return workArea;
+  });
+  try {
+    assert.deepEqual(pill.workspaces, {
+      visible: true,
+      options: {visibleOnFullScreen: true, skipTransformProcessType: true},
+    });
+    assert.deepEqual(pill.position, {x: 630, y: 732});
+    e.handlers['clarify:renderer-ready']({sender: pill.webContents, senderFrame: pill.webContents.mainFrame});
+    workArea = {x: 0, y: 0, width: 1920, height: 1080};
+    t.mock.timers.tick(250);
+    assert.deepEqual(pill.position, {x: 630, y: 808});
+    assert.equal(pill.focused, undefined);
+    workArea = desktop;
+    t.mock.timers.tick(250);
+    assert.deepEqual(pill.position, {x: 630, y: 732});
+  } finally {
+    bridge.end();
+    e.app.emit('before-quit', {preventDefault() {}});
+  }
+});
+
 test('host retains settings until accepted close, resets each reopen and keeps pill passive', async () => {
   const e = fakeElectron(), input = new PassThrough(), output = new PassThrough(); let sent = ''; output.on('data', c => sent += c);
-  const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow);
+  const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow, 'linux');
   const event = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
   let contentResult;
   e.handlers.content({url: 'blob:null/local-audio', webContentsId: settings.webContents.id}, value => contentResult = value);
@@ -528,8 +562,9 @@ test('host retains settings until accepted close, resets each reopen and keeps p
   assert.equal(pill.visible, true);
   input.write(style); assert.equal(pill.visible, true, 'feedback expiry returns to the dock');
   pill.setPosition(3000,2000);
+  e.screen.getDisplayNearestPoint = () => ({workArea: {x: 0, y: 0, width: 1920, height: 1040}});
   e.screen.events['display-metrics-changed']();
-  assert.deepEqual(pill.position, {x: 630, y: 808});
+  assert.deepEqual(pill.position, {x: 630, y: 768}, 'Windows retains the taskbar inset from the work area');
   e.screen.getDisplayNearestPoint = point => ({workArea: {x: point.x >= 1920 ? 1920 : 0, y:0,width:1920,height:1080}});
   pill.setPosition(2010,500); e.screen.events['display-metrics-changed']();
   assert.deepEqual(pill.position, {x:2550,y:808});
