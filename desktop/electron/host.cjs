@@ -178,6 +178,10 @@ async function startHost(
   const bridge = new Bridge(input, output, message => {
     if (rtc.receive(message)) return;
     if (message.event === 'shutdown') { stop(); return; }
+    if (message.event === 'settings-audio-stop' && typeof message.lease === 'string') {
+      emit(windows.settings, 'clarify:stop-audio', message.lease);
+      return;
+    }
     if (message.window) { applyWindow(message.window); return; }
     if (message.event === 'meetings' && message.state && typeof message.state === 'object') {
       const previous = meetingIndicator();

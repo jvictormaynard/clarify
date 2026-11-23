@@ -457,6 +457,11 @@ class ElectronDesktopProcess(QObject):
             self._workflow_dirty = False
         if self._visible and self._settings_dirty:
             self._publish_settings()
+        elif "audioPlaybackStopRequest" in self._settings_dirty:
+            self._settings_dirty.discard("audioPlaybackStopRequest")
+            lease = self.settings.audioPlaybackStopRequest
+            if lease:
+                self._send({"event": "settings-audio-stop", "lease": lease})
 
     def _allow_electron_activation(self):
         # Give the presentation child the engine's foreground permission.

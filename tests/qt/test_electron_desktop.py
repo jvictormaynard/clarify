@@ -78,6 +78,27 @@ class ElectronDesktopTests(unittest.TestCase):
             self.bridge.surfaceChanged.emit()
             cleanup.assert_called_once()
 
+    def test_hidden_settings_receives_playback_stop_without_its_pending_state(self):
+        self.host._ready = True
+        self.host._visible = False
+        self.settings._playback_stop_request = "old-recording"
+        self.host._mark_settings({"historyState"})
+        self.settings._publishPlaybackStop()
+        self.host._flush()
+        self.assertEqual(
+            self.messages[-1],
+            {"event": "settings-audio-stop", "lease": "old-recording"},
+        )
+        self.assertIn("historyState", self.host._settings_dirty)
+        self.host._flush()
+        self.assertEqual(
+            sum(
+                message.get("event") == "settings-audio-stop"
+                for message in self.messages
+            ),
+            1,
+        )
+
     def test_renderer_failures_restart_with_a_bounded_budget_and_fresh_snapshots(self):
         with (
             patch.object(self.host.process, "state", return_value=QProcess.NotRunning),

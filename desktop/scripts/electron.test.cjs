@@ -304,6 +304,10 @@ test('Windows puts a resizable meeting editor on the current monitor and restore
     send({event: 'meetings', state: {active: null, interruptedId: 'active-note'}});
     assert.equal(editor.isVisible(), false);
     assert.equal(commands.some(({event}) => event === interruption.event), false);
+    send({window: 'settings-hide'});
+    send({event: 'settings-audio-stop', lease: 'old-recording'});
+    assert.equal(settings.isVisible(), false);
+    assert.deepEqual(settings.messages.at(-1), {topic: 'clarify:stop-audio', value: 'old-recording'});
     send({window: 'meetings-show'});
     assert.equal(editor.isVisible(), true);
     assert.equal(editor.messages.at(-1).target, 'active-note');
