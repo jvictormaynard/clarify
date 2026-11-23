@@ -470,20 +470,6 @@ def event_selection(repo, event_name, event, head):
             reason = (
                 "Full validation required by changed controls or unclassified paths"
             )
-        # Temporary owner-approved exception for the desktop Meetings PR.
-        if event_name == "pull_request" and event.get("number") == 352:
-            pr = event["pull_request"]
-            if (
-                pr.get("base", {}).get("repo", {}).get("full_name")
-                == "jvictormaynard/clarify"
-                and pr.get("base", {}).get("ref") == "main"
-                and pr.get("head", {}).get("repo", {}).get("full_name")
-                == "jvictormaynard/clarify"
-                and pr.get("head", {}).get("ref") == "codex/desktop-meetings"
-                and not any(p.startswith("mobile/") or p in IOS_INPUTS for p in paths)
-            ):
-                selected.discard("ios")
-                reason += "; native iOS deferred for desktop PR #352"
         return result(selected, paths, reason)
     except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         # An unavailable diff is a request for full validation, never no checks.
