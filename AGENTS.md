@@ -15,7 +15,8 @@ Preserve facts, technical meaning, and localization placeholders.
   product features there or remove persisted-data migrations without evidence.
 - Read [architecture](docs/architecture.md) and [contribution guidance](CONTRIBUTING.md)
   before changing ownership, interfaces, or dependencies.
-- Before desktop UI work, read [the desktop design system](docs/desktop-design-system.md).
+- Before product UI work, use [clarify-ui](.agents/skills/clarify-ui/SKILL.md).
+  Before desktop UI work, read [the desktop design system](docs/desktop-design-system.md).
   Reuse its tokens and components. Verify the rendered result, responsive layout,
   keyboard focus, and affected states. It also defines native Qt/QML shell limits.
 - Trace every affected entry point, client, provider route, persisted state, and
@@ -60,6 +61,7 @@ and the conditional reference that resolves the current question.
 | Work | Route |
 | --- | --- |
 | Feature, fix, or refactor | `clarify-delivery` |
+| Product UI design or review | `clarify-ui` |
 | Unclear failure or measured regression | `diagnosing-bugs` |
 | Changed behavior with a useful regression test | `tdd` |
 | Interface or dependency design | `codebase-design` and `docs/architecture.md` |

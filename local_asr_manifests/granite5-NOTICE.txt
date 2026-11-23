@@ -1,0 +1,25 @@
+Granite Speech 5.0 TurboCTC 470M — GGUF conversions
+https://huggingface.co/vladers/granite-speech-5.0-470m-turboctc-GGUF
+
+The weights in this repository are IBM's granite-speech-5.0-470m-turboctc
+(https://huggingface.co/ibm-granite/granite-speech-5.0-470m-turboctc), revision
+1dd23f46f6d4e6eae2531982ba2e33220086dd97, which IBM releases under the Apache License,
+Version 2.0 (see LICENSE). They are IBM's work.
+
+Changes made to them in this repository:
+- Converted from safetensors to GGUF with transcribe.cpp's converter. Tensors are renamed
+  to transcribe.cpp's layout, each block's k_proj and v_proj are concatenated into one
+  attn.kv tensor, the BatchNorm num_batches_tracked training counters are dropped, and a
+  precomputed mel filterbank and Hann window are added.
+- Stored as F32 (IBM's values exactly), BF16 (linear weights exactly; convolution
+  kernels in F16), F16, or quantized to Q8_0, Q6_K, Q5_K_M or Q4_K_M.
+
+Tools used to make them; none is redistributed here except the two patches:
+- transcribe.cpp, https://github.com/handy-computer/transcribe.cpp, release 0.4.1
+  (4d7c1ccefd39e5a9ea36cca5f8fefc6dcc14b99b). MIT License, Copyright (c) 2026 The
+  transcribe.cpp authors.
+- conversion/granite5_ctc_multilingual.patch, by 17slever17,
+  https://huggingface.co/17slever17/granite-speech-5.0-470m-turboctc-multilingual-GGUF,
+  Apache License 2.0. Line endings normalized to LF; otherwise unchanged.
+- conversion/granite5_ctc_deterministic_frontend.patch, written for this repository and
+  offered under transcribe.cpp's MIT License so it can be upstreamed.

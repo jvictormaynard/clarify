@@ -1,10 +1,12 @@
 import { t } from "../i18n";
 import {
-  Settings2, Mic, Sparkles, Keyboard, Cpu, BookOpen, TextQuote, UserRound, House, Languages, PenLine, Paintbrush, Shield, Smartphone, Info,
+  Settings2, Mic, Sparkles, Keyboard, Cpu, BookOpen, TextQuote, UserRound, House, Languages, PenLine, Paintbrush, Shield, Smartphone, Info, NotebookPen,
 } from "lucide-react";
+import { meetingsLabel } from "../meetings/labels";
 
 export const getMainPages = () => [
   { id: "history", label: t("Início"), icon: House, group: "workspace" },
+  { id: "meetings", label: meetingsLabel("workspace"), icon: NotebookPen, group: "workspace" },
   { id: "dictionary", label: t("Dicionário"), icon: BookOpen, group: "workspace" },
   { id: "snippets", label: t("Snippets"), icon: TextQuote, group: "workspace" },
   { id: "style", label: t("Estilo"), icon: Paintbrush, group: "workspace" },

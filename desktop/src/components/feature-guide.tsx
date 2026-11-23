@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Tooltip } from "@base-ui/react/tooltip";
+import { Tooltip } from "./primitives/tooltip";
 import { ArrowLeft, ArrowRight, Check, Copy, Info, Mic, Sparkles, X } from "lucide-react";
 import { t } from "../i18n";
 import { Button } from "./ui";
 import { Button as IconButton } from "./primitives/button";
 import { Dialog, DialogPopup, DialogTitle, DialogDescription } from "./primitives/dialog";
-import logo from "../../src-tauri/icons/clarify.png";
+import logo from "../../assets/clarify.png";
 import "../styles/feature-guide.css";
 
 export type GuideKind = "snippets" | "dictionary" | "actions";

@@ -64,6 +64,10 @@ struct KeyboardState {
   }
   static func startsSentence(after context: String) -> Bool {
     if context.isEmpty { return true }
+    // An integer prefix leaves the first letter of a line capitalized.
+    // Keep decimal and word contexts on the existing punctuation path.
+    let line = context.reversed().prefix(while: { !$0.isNewline })
+    if line.allSatisfy({ $0.isWhitespace || "0123456789".contains($0) }) { return true }
     // Closing quotes/brackets and any number of spaces may follow punctuation.
     // A newline starts a new sentence even after an unfinished previous line.
     for character in context.reversed() {
@@ -74,8 +78,8 @@ struct KeyboardState {
     return true
   }
   static func accents(for key: String) -> [String] {
-    let values: [String: String] = ["a": "aáàâãä", "e": "eéèêë", "i": "iíìîï",
-      "o": "oóòôõö", "u": "uúùûü", "c": "cç", "n": "nñ"]
+    let values: [String: String] = ["a": "aáãàâäåæª", "e": "eéêèęėēë", "i": "iīįïìîí",
+      "o": "oºōøœöòõóô", "u": "uūûùüú", "c": "cç", "n": "nñ"]
     guard let value = values[key.lowercased()] else { return [] }
     return value.map { key == key.uppercased() ? String($0).uppercased() : String($0) }
   }
@@ -92,7 +96,7 @@ struct RecordingRequest {
   private var cancelledOperations: Set<String> = []
   func isCancelled(_ id: String?) -> Bool { id.map { cancelledOperations.contains($0) } ?? false }
   mutating func submit(_ next: String, operationID id: String, now: TimeInterval) -> Bool {
-    guard ["start", "finish", "cancel"].contains(next) else { return false }
+    guard ["start", "retry", "finish", "cancel"].contains(next) else { return false }
     guard action == nil || (next == "cancel" && action != "cancel" && operationID == id) else { return false }
     action = next; operationID = id; requestedAt = now
     if next == "cancel" { cancelledOperations.insert(id) }
@@ -103,10 +107,10 @@ struct RecordingRequest {
     guard let action else { return false }
     if !state.isLive { reset(); return false }
     let same = state.operationID == operationID
-    let acknowledged = same && (action == "start" ? state.phase != .idle :
+    let acknowledged = same && (["start", "retry"].contains(action) ? state.phase != .idle :
       action == "finish" ? ![.recording, .locked].contains(state.phase) :
       !state.phase.busy && state.heartbeat >= requestedAt)
-    if acknowledged || (state.phase == .error && state.heartbeat >= requestedAt) ||
+    if acknowledged || (action != "retry" && state.phase == .error && state.heartbeat >= requestedAt) ||
       (action == "cancel" && !state.phase.busy && state.operationID == nil && state.heartbeat >= requestedAt) { reset(); return false }
     // Commands older than five seconds are rejected by the app. Do not permit
     // another start until that delivery window has closed.

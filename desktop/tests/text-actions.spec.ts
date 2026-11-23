@@ -13,10 +13,14 @@ test("workspace: navigation presents tasks and keeps keyboard focus at every wid
     await page.setViewportSize({ width, height: 760 });
     const navigation = page.locator("aside nav");
     expect(await navigation.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual([
-      "Início", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
+      "Início", "Reuniões", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
     ]);
     await expect(navigation.getByRole("combobox")).toHaveCount(0);
-    await navigation.getByRole("button", { name: "Dicionário", exact: true }).focus();
+    await navigation.getByRole("button", { name: "Início", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(navigation.getByRole("button", { name: "Reuniões", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(navigation.getByRole("button", { name: "Dicionário", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(navigation.getByRole("button", { name: "Snippets", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");
@@ -38,6 +42,10 @@ test("text profiles: Cancel keeps the route and Save preserves unrelated Style i
   await prompt.fill("Pending style instructions.");
   const original = (await settingsFixture.rpc("snapshot")).textActionProfiles;
   const settings = await openSettings(page, "Modelos e serviços");
+  await settings.getByRole("tab", { name: "Serviços e modelos locais" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(settings.getByRole("tab", { name: "Processamento de texto" })).toBeFocused();
+  await expect(settings.getByRole("tab", { name: "Processamento de texto" })).toHaveAttribute("aria-selected", "true");
   await settings.getByRole("button", { name: "Editar perfil de Reescrita", exact: true }).click();
   let dialog = page.getByRole("dialog", { name: "Perfil de processamento", exact: true });
   await dialog.getByRole("button", { name: "Modelo e endereço personalizados", exact: true }).click();
@@ -448,10 +456,12 @@ test("after dictation: translation keeps its selected revision and cancels when 
   const before = await settingsFixture.rpc("snapshot");
   const { revision: _revision, ...translation } = before.textActions!.find(action => action.id === "translation")!;
   await settingsFixture.rpc("saveTextAction", { ...translation, prompt: "New saved translation instructions." }, before.textActionContext, before.textActionsRevision);
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionMutation?.status).toBe("succeeded");
+  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).textActionsRevision).not.toBe(before.textActionsRevision);
   await dialog.getByRole("combobox", { name: "Idioma de destino", exact: true }).click();
   await page.getByRole("option", { name: "Inglês", exact: true }).click();
   await dialog.getByRole("button", { name: "Aplicar", exact: true }).click();
-  await expect.poll(async () => (await settingsFixture.rpc("snapshot")).lastError).not.toBe("");
+  await expect(dialog.getByRole("alert")).toHaveText("As ações ou a conta mudaram. Atualize e tente novamente.");
   await expect(dialog.getByRole("alert")).toBeVisible();
   await expect(dialog).toBeVisible();
   expect((await settingsFixture.rpc("snapshot")).afterDictationTextActionId).toBe("");

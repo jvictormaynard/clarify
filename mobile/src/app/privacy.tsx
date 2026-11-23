@@ -16,7 +16,8 @@ export default function Details() {
   }
   return <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={ui.content} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
     <Section title={t('Histórico e privacidade')}>
-      <Text style={[ui.small, { color: c.muted }]}>{t(account?.mode === 'computer' ? 'O histórico desta conexão fica neste iPhone. O áudio é removido após o processamento.' : "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone. Os áudios são removidos após o processamento.")}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t(account?.mode === 'computer' ? 'O histórico desta conexão fica neste iPhone.' : "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone.")}</Text>
+      <Text style={[ui.small, { color: c.muted }]}>{t('O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Os áudios restantes continuam como itens no histórico.')}</Text>
       <Button loading={action === 'history'} disabled={busy || !account} destructive onPress={() => Alert.alert(t("Apagar todo o histórico?"), account?.mode === 'computer' ? t('Esta ação apaga somente o histórico desta conexão neste iPhone.') : account?.historyAccount ? t("Esta ação apaga o histórico da conta em todos os dispositivos e os registros locais deste iPhone. Seu dicionário será mantido.") : t("Esta ação remove todos os textos salvos neste iPhone. Seu dicionário e sua chave serão mantidos."), [{ text: t("Cancelar"), style: 'cancel' }, { text: t("Apagar"), style: 'destructive', onPress: () => void perform('history', () => Core.clearHistory(account?.historyContext ?? '').then(refresh)) }])}>{t("Apagar histórico")}</Button>
     </Section>
   </ScrollView>;

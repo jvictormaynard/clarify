@@ -1,12 +1,13 @@
 # Architecture
 
-Clarify has a local-first Windows desktop client, an iOS client in `mobile/`,
-and an account service in `server/`. On desktop, local models and personal API keys
-work without an account. The iOS client uses an authenticated Clarify account or
-an explicitly paired computer. Stored personal keys from older versions do not
-enable mobile processing.
-Hosted dictation requires an authenticated account and
-uses a server-owned Groq key; personal keys never pass through that service.
+Clarify has a local-first Windows and macOS desktop client, an iOS client in `mobile/`,
+and an optional account service in `server/`. All inference uses the user's
+computer, provider credentials, or connected subscription. Clarify does not fund
+transcription or text processing. Signing in does not change provider routes.
+The iOS client requires an explicitly paired computer for processing; an account
+alone does not enable dictation. Existing account libraries and history remain
+available. Legacy funded endpoints fail with `410 inference_retired` before
+reading processing input or contacting a provider.
 
 `computer_host.py` owns the opt-in personal HTTPS listener, pairing, device
 revocation and operation admission. `computer_processing.py` uses the desktop's
@@ -21,17 +22,16 @@ All product source remains in this public MIT repository. Production credentials
 user data, backups and administrator access stay private in the hosting platform.
 There is no separate closed backend or local/cloud product fork.
 
-Accounts share vocabulary, snippets, sponsored processing quota and new account
-transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
+Accounts share vocabulary, snippets, action definitions and account transcriptions. Pre-upgrade records, guest history and guest snippets remain local.
 Account snippet caches use endpoint and account identity; signing in does not
-upload guest snippets. Hosted substitution runs once after recognition and before optional rewriting.
+upload guest snippets. Substitution runs once on the processing computer after recognition and before optional rewriting.
 The rewrite model receives the substituted source and can adjust it with the
 rest of the message. Rewrite failure returns the substituted source. The
 original recognized transcript remains unchanged in history. Standalone triggers
 insert the exact saved text without rewriting. Recognition hints contain only
 enabled triggers; saved replacements are sent only when applied to rewrite source. Account libraries have a 256 KiB compact UTF-8 JSON limit, and
 snippet-expanded dictation fields retain the existing 32 KiB UTF-8 history limit.
-Rendered hosted responses also have a 384 KiB bound. Excessive expansion returns
+Rendered computer responses also have a 384 KiB bound. Excessive expansion returns
 an explicit error without truncation. Account history
 uses an endpoint/user-scoped offline cache and durable pending changes; local
 records are never inferred to belong to the current account or uploaded.
@@ -100,20 +100,21 @@ atomic inbox file before confirming Saved. The containing app imports these
 additions into its scoped SQLite dictionary before dictation or dictionary
 access, and while its microphone session is active. Imported files are removed
 only after persistence. Account additions invalidate the synchronization interval
-so the next hosted dictation includes them. History and credentials remain
+so the next account-library operation includes them. History and credentials remain
 app-only; pending additions never cross account or guest scopes.
 
 `server/` uses Django, django-allauth headless email codes, DRF and PostgreSQL.
-The server owns provider selection, default prompts, billing bounds and
-per-account/global admission. Clients cannot select arbitrary models, endpoints,
-credentials or owners. Account text-action definitions accept bounded saved
-instructions; execution supplies their ID and revision. A PostgreSQL lock
-serializes quota reservations and cost settlement.
+It owns account authentication, bounded library synchronization, history and
+account deletion. Text-action definitions use compare-and-swap revisions;
+personal processing profiles remain on each computer. The inference retirement
+middleware rejects legacy processing and usage routes before body parsing,
+authentication, operation admission or provider work. Historical accounting and
+finance records remain readable; no migration deletes them.
 `shared/rewrite_prompts.py` owns transformation prompts and the composition of
-writing style and output language for desktop and hosted processing. Base rewrite
+writing style and output language for personal processing. Base rewrite
 and style rules do not select a language. The selected output preference supplies
 the language instruction after the task policy. The iOS app sends text and output
-preferences to the account or paired computer; it does not contain a second
+preferences to the paired computer; it does not contain a second
 provider client or embedded rewrite prompt. Dictation editing and selected-text
 rewriting share a meaning-first policy with the same organization rules in every
 output language. Known saved application rewrite defaults are refreshed when
@@ -128,11 +129,9 @@ Dictation validates against the snippet-expanded source at its processing owner,
 so exact snippets are not rejected by comparing them with an unexpanded transcript.
 See [server operations and release gates](../server/README.md).
 
-Sponsored processing uses funded individual weekly quotas with a common Monday
-00:00 UTC expiry. Operating provisions and existing commitments precede the
-80/20 regular/entry allocation. The server measures provider costs and returns
-versioned percentages and reset dates; clients show the reset in local time.
-See the [accepted funding contract](agents/plans/weekly-sponsored-usage/spec.md).
+Funded inference is retired. Existing funding and settlement tables and their
+migrations remain for historical records. Funding flags do not reopen inference
+endpoints. No user quota or donation creates inference capacity in this source.
 Public financial reporting separates project treasury entries from read-only
 Stripe balances and sanitized movements. API credentials and contributor identity
 stay private. A declared sponsorship or spending cap never becomes a receipt.
@@ -150,8 +149,8 @@ Legacy profiles retain their choices. The iOS app stores separate app-only
 presentation and setup preferences. General onboarding appears once when first
 shown and can be dismissed. Existing signed-in installations and legacy setup
 preferences migrate without another presentation. The guide can be replayed from
-Account without resetting that marker. Protected Router screens require an
-account session or a selected paired computer before the iOS tabs can be used.
+Account without resetting that marker. Protected Router screens require a selected paired computer before the iOS tabs
+can be used. A saved account session alone does not satisfy this guard.
 The iOS route guard checks the selected processing destination, so a completed
 legacy personal-key setup cannot enable processing. Its old history remains on the device
 and is never assigned to an account. The existing first-login import of local
@@ -166,17 +165,122 @@ sign-in screen. Once the selected destination is configured, the bottom tabs
 contain Dictation, Actions, Library and Settings. Library opens Dictionary and
 Snippets. Settings separates account, processing destination, dictation output,
 microphone and keyboard, and history and privacy. It also opens the explicit
-guide replay. The tabs, Settings and guide routes share the destination guard. In iOS account mode,
-sign-out or session expiry returns to the connection choice before tabs can be used.
+guide replay. The tabs, Settings and guide routes share the destination guard. An account
+transition invalidates active work and requires the connection to be checked again.
 
-An authenticated account uses Clarify-managed processing for dictation, imported
-audio, selected-text rewrite and translation. Personal provider and local-model
-controls are hidden in this mode. An expired managed session fails closed; it
-cannot fall back to a saved personal key. Signing out explicitly restores the
-personal configuration on desktop. The iOS account route stops microphone access
-when its session expires; it cannot fall back to a paired computer. In account
-mode, signing in activates account processing automatically,
-including for existing signed-in profiles. There is no separate activation step.
+Desktop setup guides language, a hardware-based speech recommendation, optional
+text service, verified installation and practice. Model names remain visible.
+`AppConfig.recognition_language` is separate from the interface and output language.
+Personal provider controls remain available when signed in. OpenCode runs on the
+user's computer with an isolated CLI configuration and a discovered zero-price
+catalog; free availability is limited by its provider. After explicit Connect,
+setup can copy a supported Windows executable into Clarify's runtime folder
+after verifying its checksum. If no verified runtime is available, setup can
+download the pinned CLI. A refusal never selects a paid route.
+OpenCode rewrites can reuse a zero-price model check for up to one minute for
+the same executable. An explicit catalog refresh always queries OpenCode.
+Each rewrite starts a separate credential-free session and confirms that the
+chosen model is still offered before sending text. The current zero-price check
+must still be valid at that point. A refusal clears the check and ends the request.
+OpenCode uses a private memory database and pipes for rewrite input and output.
+After successful session deletion, Clarify can keep one process for up to
+25 seconds between turns. It retires the process after six turns, when available
+RAM falls below 768 MiB at the end of a turn, or when session cleanup fails.
+The existing ChatGPT subscription connection is a separate text-only route.
+A keyless OpenAI-compatible endpoint must be literal loopback; its requests do
+not follow redirects. A missing optional text service preserves the transcript.
+
+The native Nemotron streaming engine accepts bounded mono 16 kHz PCM frames.
+The existing recorder owns the microphone for dictation. Cumulative partials are
+for display; only final text enters the existing publication workflow. Whisper
+remains available. The optional Apple SpeechAnalyzer adapter remains disabled
+until native build and device acceptance establish its supported route.
+Phone-to-computer incremental capture is separately disabled by default through
+`ClarifyExperimentalLiveCapture`, with foreground-only admission when enabled.
+The existing WAV path serves keyboard and background recording. An admitted live
+operation is not replayed as WAV. Cached asset readiness is checked outside the
+host lock; changed file identities invalidate it. Full integrity verification
+still precedes native loading.
+
+Meetings use the same pinned Nemotron model and recognition language. The
+Electron workspace acquires audio only after the Qt engine accepts a user start
+or resume. It matches the configured microphone by its device name. The audio
+worklet sends bounded mono PCM packets over the local child pipe. On Windows,
+combined capture sends synchronized microphone and loopback packets. At Start
+and Resume, the controller checks how many logical CPUs the process can use.
+With up to two, both capture modes use one Nemotron session and skip speaker
+labeling. Combined capture mixes the two sources in this mode. The capture
+queue keeps up to 64 seconds of pending PCM in memory. Pause, Stop, and normal
+Quit release audio capture and give the worker up to 90 seconds to process its
+backlog. Capture reports overload if the buffer fills or the recognizer exceeds
+an input or processing deadline. With more than two CPUs, combined capture uses
+two Nemotron sessions to keep overlapping turns in the transcript.
+On macOS 14.2 and later, the meeting controller opens a private Core Audio tap after model and
+microphone setup. It
+mixes both sources for recognition and keeps a bounded copy of each source in
+memory for attribution. The tap requires system audio permission.
+It captures only audio and leaves system playback active. The dock shows capture
+state when the workspace is hidden. Pause, stop, lost device, and system suspend
+release the streams. Desktop dictation and meeting capture have mutually exclusive
+admission. Meetings reserve the native engine across transcript segments, so a
+paired phone cannot start a second session on the same model between segments.
+
+`clarify/desktop/meetings.py` owns capture, checkpoints and the profile's
+`meetings.sqlite3`. It saves transcripts and notes with no audio files.
+Recognition finalizes short transcript segments during long meetings. Summary
+generation is explicit and uses an enabled OpenAI-compatible loopback text
+route. It uses no credentials or environment proxies. It saves the result
+only if the source note and summary still match the generation input.
+
+Meetings can download a pinned Sortformer model to label up to four voices
+per audio window. A separate worker adds labels from Nemotron token times.
+On macOS with both sources selected, it runs Sortformer on system audio alone
+every six seconds, with up to eight seconds of overlap. The pinned C API
+accepts complete windows. Clarify matches anonymous labels through shared
+speech and can revise recent turns as more audio arrives. During a pause it
+keeps a short system-audio tail and speaker timings in memory to help
+match labels when capture resumes. If the verified WeSpeaker asset is
+available, the Mac system-audio worker can also match returning speakers after
+a gap using several clean references. It keeps up to four vectors for each of
+eight speakers in the active meeting, including while paused. Strong timing
+matches take priority. A voice match requires two distinct references.
+When clean evidence is insufficient, the timing tracker can assign a new
+anonymous label after a short wait. This leaves the existing names on their
+original speaker IDs. The optional inference worker skips work under memory
+pressure and cannot delay finalization. Speaker continuity
+works with overlap recovery off and uses the existing model without a new
+download route. The microphone source has its own label
+when the system track is sufficiently quiet and available. Echo, simultaneous
+speech and other uncertain matches can leave text unassigned. On Windows,
+the microphone channel has a fixed local label in two-session capture. A
+separate Sortformer worker labels turns from the system channel in that mode
+and from the microphone in microphone-only capture.
+The worker starts at six seconds between windows and can reach 0.8 seconds
+when inference stays within budget. Capture or recognition backlog delays
+optional windows. Pause and Stop discard pending windows. After ASR saves
+the transcript, the speaker worker can make one bounded pass over an
+unlabeled tail. Mac microphone-only recordings apply labels to completed
+transcript blocks. Clarify saves text and labels. User-assigned names apply
+only to their meeting.
+
+Optional Mac overlap recovery uses sub-second Sortformer updates to find
+two-speaker intervals. One warm worker runs the pinned MossFormer2 ONNX
+model and decodes each separated stream with its own Nemotron model handle.
+The worker accepts up to two clips at a time, including the clip in progress.
+When both slots are busy, the next interval stays in the mixed transcript.
+Long overlaps can produce multiple short clips as capacity becomes available.
+The original recognition stream has its own model and queue. Pause and Stop
+release the capture devices first. The worker can then finish accepted clips
+within a 20-second budget. Clarify retries archived text in a bounded memory
+buffer if the database write fails.
+
+Sortformer anchors link single-speaker intervals to meeting-local speaker
+IDs. Waveform correlation on the edges of each overlap and, when needed,
+WeSpeaker comparisons to nearby clean turns match the separated tracks to
+these IDs. Weak matches stay unlabeled. The worker retains bounded PCM in
+memory and does not save voice vectors. The transcript can show recovered
+turns during capture. SQLite keeps the recovered text and labels alongside
+the original mixed transcript.
 
 Shortcut capture is owned by the Qt Settings controller, including the React
 dialog's capture state. Capture temporarily releases native hotkeys and input
@@ -186,11 +290,10 @@ Late input events from the replaced hook are ignored; a registration collision
 can recover through the existing Apply transaction.
 
 Vocabulary sync runs after login and local edits, then at most once per minute
-while the app is active or before a hosted dictation. Failed attempts also use
+while the app is active or before an account-library operation. Failed attempts also use
 this interval. Conflicting edits require an explicit resolution. Each account
 has its own persistent cache; guest words, guest snippets, settings, keys and history
-remain on the device. Processing responses include the updated shared allowance,
-and a foreground refresh catches changes made on another device.
+remain on the device. A foreground refresh catches library changes made on another device.
 
 `shared/history.ts` owns the local-calendar history grouping and date labels used
 by mobile and desktop. Each UI owns its midnight refresh timer.
@@ -259,13 +362,22 @@ presentation. Account transitions stop personal hosting before changing owners.
 Application shutdown must drain mobile processing before closing shared providers.
 
 The iOS containing app's `ComputerConnection` owns camera pairing, private
-Keychain credentials and scoped HTTPS transport. `ProcessingDestination` selects
-it or the existing `CloudAccount` boundary. Computer mode needs no hosted
-account and cannot silently fall back to hosted processing. The existing
-recorder and keyboard bridge remain authoritative. The keyboard receives no
-connection credential. Computer history stays in its own scope on the iPhone;
-it does not enter account synchronization. Computer dictation uses the
-computer's dictionary and snippets.
+Keychain credentials and scoped HTTPS or WebRTC transport. `ProcessingDestination`
+requires that paired computer. The existing recorder and keyboard bridge remain
+authoritative. The keyboard receives no connection credential. Computer history
+stays in its own scope on the iPhone; it does not enter account synchronization.
+Computer dictation uses the computer's dictionary and snippets.
+
+`clarify/desktop/computer_webrtc.py` owns the opt-in WebRTC lifecycle and bounded
+per-peer workers. Electron main owns the hidden data-channel renderer. The exact
+operator HTTPS signaling URL must be configured; there is no enabled deployment
+by default. A Clarify account authorizes signaling and TURN credentials. The
+phone pins the host public key from trusted pairing. Device tokens still
+authorize processing. Direct traffic goes between peers; TURN forwards encrypted
+traffic when direct connectivity fails. New hosts do not create Cloudflare tunnels.
+The signaling service persists bounded enrollment and revocation in SQLite;
+short-lived tickets do not survive restart. VPS bandwidth remains an operating
+cost. Local transport tests do not establish cellular or production performance.
 
 See the [computer connection protocol](computer-connection.md) for wire bounds,
 certificate pinning, operation identity and open delivery evidence.
@@ -283,8 +395,8 @@ API or synthetic input path.
 
 The Python engine retains recording, provider, clipboard, account and storage
 ownership. Qt still supplies its event loop, native hotkeys and the file-import
-panel during this migration. The QML presentation remains a recovery path if
-the Electron child fails.
+panel. Electron is the required presenter; child failures use bounded recovery
+and a minimal native error dialog.
 
 The local pilot resolves `desktop-shell/Clarify Desktop.exe` beside the installed
 engine, or an absolute `CLARIFY_DESKTOP_EXECUTABLE` for source development. The
@@ -301,19 +413,26 @@ events use the small workflow snapshot; Settings events read notified fields
 and preserve the existing account and library ownership guards.
 
 `desktop/src/` contains the React/TypeScript Settings pages, Base UI controls,
-and styles. `desktop/src-tauri/` retains the explicitly selected legacy Tauri
-build. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
+and styles. React/Electron is the only desktop presenter. Default Windows packaging uses `scripts/build-desktop.ps1` and embeds the
 complete Electron app in the portable EXE. The payload manifest and SBOM bind
 the renderer, native runtime and license files to that build. The existing
 portable update signature therefore covers the complete desktop application.
 
-`clarify/desktop/qml_web_settings.py` starts the child with Qt `QProcess` and
-exchanges JSON messages over private standard input/output pipes. The Python
+`clarify/desktop/qml_electron.py` starts the Electron child with Qt `QProcess`
+and exchanges JSON messages over private standard input/output pipes.
+`qml_web_settings.py` owns the shared, explicit Settings protocol. The Python
 allowlist controls which Settings properties and methods are exposed. There is
 no public HTTP Settings server. Python owns config, credentials, model assets,
 and audio devices; React displays state and submits changes through this bridge.
-`qml_settings.py` remains the shared controller. The QML Settings view remains a
-fallback when the native child is unavailable.
+`qml_settings.py` remains the shared controller. The engine requires the desktop shell at startup. There is no QML workflow or
+Settings fallback. Unexpected renderer exits, launch failures and startup
+handshake timeouts trigger at most three bounded restart attempts. A healthy
+renderer resets the budget after thirty seconds. Each restarted child receives
+fresh Settings and workflow snapshots. Exhaustion shows only a small native
+Retry/Close error dialog, while processing and saved audio remain engine-owned.
+`AudioFilesWindow.qml` is the only native product view; it owns active file import.
+The Qt status controller supplies input levels, capture readiness and target
+icons to Electron without rendering a second pill.
 
 React and QML use the shared translation catalog. Desktop-only copy stays in
 the reviewed desktop projection and does not add unused mobile strings.
@@ -403,11 +522,11 @@ the result; closing or invalidating the preview cancels it without clipboard
 publication. Cancellation is cooperative around existing blocking HTTP calls;
 late cancelled or account-stale results are discarded.
 
-`clarify_account.py` implements the hosted catalog and execution protocol in
+`clarify_account.py` implements the account definition catalog in
 [server/TEXT_ACTIONS.md](../server/TEXT_ACTIONS.md). Account catalog writes use
 compare-and-swap revisions. Compensation also uses its accepted revision and
-cannot overwrite a later client change. Hosted execution uses service-owned
-models and credentials. Post-dictation selection replaces the existing
+cannot overwrite a later client change. Execution resolves a personal profile on the computer. The retired hosted
+execution method fails before provider work. Post-dictation selection replaces the existing
 refinement pass after one snippet expansion. Standalone snippets bypass it;
 cleanup permissions and original-text recovery remain in force.
 Cleanup modes that do not permit AI, a disabled review route, and local
@@ -490,20 +609,20 @@ the direct OAuth flow, shared limits and current VM support boundary.
 These modules are the production desktop entrypoint and Qt integration layer:
 
 - `qml_app.py` creates `QApplication`, registers the real QML controllers,
-  starts the tray/single-instance shell, and wires shutdown ownership;
+  starts the single-instance and hotkey shell, and wires shutdown ownership;
 - `qml_bridge.py` exposes typed workflow state, commands, settings, files, and
-  voice-translation surfaces to QML;
+  voice-translation state to the Electron protocol and native file panel;
 - `qml_runtime.py` composes provider, recording, clipboard, statistics, and
   audio-file gateways without importing the old widget frontend; and
-- `clarify/desktop/qml/` contains the compact black-and-white theme, overlay,
-  fallback settings, legacy result assets, translation, and file-import surfaces.
+- `clarify/desktop/qml/` contains the active file-import window and its shared
+  native controls. The pill, results, translation picker and Settings use React.
 
 The old widget entrypoint is not used by `start.bat`, PyInstaller, CI, or
 release packaging. Root `app.py` remains for legacy compatibility tests; new
 features must not be added there. Production Qt adapters and assets live in
 `clarify/desktop/`; historical comparison tools remain under `spikes/`.
 The earlier Electron prototype remains in Git history. The retained desktop
-host described above is the current local migration pilot.
+host described above owns the current presentation.
 
 ### Provider layer
 
@@ -909,7 +1028,7 @@ legacy plaintext value, reads it back through the secret store, and only then
 atomically removes that provider key from `config.json`. A backend, read-back,
 or cleanup failure keeps the legacy value recoverable.
 
-Experimental Linux and macOS source runs use a separate plaintext
+Linux and macOS use a separate plaintext
 `~/.clarify/secrets.json` fallback with mode `0600` where supported. This
 fallback is intentionally explicit; it does not claim OS-backed protection.
 
@@ -953,15 +1072,26 @@ boundary.
 | Dictionary and snippets | `%APPDATA%\Clarify\dictionary.json` | Versioned local terms, aliases, and bounded replacement rules; no credentials or usage events |
 | Working audio | `%APPDATA%\Clarify\clarify-recording-*.wav` | One unique session-owned file, deleted after the provider no longer needs it |
 
-On non-Windows source runs, the equivalent data directory is
-`~/.clarify`.
+On macOS and Linux the data directory is `~/.clarify`. `CLARIFY_DATA_DIR`
+selects a separate profile.
 
 For API keys, documented environment variables (`GEMINI_API_KEY`, legacy
 `API_KEY`, `OPENAI_API_KEY`, and `GROQ_API_KEY`) override the stored credential
 for that process and are never persisted. Other settings retain the precedence
 of persisted settings, then their environment defaults, then built-in defaults.
 
-Recordings use session-owned temporary WAV files. Cleanup must wait until no
+Recordings use session-owned temporary WAV files. A stopped desktop capture is
+copied to the device-only `recording-recovery` directory before provider
+finalization. Each copy appears as a normal History item with playback and
+export. A failed item exposes retry directly. The desktop pill also offers
+explicit retry for processing errors while detached audio is available. Pill
+retries keep their result copied for manual paste because the saved window
+handle cannot prove that the original text field is still selected. The pill
+keeps a recovered-result message and Copy action until dismissal. Successful processing links the
+audio to its text entry. History can reprocess the copy as a new operation with
+the current route. These copies remain until explicit deletion and never enter
+account text-history sync. Before a new microphone capture starts, Settings
+must stop active playback and acknowledge the native playback lease. Cleanup must wait until no
 provider, retry, or cancellation-Undo operation needs the audio. Process shutdown
 and file cleanup are separate responsibilities; forced termination and cleanup
 failures can leave artifacts. Do not promise secure deletion or assume a process
@@ -978,9 +1108,10 @@ one launch context appears empty.
 ## Packaging
 
 PyInstaller creates a one-file Windows executable containing the Python runtime,
-PySide6/Qt Quick modules, QML assets, the compiled React/Tauri Settings child,
+PySide6/Qt Quick modules, native file-import assets, the complete Electron shell,
 immutable distribution policy, and the vendored SoX runtime. The build verifies
-that the embedded Settings child matches its input hash. `.env` is
+that the embedded desktop manifest matches every renderer and native runtime
+file. `.env` is
 never bundled. End-user provider settings are read from the user data directory.
 
 The staged distribution workflow signs the executable, embeds it in a per-user

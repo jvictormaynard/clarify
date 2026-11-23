@@ -9,12 +9,18 @@ final class ContractsTests: XCTestCase {
     XCTAssertEqual(state.phase, .locked)
     XCTAssertEqual(state.operationID, "existing")
     XCTAssertEqual(state.libraryRevision, 0)
+    XCTAssertFalse(state.retryAvailable)
+    XCTAssertNil(state.playingRecordingID)
     XCTAssertNil(state.errorCode); XCTAssertNil(state.errorPhase); XCTAssertNil(state.errorStatus)
   }
   func testErrorDiagnosticsSurviveTheNonsecretKeyboardStateBridge() throws {
     var state = DictationSnapshot(); state.phase = .error; state.operationID = UUID().uuidString
+    state.retryAvailable = true
+    state.playingRecordingID = "saved-audio"
     state.message = "Failure"; state.errorCode = "no_speech"; state.errorPhase = "transcription"; state.errorStatus = 422
     let decoded = try JSONDecoder().decode(DictationSnapshot.self, from: JSONEncoder().encode(state))
+    XCTAssertTrue(decoded.retryAvailable)
+    XCTAssertEqual(decoded.playingRecordingID, "saved-audio")
     XCTAssertEqual(decoded.message, state.message); XCTAssertEqual(decoded.operationID, state.operationID)
     XCTAssertEqual(decoded.errorCode, "no_speech"); XCTAssertEqual(decoded.errorPhase, "transcription"); XCTAssertEqual(decoded.errorStatus, 422)
   }
@@ -58,6 +64,29 @@ final class ContractsTests: XCTestCase {
     XCTAssertFalse(request.observe(state, now: now + 2))
     XCTAssertNil(request.action)
   }
+  func testRecordingRetryAcknowledgesANewOperationAndKeepsCancellationIntent() throws {
+    let now = Date().timeIntervalSince1970
+    var request = RecordingRequest()
+    XCTAssertTrue(request.submit("retry", operationID: "new-attempt", now: now))
+    XCTAssertFalse(request.submit("retry", operationID: "duplicate", now: now))
+    var state = DictationSnapshot(); state.sessionActive = true; state.configured = true
+    state.phase = .error; state.operationID = "failed-attempt"; state.retryAvailable = true
+    XCTAssertTrue(state.canRetryRecording)
+    XCTAssertFalse(request.observe(state, now: now + 1)); XCTAssertEqual(request.action, "retry")
+    state.operationID = "new-attempt"; state.phase = .transcribing
+    XCTAssertFalse(request.observe(state, now: now + 2)); XCTAssertNil(request.action)
+    XCTAssertFalse(state.canRetryRecording)
+    XCTAssertTrue(request.submit("retry", operationID: "cancelled-attempt", now: now + 3))
+    XCTAssertTrue(request.submit("cancel", operationID: "cancelled-attempt", now: now + 3))
+    XCTAssertTrue(request.isCancelled("cancelled-attempt"))
+    state.phase = .error; state.textOperation = true
+    XCTAssertFalse(state.canRetryRecording)
+    state.textOperation = false; state.heartbeat = now - 10
+    XCTAssertFalse(state.canRetryRecording)
+    let command = DictationCommand("retry", operationID: "new", context: "owner", retryOfOperationID: "failed")
+    let decoded = try JSONDecoder().decode(DictationCommand.self, from: JSONEncoder().encode(command))
+    XCTAssertEqual(decoded.retryOfOperationID, "failed"); XCTAssertNil(decoded.text)
+  }
   func testKeyboardCasingPagesAndPortugueseAccents() {
     var keyboard = KeyboardState()
     XCTAssertEqual(keyboard.rows[0][0], "Q")
@@ -72,6 +101,16 @@ final class ContractsTests: XCTestCase {
     keyboard.didInsert(" ")
     XCTAssertEqual(keyboard.page, .letters)
     XCTAssertTrue(KeyboardState.accents(for: "a").contains("ã"))
+    XCTAssertEqual(KeyboardState.accents(for: "a"), ["a", "á", "ã", "à", "â", "ä", "å", "æ", "ª"])
+    XCTAssertEqual(KeyboardState.accents(for: "A"), ["A", "Á", "Ã", "À", "Â", "Ä", "Å", "Æ", "ª"])
     XCTAssertEqual(KeyboardState.accents(for: "C"), ["C", "Ç"])
+    XCTAssertEqual(KeyboardState.accents(for: "e"), ["e", "é", "ê", "è", "ę", "ė", "ē", "ë"])
+    XCTAssertEqual(KeyboardState.accents(for: "E"), ["E", "É", "Ê", "È", "Ę", "Ė", "Ē", "Ë"])
+    XCTAssertEqual(KeyboardState.accents(for: "i"), ["i", "ī", "į", "ï", "ì", "î", "í"])
+    XCTAssertEqual(KeyboardState.accents(for: "I"), ["I", "Ī", "Į", "Ï", "Ì", "Î", "Í"])
+    XCTAssertEqual(KeyboardState.accents(for: "u"), ["u", "ū", "û", "ù", "ü", "ú"])
+    XCTAssertEqual(KeyboardState.accents(for: "U"), ["U", "Ū", "Û", "Ù", "Ü", "Ú"])
+    XCTAssertEqual(KeyboardState.accents(for: "o"), ["o", "º", "ō", "ø", "œ", "ö", "ò", "õ", "ó", "ô"])
+    XCTAssertEqual(KeyboardState.accents(for: "O"), ["O", "º", "Ō", "Ø", "Œ", "Ö", "Ò", "Õ", "Ó", "Ô"])
   }
 }

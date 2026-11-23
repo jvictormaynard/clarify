@@ -5,8 +5,14 @@ from __future__ import annotations
 import os
 import sys
 from enum import Enum
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
+
+# Frozen batch recognition workers must exit before Qt or profile startup.
+if __name__ == "__main__":
+    from multiprocessing import freeze_support
+
+    freeze_support()
 
 # Source autostart executes this file directly from ``clarify/desktop`` while
 # the root-level workflow modules remain package imports.  Put the repository
@@ -19,7 +25,9 @@ from PySide6.QtCore import QTimer, QUrl, Qt  # noqa: E402
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuickControls2 import QQuickStyle  # noqa: E402
-from PySide6.QtWidgets import QApplication, QSystemTrayIcon  # noqa: E402
+from shared.localization import translate  # noqa: E402
+
+from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 
 def _can_capture_settings_shortcut(workflow, voice_translation, audio_batch, practice):
@@ -60,7 +68,7 @@ def _branding_icon_path() -> Path:
 
 
 def _load_branding_icon() -> QIcon:
-    """Load a non-null QIcon for the native tray shell."""
+    """Load a non-null QIcon for native application windows."""
 
     icon = QIcon(str(_branding_icon_path()))
     if icon.isNull():
@@ -87,7 +95,7 @@ def _qml_root() -> Path:
             continue
         seen.add(root)
         candidate = root / "qml"
-        if (candidate / "Main.qml").is_file():
+        if (candidate / "AudioFilesWindow.qml").is_file():
             return candidate
 
     raise FileNotFoundError(
@@ -101,13 +109,12 @@ try:
     from .qml_settings import QmlSettingsController  # noqa: E402
     from .qml_computer import create_computer_controller  # noqa: E402
     from .qml_updates import QmlUpdateController  # noqa: E402
-    from .qml_web_settings import WebSettingsProcess  # noqa: E402
     from .qml_electron import (  # noqa: E402
         ElectronDesktopProcess,
         ElectronQtShell,
         desktop_executable,
     )
-    from .qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
+    from .qml_status import QmlStatusPillController  # noqa: E402
     from .qml_voice_translation import (  # noqa: E402
         QmlVoiceTranslationProvider,
         create_qml_voice_translation_controller,
@@ -117,21 +124,22 @@ try:
         QtStatisticsGateway,
         QtWorkflowScheduler,
         create_real_workflow_runtime,
+        create_runtime_repositories,
     )
-    from .qt_shell import QtShell, WindowsGlobalHotkeyBackend  # noqa: E402
+    from .macos_hotkeys import MacGlobalHotkeyBackend, default_hotkeys  # noqa: E402
+    from .qt_shell import QtSingleInstanceGuard, WindowsGlobalHotkeyBackend  # noqa: E402
 except ImportError:  # PyInstaller analyzes this file as a standalone entry point.
     from qml_audio_batch import QmlAudioFileImportController  # noqa: E402
     from qml_bridge import QmlWorkflowBridge  # noqa: E402
     from qml_settings import QmlSettingsController  # noqa: E402
     from qml_computer import create_computer_controller  # noqa: E402
     from qml_updates import QmlUpdateController  # noqa: E402
-    from qml_web_settings import WebSettingsProcess  # noqa: E402
     from qml_electron import (  # noqa: E402
         ElectronDesktopProcess,
         ElectronQtShell,
         desktop_executable,
     )
-    from qml_status import QmlStatusPillController, QmlStatusPillWindow  # noqa: E402
+    from qml_status import QmlStatusPillController  # noqa: E402
     from qml_voice_translation import (  # noqa: E402
         QmlVoiceTranslationProvider,
         create_qml_voice_translation_controller,
@@ -141,8 +149,10 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
         QtStatisticsGateway,
         QtWorkflowScheduler,
         create_real_workflow_runtime,
+        create_runtime_repositories,
     )
-    from qt_shell import QtShell, WindowsGlobalHotkeyBackend  # noqa: E402
+    from macos_hotkeys import MacGlobalHotkeyBackend, default_hotkeys  # noqa: E402
+    from qt_shell import QtSingleInstanceGuard, WindowsGlobalHotkeyBackend  # noqa: E402
 
 
 if os.environ.get("CLARIFY_IMPORT_SMOKE_TEST") == "1":
@@ -177,24 +187,14 @@ class ShellStartResult(Enum):
     """Describe the shell outcome without conflating setup errors and peers."""
 
     STARTED = "started"
-    STARTED_WITHOUT_TRAY = "started_without_tray"
     SECONDARY_INSTANCE = "secondary_instance"
     SETUP_FAILED = "setup_failed"
 
 
-def _start_shell_if_available(shell, *, tray_available=None) -> ShellStartResult:
-    """Start the native shell and retain a usable QML window on setup errors.
-
-    The shell always owns the single-instance guard.  Only tray construction is
-    conditional, while a failed optional shell setup is isolated to shell-owned
-    resources so the QML window can remain usable.  A secondary process is the
-    only outcome that should prevent the workflow runtime from continuing.
-    """
-
-    if tray_available is None:
-        tray_available = bool(QSystemTrayIcon.isSystemTrayAvailable())
+def _start_shell_if_available(shell) -> ShellStartResult:
+    """Start single-instance and hotkey ownership independently of presentation."""
     try:
-        if not shell.start(tray_available=tray_available):
+        if not shell.start():
             return ShellStartResult.SECONDARY_INSTANCE
     except Exception as error:
         # QtShell.start() has already removed any partially-created tray or
@@ -206,32 +206,16 @@ def _start_shell_if_available(shell, *, tray_available=None) -> ShellStartResult
         )
         return ShellStartResult.SETUP_FAILED
 
-    return (
-        ShellStartResult.STARTED
-        if tray_available
-        else ShellStartResult.STARTED_WITHOUT_TRAY
-    )
+    return ShellStartResult.STARTED
 
 
-def _register_qml_context(
-    engine,
-    workflow,
-    settings,
-    voice_translation=None,
-    audio_batch=None,
-    status_pill=None,
-) -> None:
-    """Expose the real Qt-facing controllers before QML is loaded."""
-
+def _register_qml_context(engine, workflow, settings, audio_batch=None) -> None:
+    """Expose only the controllers consumed by the native file-import panel."""
     context = engine.rootContext()
     context.setContextProperty("workflow", workflow)
     context.setContextProperty("settings", settings)
-    if voice_translation is not None:
-        context.setContextProperty("voiceTranslation", voice_translation)
     if audio_batch is not None:
         context.setContextProperty("audioBatch", audio_batch)
-    if status_pill is not None:
-        context.setContextProperty("pillStatus", status_pill)
 
 
 def _connect_preference_sync(bridge, settings) -> None:
@@ -287,121 +271,22 @@ def _hidden_start_requested(arguments: list[str]) -> bool:
     raise ValueError("unsupported launch arguments")
 
 
-class _SettingsWindowVisibility:
-    """Own native settings presentation independently of menu and toolbar state."""
+class _AudioFilesWindowVisibility:
+    """Only file imports retain a native panel; all workflow UI is Electron."""
 
-    def __init__(self, bridge, window, web_settings=None):
+    def __init__(self, bridge, window):
         self._bridge = bridge
         self._window = window
-        self._web_settings = web_settings
         bridge.surfaceChanged.connect(self.sync)
         self.sync()
 
     def sync(self):
-        if self._bridge.surface != "settings":
-            self._window.hide()
-            if self._web_settings is not None:
-                self._web_settings.hide()
-            return
-        if self._web_settings is not None and self._web_settings.show():
-            self._window.hide()
-            return
-        self.show_native()
-
-    def show_native(self):
-        # Restore minimized settings without losing an existing maximized state.
-        if self._window.visibility() == self._window.Visibility.Maximized:
-            self._window.showMaximized()
-        else:
-            self._window.showNormal()
-        self._window.raise_()
-        self._window.requestActivate()
-
-
-class _WorkflowWindowVisibility:
-    """Preserve main-card visibility across workflow pills and the picker."""
-
-    _PILL_SURFACES = frozenset({"recording", "processing", "voice_processing"})
-
-    def __init__(self, bridge, shell, window, *, enabled=lambda: True) -> None:
-        self._bridge = bridge
-        self._shell = shell
-        self._window = window
-        self._enabled = enabled
-        self._restore_visible: bool | None = None
-        self._last_surface = bridge.surface
-        bridge.surfaceChanged.connect(self.sync)
-
-    def _presentation_visible(self) -> bool:
-        # Native visibility remains true during the QML hide animation. Use
-        # the requested state so a workflow cannot undo an Alt+R hide.
-        property_reader = getattr(self._window, "property", None)
-        if callable(property_reader):
-            requested = property_reader("presentationVisible")
-            if isinstance(requested, bool):
-                return requested
-        return bool(self._window.isVisible())
-
-    def sync(self) -> None:
-        if not self._enabled():
-            return
-        surface = self._bridge.surface
-        previous_surface = self._last_surface
-        self._last_surface = surface
-        if surface == "translation_picker":
-            if self._restore_visible is None:
-                self._restore_visible = self._presentation_visible()
-            if surface != previous_surface:
-                self._shell.show_window()
-            return
-        if surface == "settings":
-            if self._restore_visible is None:
-                self._restore_visible = self._presentation_visible()
-            self._shell.hide_window()
-            return
-        feedback = bool(getattr(self._bridge, "feedbackVisible", False))
-        pill_active = (
-            self._bridge.surface in self._PILL_SURFACES
-            or feedback
-            or bool(getattr(self._bridge, "transitionPending", False))
-        )
-        if pill_active:
-            if self._restore_visible is None:
-                self._restore_visible = self._presentation_visible()
-            if feedback:
-                # An error is handled in the pill. Restoring the main window
-                # on dismissal would steal the next shortcut's selection.
-                self._restore_visible = False
-            self._shell.hide_window()
-            return
-        restore_visible = self._restore_visible
-        self._restore_visible = None
-        # COMPLETED is delivered before the clipboard write. Restore the
-        # compact card with native activation disabled, preserving the target.
-        # Only navigation to a panel may explicitly request keyboard focus.
-        explicit_navigation = surface == "files"
-        restore_panel = restore_visible and surface in {
-            "result",
-            "voice_result",
-            "voice_error",
-        }
-        if surface != previous_surface and (explicit_navigation or restore_panel):
-            self._shell.show_window()
-        elif restore_visible and surface in {"idle", "success"}:
-            restore = getattr(self._shell, "show_window_without_activation", None)
-            if callable(restore):
-                restore()
-        elif restore_visible is False and surface in {"idle", "success"}:
-            self._shell.hide_window()
-
-
-def _sync_recording_escape_hotkey(bridge, hotkeys) -> None:
-    """Register global Escape while recording or choosing a translation language."""
-
-    if hotkeys is not None:
-        hotkeys.set_recording_active(
-            bridge.surface in {"recording", "translation_picker"}
-        )
+        visible = self._bridge.surface == "files"
+        self._window.setProperty("presentationVisible", visible)
+        if visible:
+            self._window.show()
+            self._window.raise_()
+            self._window.requestActivate()
 
 
 def _capture_idle(workflow, audio, bridge=None, voice=None, batch=None) -> bool:
@@ -428,6 +313,8 @@ def _connect_shutdown(
     runtime,
     voice_translation=None,
     audio_batch=None,
+    *,
+    stop_shell=True,
 ) -> None:
     """Stop shell-owned native resources before the workflow runtime."""
 
@@ -435,7 +322,8 @@ def _connect_shutdown(
         app.aboutToQuit.connect(voice_translation.cancel)
     if audio_batch is not None:
         app.aboutToQuit.connect(audio_batch.cancel)
-    app.aboutToQuit.connect(shell.stop)
+    if stop_shell:
+        app.aboutToQuit.connect(shell.stop)
     app.aboutToQuit.connect(runtime.shutdown)
 
 
@@ -451,7 +339,7 @@ def _record_voice_translation_usage(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Start the real QML frontend; missing runtime dependencies are fatal."""
+    """Start the shared engine and its required Electron presentation."""
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     if len(arguments) == 2 and arguments[0] == "--apply-portable-update":
@@ -481,16 +369,49 @@ def main(argv: list[str] | None = None) -> int:
         from qml_localization import install_translations
     install_translations(app)
 
+    electron_path = desktop_executable()
+    if electron_path is None:
+        QMessageBox.critical(
+            None,
+            "Clarify",
+            translate(
+                "A interface do Clarify não foi encontrada. Reinstale o aplicativo."
+            ),
+        )
+        return 1
+
+    instance_guard = None
+    if sys.platform == "darwin":
+        profile = Path(
+            os.environ.get("CLARIFY_DATA_DIR", "").strip() or Path.home() / ".clarify"
+        ).resolve()
+        profile.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.environ["CLARIFY_DATA_DIR"] = str(profile)
+        instance_guard = QtSingleInstanceGuard(lock_path=profile / "desktop.lock")
+        if not instance_guard.acquire():
+            return 0
     scheduler = QtWorkflowScheduler(app)
     try:
-        runtime = create_real_workflow_runtime(scheduler)
+        if instance_guard is None:
+            runtime = create_real_workflow_runtime(scheduler)
+        else:
+            runtime = create_real_workflow_runtime(
+                scheduler,
+                repositories=create_runtime_repositories(
+                    hotkey_defaults=default_hotkeys()
+                ),
+            )
     except QtRuntimeError as error:
+        if instance_guard is not None:
+            instance_guard.release()
         print(f"Clarify QML startup failed: {error}", file=sys.stderr)
         return 2
 
     workflow_service = runtime.workflow_service
     repositories = runtime.repositories
     if repositories is None:
+        if instance_guard is not None:
+            instance_guard.release()
         runtime.shutdown()
         print(
             "Clarify QML startup failed: runtime repositories are missing",
@@ -506,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     audio_batch = None
     bridge = None
     updates = None
+    meetings = None
 
     def settings_work_busy() -> bool:
         return settings is not None and (
@@ -532,10 +454,15 @@ def main(argv: list[str] | None = None) -> int:
             (practice is None or not practice.blocks_processing)
             and not settings_work_busy()
             and not runtime.recording_audio.busy
+            and not (meetings and meetings.busy)
         )
 
     def settings_processing_allowed() -> bool:
-        return (practice is None or not practice.busy) and capture_idle()
+        return (
+            (practice is None or not practice.busy)
+            and not (meetings and meetings.busy)
+            and capture_idle()
+        )
 
     voice_translation = create_qml_voice_translation_controller(
         repositories.config.load,
@@ -601,7 +528,11 @@ def main(argv: list[str] | None = None) -> int:
         from practice_local_model import LocalModelReadiness
 
     def practice_can_start() -> bool:
-        return capture_idle() and not settings_work_busy()
+        return (
+            capture_idle()
+            and not settings_work_busy()
+            and not (meetings and meetings.busy)
+        )
 
     local_practice_model = LocalModelReadiness(
         scheduler, changed=lambda: settings.practiceStateChanged.emit()
@@ -645,6 +576,26 @@ def main(argv: list[str] | None = None) -> int:
         if hotkeys is not None:
             hotkeys.set_capture_active(active)
 
+    def reprocess_recording(path):
+        # Recovery is an explicit new request using the current account/route.
+        # Never capture or paste into the focused History window.
+        if not settings_processing_allowed():
+            return False
+        state = workflow_service.state
+        if state.phase.value in {"completed", "failed", "cancelled"}:
+            workflow_service.finish(state.operation_id)
+        if workflow_service.state.phase.value != "ready":
+            return False
+        recording = runtime.recording_audio.create_recovery_session(path)
+        if recording is None:
+            return False
+        accepted = workflow_service.recover_dictation(
+            recording, repositories.config.load().ui_language
+        )
+        if not accepted:
+            recording.cancel()
+        return accepted
+
     settings = QmlSettingsController(
         repositories,
         parent=app,
@@ -657,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         dictionary_service=getattr(runtime, "dictionary_service", None),
         account_service=getattr(runtime, "account", None),
         processing_allowed=settings_processing_allowed,
+        recording_reprocessor=reprocess_recording,
         account_can_change=lambda: (
             workflow_service.state.phase.value
             in {"ready", "completed", "failed", "cancelled", "microphone_unavailable"}
@@ -677,27 +629,36 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
 
-    def can_restart_for_update() -> bool:
-        return (
-            workflow_service.state.phase.value == "ready"
-            and bridge.surface in {"idle", "success"}
-            and not bridge.feedbackVisible
-            and not voice_translation.active
-            and not audio_batch.running
-            and not settings.microphoneTestBusy
-            and not practice.open
-            and not settings.localAsrBusy
-            and not settings.localBenchmarkBusy
-            and not settings.providerBusy
-            and not getattr(settings, "chatgptState", {}).get("busy", False)
-            and not settings.dirty
-            and not settings.providerDirty
-            and not web_settings.blocks_update()
-        )
+    def update_restart_blocker() -> str:
+        if settings.dirty or settings.providerDirty:
+            return "Salve ou descarte as alterações para atualizar."
+        if practice.open:
+            return "Feche a prática de ditado para atualizar."
+        if settings.microphoneTestBusy:
+            return "Pare o teste do microfone para atualizar."
+        if settings.localAsrBusy or settings.localBenchmarkBusy:
+            return "Aguarde a tarefa do modelo local terminar para atualizar."
+        if settings.providerBusy or getattr(settings, "chatgptState", {}).get(
+            "busy", False
+        ):
+            return "Aguarde a conexão com o provedor terminar para atualizar."
+        if voice_translation.active or audio_batch.running:
+            return "Conclua as tarefas em andamento para atualizar."
+        if meetings and meetings.busy:
+            return "Conclua a reunião ou a instalação do modelo para atualizar."
+        if web_settings.blocks_update():
+            return "Feche a janela do Clarify para aplicar a atualização."
+        if (
+            workflow_service.state.phase.value != "ready"
+            or bridge.surface not in {"idle", "success"}
+            or bridge.feedbackVisible
+        ):
+            return "Conclua a gravação ou o processamento e feche o resultado para atualizar."
+        return ""
 
     updates = QmlUpdateController(
         automatic=loaded_config.automatic_updates,
-        can_restart=can_restart_for_update,
+        restart_blocker=update_restart_blocker,
         restart=app.quit,
         parent=app,
     )
@@ -722,50 +683,39 @@ def main(argv: list[str] | None = None) -> int:
         engine,
         bridge,
         settings,
-        voice_translation,
-        audio_batch,
-        status_pill,
+        audio_batch=audio_batch,
     )
 
     qml_root = _qml_root()
     engine.addImportPath(str(qml_root))
-    engine.load(QUrl.fromLocalFile(str(qml_root / "Main.qml")))
-    engine.load(QUrl.fromLocalFile(str(qml_root / "SettingsWindow.qml")))
-    engine.load(QUrl.fromLocalFile(str(qml_root / "StatusPill.qml")))
-    roots = engine.rootObjects()
+    engine.load(QUrl.fromLocalFile(str(qml_root / "AudioFilesWindow.qml")))
     window = next(
-        (root for root in roots if root.objectName() == "clarifyMainWindow"),
+        (
+            root
+            for root in engine.rootObjects()
+            if root.objectName() == "audioFilesWindow"
+        ),
         None,
     )
-    pill_window = next(
-        (root for root in roots if root.objectName() == "workflowStatusPill"),
-        None,
-    )
-    settings_window = next(
-        (root for root in roots if root.objectName() == "clarifySettingsWindow"), None
-    )
-    if window is None or pill_window is None or settings_window is None:
+    if window is None:
+        if instance_guard is not None:
+            instance_guard.release()
         runtime.shutdown()
         return 1
 
-    pill_window_order = QmlStatusPillWindow(pill_window, bridge, parent=app)
+    if sys.platform in {"win32", "darwin"}:
+        from text_actions import native_bindings
 
-    electron_path = desktop_executable()
-    window.setProperty(
-        "presentationVisible", not start_hidden and electron_path is None
-    )
-    if not start_hidden and electron_path is None:
-        window.show()
-    if sys.platform == "win32":
-        hotkeys = WindowsGlobalHotkeyBackend(
-            app,
-            settings=settings._text_actions.bindings()
+        bindings = (
+            settings._text_actions.bindings()
             if settings.textActionContext
-            else __import__("text_actions").native_bindings(
-                repositories.config.load(), ()
-            ),
-            parent=app,
+            else native_bindings(repositories.config.load(), ())
         )
+        if sys.platform == "darwin":
+            hotkeys = MacGlobalHotkeyBackend(bindings, parent=app)
+            hotkeys.availabilityChanged.connect(settings.setUnavailableHotkeys)
+        else:
+            hotkeys = WindowsGlobalHotkeyBackend(app, settings=bindings, parent=app)
     if hotkeys is not None:
 
         def sync_escape():
@@ -777,42 +727,112 @@ def main(argv: list[str] | None = None) -> int:
         practice.subscribe(sync_escape)
         sync_escape()
 
-    def restore_native_shell():
-        pill_window.setProperty("rendererEnabled", True)
-        shell.restore_native_tray()
-        if bridge.surface == "settings":
-            settings_window_visibility.show_native()
-        else:
-            workflow_window_visibility.sync()
-            if (
-                bridge.surface
-                in {"idle", "success", "result", "voice_result", "voice_error"}
-                and not bridge.feedbackVisible
-            ):
-                shell.show_window_without_activation()
+    failure_dialog = None
 
-    if electron_path is not None:
-        web_settings = ElectronDesktopProcess(
-            settings, bridge, status_pill, restore_native_shell, app, app
+    def desktop_unavailable():
+        nonlocal failure_dialog
+        if failure_dialog is not None:
+            return
+        failure_dialog = QMessageBox(app.activeWindow())
+        failure_dialog.setWindowTitle("Clarify")
+        failure_dialog.setIcon(QMessageBox.Critical)
+        failure_dialog.setText(
+            translate(
+                "Não foi possível iniciar a interface do Clarify.", settings.uiLanguage
+            )
         )
-        pill_window.setProperty("rendererEnabled", False)
-        # Electron windows are not in QApplication.allWindows(). Exclude their
-        # executable before they can become a foreground paste target.
-        quick_paste.excluded_executable = lambda: str(electron_path)
-    else:
-        web_settings = WebSettingsProcess(
-            settings, bridge, lambda: settings_window_visibility.show_native(), app
+        failure_dialog.setInformativeText(
+            translate(
+                "Tente abrir a interface novamente ou feche o Clarify. Os áudios salvos continuam no histórico.",
+                settings.uiLanguage,
+            )
         )
-        quick_paste.excluded_executable = web_settings.process.program
+        failure_dialog.setStandardButtons(QMessageBox.Retry | QMessageBox.Close)
+        failure_dialog.button(QMessageBox.Retry).setText(
+            translate("Tentar novamente", settings.uiLanguage)
+        )
+        failure_dialog.button(QMessageBox.Close).setText(
+            translate("Fechar", settings.uiLanguage)
+        )
 
-    shell_type = ElectronQtShell if electron_path is not None else QtShell
-    shell = shell_type(
+        def respond(result):
+            nonlocal failure_dialog
+            failure_dialog.deleteLater()
+            failure_dialog = None
+            if result == QMessageBox.Retry:
+                web_settings.retry()
+            else:
+                app.quit()
+
+        failure_dialog.finished.connect(respond)
+        failure_dialog.open()
+
+    try:
+        from .meetings import Meetings, MODEL_ID, configured_summary
+    except ImportError:
+        from meetings import Meetings, MODEL_ID, configured_summary
+
+    config_path = Path(repositories.config.path)
+
+    @lru_cache(maxsize=1)
+    def meeting_summary_for_revision(_revision):
+        return configured_summary(
+            runtime.provider_registry.adapter("openai").metadata,
+            repositories.config.load(),
+        )
+
+    def meeting_summary_provider():
+        # The desktop polls meeting state while idle. Read settings on changes.
+        try:
+            revision = config_path.stat()
+            return meeting_summary_for_revision((revision.st_ino, revision.st_mtime_ns))
+        except (OSError, ValueError):
+            return None
+
+    def meeting_microphone():
+        selected = repositories.config.load().microphone.selected_id
+        if selected is None:
+            return None, False
+        return next(
+            (
+                (option["name"], sys.platform == "win32" and option["hostApi"] == "MME")
+                for option in settings.microphoneDevices
+                if option["id"] == selected
+            ),
+            ("", False),
+        )
+
+    meetings = Meetings(
+        config_path.parent / "meetings.sqlite3",
+        backend=lambda: runtime.provider_registry.adapter("local_asr").select_backend(
+            MODEL_ID, "cpu"
+        ),
+        language=lambda: repositories.config.load().recognition_language,
+        microphone=meeting_microphone,
+        allowed=lambda: (
+            capture_idle()
+            and not settings_work_busy()
+            and not practice.blocks_processing
+            and not updates.installing
+        ),
+        summary_provider=meeting_summary_provider,
+        before_capture=settings.stopPlaybackBeforeRecording,
+        copy=runtime.copy_result,
+    )
+    web_settings = ElectronDesktopProcess(
+        settings, bridge, status_pill, desktop_unavailable, app, app, meetings=meetings
+    )
+    quick_paste.excluded_executable = lambda: str(electron_path)
+
+    runtime.recording_audio.before_recording = settings.stopPlaybackBeforeRecording
+    web_settings.process.finished.connect(settings.releaseRecordingPlayback)
+
+    shell = ElectronQtShell(
         window,
-        **({"desktop": web_settings} if electron_path is not None else {}),
+        desktop=web_settings,
+        instance_guard=instance_guard,
         hotkeys=hotkeys,
-        application=app,
         visibility_hotkey_allowed=lambda: not bridge.recording and not practice.busy,
-        icon=branding_icon,
         parent=app,
     )
     shell.hotkeyTriggered.connect(
@@ -823,50 +843,32 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     bridge.resultRequested.connect(shell.show_window)
-    if electron_path is None:
-        workflow_window_visibility = _WorkflowWindowVisibility(bridge, shell, window)
-    else:
-        workflow_window_visibility = _WorkflowWindowVisibility(
-            bridge, shell, window, enabled=lambda: web_settings.failed
-        )
-
-        # File import retains its existing native panel during this migration.
-        # All ordinary pill, picker and result presentation belongs to Electron.
-        def sync_native_panel():
-            if not web_settings.failed:
-                window.setProperty("presentationVisible", bridge.surface == "files")
-                if bridge.surface == "files":
-                    window.show()
-                    window.raise_()
-                    window.requestActivate()
-
-        bridge.surfaceChanged.connect(sync_native_panel)
-    settings_window_visibility = _SettingsWindowVisibility(
-        bridge, settings_window, web_settings
-    )
-    bridge.settingsRequested.connect(web_settings.activate)
+    files_visibility = _AudioFilesWindowVisibility(bridge, window)
+    bridge.settingsRequested.connect(web_settings.show)
     app.aboutToQuit.connect(web_settings.shutdown)
-    _ = workflow_window_visibility, settings_window_visibility, pill_window_order
-    _connect_shutdown(app, shell, runtime, voice_translation, audio_batch)
+    app.aboutToQuit.connect(meetings.shutdown)
+    _ = files_visibility
+    macos = instance_guard is not None
+    if macos:
+        app.aboutToQuit.connect(quick_paste.timer.stop)
+        app.aboutToQuit.connect(hotkeys.stop)
+    _connect_shutdown(
+        app, shell, runtime, voice_translation, audio_batch, stop_shell=not macos
+    )
     app.aboutToQuit.connect(settings.shutdown)
     app.aboutToQuit.connect(updates.shutdown)
+    if macos:
+        app.aboutToQuit.connect(shell.stop)
 
-    shell_result = _start_shell_if_available(
-        shell, **({"tray_available": False} if electron_path is not None else {})
-    )
+    shell_result = _start_shell_if_available(shell)
     if shell_result is ShellStartResult.SECONDARY_INSTANCE:
         runtime.shutdown()
         return 0
     runtime.computer = create_computer_controller(runtime, parent=app)
     settings.bindComputer(runtime.computer)
     runtime.computer.initialize()
-    if electron_path is not None:
-        web_settings.start(visible=not start_hidden)
-    app.setQuitOnLastWindowClosed(
-        electron_path is None
-        and shell_result
-        in (ShellStartResult.STARTED_WITHOUT_TRAY, ShellStartResult.SETUP_FAILED)
-    )
+    web_settings.start(visible=not start_hidden)
+    app.setQuitOnLastWindowClosed(False)
     from portable_update_windows import acknowledge_portable_update
     from version import __version__
 

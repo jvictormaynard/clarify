@@ -5,7 +5,7 @@
 <h1 align="center">Clarify</h1>
 
 <p align="center">
-  Windows dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
+  Desktop dictation with local models or your own AI API key. Speak, refine, and paste without leaving your app.
 </p>
 
 <p align="center">
@@ -28,43 +28,38 @@ pastes the result back into the app you were using. It can also rewrite or
 translate selected text without opening a separate editor.
 
 > [!IMPORTANT]
-> Clarify supports bring-your-own-key cloud providers and optional hosted
-> dictation through a Clarify account. Personal cloud access uses your own
-> API key or an eligible ChatGPT plan. On Windows, subscribers can connect their plan
-> for text rewriting, translation, and refinement without a Clarify account.
-> This uses the existing ChatGPT plan limits and sends text directly to OpenAI;
-> it does not include audio transcription. See [ChatGPT plan setup](docs/chatgpt-plan.md).
-> The optional Local Whisper provider
-> does not require an API key for local transcription; it downloads its
-> runtime/model only after an explicit action, and its packaged Windows/offline
-> acceptance is still pending. Keys and local usage statistics stay on your
-> computer. With your own key, cloud audio/text goes directly to the provider you configure; Local
-> Whisper keeps transcription local unless you explicitly enable cloud
-> refinement. Hosted dictation sends audio and text through the Clarify service
-> to Groq and uses a sponsored individual allowance within the project's funded
-> budget. Operating costs are reserved before processing funds are distributed.
+> Processing uses local speech models, personal provider keys, a connected ChatGPT
+> subscription for text, or free models requested by OpenCode on the user's computer.
+> Clarify-funded inference is retired. An account supplies authentication and optional
+> library/history synchronization, plus authorization for remote computer access.
+> Signing in does not select a processing model or grant inference quota.
+> ChatGPT subscription access is text-only and uses that subscription's limits;
+> see [ChatGPT plan setup](docs/chatgpt-plan.md). OpenCode's catalog must explicitly
+> report zero input/output prices. Free access has provider limits; a refusal does
+> not select a paid service automatically. Optional editing failure preserves the
+> transcript. Local speech assets download only after an explicit action.
+>
+> Native Nemotron streaming is provisional. Windows packaging and native iPhone
+> acceptance remain open. Phone incremental capture is disabled by default pending
+> background acceptance; the established WAV path remains available. Source changes
+> do not establish release or physical-device acceptance.
 
-> The Settings interface described here follows the current source on `main`.
+> The Settings interface described here follows this source candidate.
 > Check the [release notes](https://github.com/jvictormaynard/clarify/releases/latest)
 > before downloading; older releases have a different interface. Release acceptance is tracked in
 > [Release readiness](docs/release-readiness.md).
 
 ## Features
 
-Clarify uses the device language for Portuguese, English and Spanish,
-including the passwordless authentication email. On first launch, use Google,
-Microsoft or GitHub, or enter your email and confirm the code inside the app
-to enter or create an account.
-**Continue without an account** opens local-model setup; a personal API key is
-also available there. Signing in activates Clarify processing automatically.
-Signed-in accounts use Clarify-managed models. Personal provider and local-model
-settings are available in account-free mode. Style and Text actions are available
-in both modes. Weekly sponsored
-usage appears as a percentage with the next renewal in your local time. Quotas
-renew each Monday at 00:00 UTC. An unknown quota shows a loading state, and an
-unfunded allowance has an explicit availability message. Sign-out and deletion
-are inside a collapsed Danger zone, with separate confirmations. Vocabulary sync runs automatically,
-and usage updates after processing. Local caches preserve offline edits and
+Clarify uses Portuguese, English and Spanish interfaces. Personal onboarding guides
+spoken language, a hardware-based speech recommendation, optional text processing,
+verified installation and practice. Model names remain visible, and advanced
+provider settings stay available when signed in. Recognition and output languages
+are separate. Account sign-in supports Google, Microsoft, GitHub and email codes.
+Account libraries synchronize independently of inference. Sign-out and deletion
+retain separate confirmations in the Danger zone. Existing provider choices remain
+saved; former hosted users need a personal processing route.
+Local caches preserve offline edits and
 conflicts keep both copies until resolved. New account transcriptions synchronize
 automatically between Windows and iOS, including original/revised text, time and
 source device. The History page supports complete text, pagination and synchronized
@@ -77,9 +72,11 @@ available on the [App Store](https://apps.apple.com/app/id6820869157).
 TestFlight is used for internal testing. The [account service](server/README.md) can also
 be self-hosted. Production keys and user data are never public.
 The source also supports [pairing an iPhone with a computer](docs/computer-connection.md)
-by QR for direct LAN processing with the computer's personal configuration.
-The [financial model and public transparency page](docs/finances.md) explain how
-confirmed support pays operating costs and weekly processing quotas. Stripe
+by QR for LAN processing with the computer's personal configuration. Remote access
+uses operator-configured WebRTC with TURN fallback; new hosts do not allocate
+Cloudflare tunnels. The computer must stay available. The relay still has bandwidth
+and VPS costs. The [financial records and public transparency page](docs/finances.md)
+retain operating-cost and historical funding information; funded inference is retired. Stripe
 registration is deferred until a business account is available.
 
 - Voice transcription and prompt-quality rewriting from any Windows app
@@ -193,16 +190,16 @@ channel remain disabled until their rollout gates are complete.
 ### Run from source on Windows
 
 Requirements: Windows 10 or 11, [Python 3.11 or newer](https://www.python.org/downloads/windows/),
-and a working microphone. Building the desktop shell also requires Node.js 22.
-The default Electron shell does not require Rust or WebView2. The legacy Tauri
-alternative needs those tools. See [Development](docs/development.md).
+and a working microphone. Building the desktop also requires Node.js 22,
+Visual Studio C++ Build Tools, and the Windows SDK. The desktop includes its
+pinned Electron runtime. See [Development](docs/development.md).
 
 ```powershell
 git clone https://github.com/jvictormaynard/clarify.git
 cd clarify
 .\scripts\setup.ps1 -Dev
 .\scripts\build-desktop.ps1
-$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path '.\dist\desktop-shell\Clarify Desktop.exe').Path
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify Desktop.exe").Path
 .\start.bat
 ```
 
@@ -222,13 +219,34 @@ dependency intent remains readable in `requirements.txt` and
 `requirements-dev.txt`; maintainers regenerate the matching lock with
 `python -m piptools compile` when that intent changes.
 
-Linux and macOS source paths are experimental. See
-[Development](docs/development.md#experimental-linux-and-macos-support) for
-their current limitations.
+### Install on macOS
+
+Desktop releases after v0.18.0 include a build for Apple Silicon Macs with
+macOS 13 or later. Open the
+[releases page](https://github.com/jvictormaynard/clarify/releases) and download
+`Clarify-macos-arm64.zip` and `Clarify-macos-arm64.zip.sha256` from the same release.
+In the download folder, verify the ZIP with
+`shasum -a 256 -c Clarify-macos-arm64.zip.sha256`. Extract it and move `Clarify.app`
+to Applications. The app includes its runtime.
+
+The community build uses an ad hoc signature. If Gatekeeper blocks the verified
+app, use **System Settings → Privacy & Security → Open Anyway**. Allow
+microphone access when prompted, and enable Accessibility for automatic paste.
+See [macOS setup](docs/development.md#macos-setup) for permissions and shortcuts.
+
+### Build and run on macOS
+
+Build `Clarify.app` on your Mac with Python 3.12 and Node.js 22.12 or later.
+See [macOS setup](docs/development.md#macos-setup) for the build steps, permissions,
+and default shortcuts.
+
+[Linux source support](docs/development.md#experimental-linux-support) is experimental.
 
 ## Usage
 
-| Shortcut | Action |
+See [macOS shortcuts](docs/development.md#macos-setup) for the Mac defaults.
+
+| Windows shortcut | Action |
 | --- | --- |
 | `Alt + L` (default) | Start or stop recording |
 | `Esc` | Cancel an active recording or close the translation language picker |
@@ -404,9 +422,8 @@ MSIs must come from the protected signing workflow.
 ```text
 desktop/src/                  React/TypeScript Settings and shared controls
 desktop/electron/              Electron windows and private process bridge
-desktop/src-tauri/             Legacy Tauri alternative
-clarify/desktop/qml_app.py      Production Qt Quick/QML entrypoint
-clarify/desktop/qml/            Production QML surfaces and theme
+clarify/desktop/qml_app.py      Engine and Electron composition root
+clarify/desktop/qml/            Native audio-file import panel and controls
 clarify/desktop/qml_runtime.py  Qt adapters for providers, audio, clipboard, and storage
 clarify/desktop/qml_bridge.py   QML-facing workflow state and commands
 provider_types.py              Typed provider requests, results, and capabilities
@@ -435,15 +452,16 @@ docs/                          Architecture and development documentation
 .agents/skills/                Repository-specific maintainer workflows
 ```
 
-The application uses Python/PySide6 for the desktop engine and native input,
-with React/TypeScript in a bundled Electron shell for Settings and the dock.
-Qt Quick supplies recovery views. `start.bat`, the portable build and the release
-workflow use the QML entrypoint. CustomTkinter is not the shipping frontend;
-Tauri remains a legacy Settings alternative. See
-[Architecture](docs/architecture.md) before making structural changes.
+React/Electron owns the desktop interface. Python/PySide6 owns the engine and
+native input contracts. Only audio-file import retains a QML panel.
+`start.bat`, packaging and releases use `clarify/desktop/qml_app.py` to compose
+these owners. The interface is required; a failure triggers bounded renderer
+recovery, never a switch to another interface.
+See [Architecture](docs/architecture.md) before making structural changes.
 Production Qt code lives in `clarify/desktop/`; `spikes/` contains only historical comparison tools.
 `app.py` is a legacy frontend retained for compatibility tests, not the shipping
-entrypoint. New UI work belongs in `desktop/` or the QML pill, not `app.py`.
+entrypoint. New desktop UI work belongs in `desktop/`; native file-import maintenance stays
+in its QML view. Do not add product UI to `app.py`.
 
 Local Whisper is an explicit provider in the current product runtime. The
 portable executable includes the pinned Local ASR manifest and license notices,

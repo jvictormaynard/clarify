@@ -103,6 +103,8 @@ class RepositorySafetyTests(unittest.TestCase):
         )
         self.assertIn('Join-Path $repoQmlPython "qt_shell.py"', content)
         self.assertIn('"workflow_provider.py",', content)
+        for module in ("local_asr_batch.py", "local_asr_batch_assets.py"):
+            self.assertIn(f'"{module}",', content)
         self.assertNotIn('Join-Path $repoRoot "*.py"', content)
         self.assertIn('$repoQml = Join-Path $repoQmlPython "qml"', content)
         self.assertIn("Copy-Item $repoQml $qml -Recurse -Force", content)

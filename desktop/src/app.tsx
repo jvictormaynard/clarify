@@ -1,6 +1,7 @@
+import { stopRecordingPlayback } from "./settings/recording-playback";
 import { t } from "./i18n";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import logo from "../src-tauri/icons/clarify.png";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import logo from "../assets/clarify.png";
 import { AlertCircle, LoaderCircle, UserRound, PanelLeft } from "lucide-react";
 import { Titlebar } from "./components/titlebar";
 import { Button } from "./components/ui";
@@ -9,7 +10,12 @@ import { SettingsDialog } from "./components/settings-dialog";
 import { TextActionEditor } from "./components/text-action-editor";
 import { TextProfileEditor } from "./components/text-profile-editor";
 import { HomePage } from "./pages/home-page";
-import { OnboardingPage } from "./pages/onboarding-page";
+import { MeetingsPage } from "./pages/meetings-page";
+import { meetingError } from "./pages/meetings-copy";
+import { meetingStopFromDock } from "./meetings/bridge";
+import { MeetingQuitDialog } from "./meetings/window";
+import { electron } from "./platform";
+import { OnboardingPage, type SetupPurpose } from "./pages/onboarding-page";
 import { DictationPractice } from "./components/dictation-practice";
 
 import { StylePage } from "./pages/style-page";
@@ -30,6 +36,39 @@ const pageComponents = {
 
 export function App() {
   const controller = useSettings();
+  const [meetingOpen, setMeetingOpen] = useState<{ target?: string } | null>(null);
+  const acknowledgeMeetingOpen = useCallback((request: { target?: string }) => {
+    setMeetingOpen(current => current === request ? null : current);
+  }, []);
+  const currentController = useRef(controller);
+  currentController.current = controller;
+  useEffect(() => electron()?.onWindow((event, target) => {
+    if (event === "meetings") {
+      setMeetingOpen({ target });
+    }
+    if (event === "meeting-stop" && target) {
+      void meetingStopFromDock(target).catch(error => {
+        setMeetingOpen({ target });
+        currentController.current.setError(meetingError(error instanceof Error ? error.message : ""));
+      });
+    }
+    if (event === "meeting-models") void currentController.current.navigate("models");
+  }), []);
+  const canOpenMeeting = !!controller.state && !controller.state.onboardingRequired && !controller.state.practiceState?.open;
+  useEffect(() => {
+    if (meetingOpen && canOpenMeeting) void currentController.current.navigate("meetings");
+  }, [meetingOpen, canOpenMeeting]);
+  const setupWasRequired = useRef(false);
+  const setupPurpose = useRef<SetupPurpose>("dictation");
+  useEffect(() => {
+    if (!controller.state) return;
+    const completed = setupWasRequired.current && !controller.state.onboardingRequired;
+    setupWasRequired.current = controller.state.onboardingRequired;
+    if (completed) {
+      if (setupPurpose.current !== "dictation") void currentController.current.navigate("meetings");
+      if (setupPurpose.current !== "meetings") void controller.run("practiceCommand", "open");
+    }
+  }, [controller.state?.onboardingRequired, controller.run]);
   const [collapsed, setCollapsed] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   useEffect(() => {
@@ -39,6 +78,9 @@ export function App() {
     return () => media.removeEventListener("change", change);
   }, []);
   const { state, mainPage, settingsOpen, error, saved, routeLoading, saving, discardingDrafts } = controller;
+  useEffect(() => {
+    if (state?.audioPlaybackStopRequest) void stopRecordingPlayback(state.audioPlaybackStopRequest).catch(() => {});
+  }, [state?.audioPlaybackStopRequest]);
   const scrollArea = useRef<HTMLDivElement>(null);
   const settingsButton = useRef<HTMLButtonElement>(null);
   const settingsOpener = useRef<HTMLButtonElement>(null);
@@ -52,7 +94,7 @@ export function App() {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
   }, [mainPage]);
   const pages = getMainPages();
-  const Page = pageComponents[mainPage];
+  const Page = mainPage === "meetings" ? MeetingsPage : pageComponents[mainPage];
   const info = pages.find(item => item.id === mainPage)!;
 
   return (
@@ -67,7 +109,7 @@ export function App() {
         onClose={() => controller.setClosing(true)}
         onError={controller.setError}
       />
-      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
+      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} onChoosePurpose={purpose => { setupPurpose.current = purpose; }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
         <aside id="desktop-sidebar">
           <div className="sidebar-brand"><img src={logo} alt="" /><span>Clarify</span></div>
           <SettingsNavigation pages={pages} activePage={mainPage} settingsButtonRef={settingsButton}
@@ -92,7 +134,8 @@ export function App() {
               ) : (
                 <div className="page-content" inert={waitingForRoute} aria-busy={waitingForRoute}>
                   <Page key={mainPage === "snippets" || mainPage === "dictionary"
-                    ? `${mainPage}:${pageState.snippetContext}` : mainPage} controller={{ ...pageController, state: pageState }} />
+                    ? `${mainPage}:${pageState.snippetContext}` : mainPage} controller={{ ...pageController, state: pageState }}
+                    meetingOpen={meetingOpen} acknowledgeMeetingOpen={acknowledgeMeetingOpen} />
                 </div>
               )}
               {pageController.pageDirty && !waitingForRoute && <div className="draft-actions" role="group" aria-label={t("Alterações pendentes")}>
@@ -118,6 +161,7 @@ export function App() {
         <TextProfileEditor controller={{ ...controller, state }} />
       </>}
       <SettingsDialogs controller={controller} />
+      <MeetingQuitDialog />
     </div>
   );
 }

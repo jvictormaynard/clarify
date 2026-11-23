@@ -23,7 +23,6 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
   const autoPair = useRef(false);
   const qrContainer = useRef<HTMLDivElement>(null);
   const panelGeneration = useRef(0);
-  const managed = !!(state.accountState?.signedIn || state.accountState?.managed || state.accountState?.hosted);
   const busy = !!access?.busy;
 
   const close = () => {
@@ -41,7 +40,7 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
       void call("computerCommand", "close", "").catch(() => {});
     };
   }, []);
-  useEffect(() => { if (closing || managed || !settingsOpen) close(); }, [closing, managed, settingsOpen]);
+  useEffect(() => { if (closing || !settingsOpen) close(); }, [closing, settingsOpen]);
   useEffect(() => {
     if (!open) return;
     const timer = setInterval(() => setNow(Date.now() / 1000), 1000);
@@ -55,7 +54,7 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
   }, [open, access?.running, busy, run]);
   useEffect(() => {
     setImage(""); setExpires(0);
-    if (!open || !access?.pairingReady || managed) return;
+    if (!open || !access?.pairingReady) return;
     let live = true;
     const generation = panelGeneration.current;
     void getComputerPairing().then(pairing => {
@@ -64,7 +63,7 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
       }
     }).catch(() => { if (live) setReadError(true); });
     return () => { live = false; };
-  }, [open, access?.pairingReady, access?.pairingExpiresAt, managed]);
+  }, [open, access?.pairingReady, access?.pairingExpiresAt]);
   useEffect(() => {
     if (expires && now >= expires) { setImage(""); setExpires(0); }
   }, [now, expires]);
@@ -79,9 +78,8 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
   const error = readError ? errors.failed : access?.error ? errors[access.error] ?? errors.failed : "";
   return <><Section title={t("Acesso pelo celular")}>
     <Row title={t("Conectar celular")}
-      hint={managed ? t("Saia da conta Clarify para conectar o celular aos seus modelos e serviços pessoais.")
-        : t("Use os modelos deste computador no iPhone.")}>
-      <Button variant={!access?.devices.length && !open ? "primary" : "default"} disabled={managed || !access || access.error === "unavailable" || access.blocked || busy}
+      hint={t("Use os modelos deste computador no iPhone.")}>
+      <Button variant={!access?.devices.length && !open ? "primary" : "default"} disabled={!access || access.error === "unavailable" || access.blocked || busy}
         onClick={() => { setOpen(true); if (access?.running) pair(); }}>
         <Smartphone size={16} />{t("Conectar celular")}
       </Button>
@@ -121,7 +119,7 @@ export function ComputerAccess({ controller }: SettingsPageProps) {
       <div className="computer-pairing" role="region" aria-label={t("Conectar celular")}>
       {!access?.enabled ? <>
         <p>{t("Permita que os celulares pareados usem os modelos deste PC.")}</p>
-        <Button variant="primary" disabled={busy || managed} onClick={() => {
+        <Button variant="primary" disabled={busy} onClick={() => {
           autoPair.current = true; void run("computerCommand", "enable", "");
         }}>{t("Ativar acesso e gerar QR")}</Button>
       </> : <>

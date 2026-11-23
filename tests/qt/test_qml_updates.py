@@ -105,6 +105,29 @@ class UpdateControllerTests(ReleaseFixture, unittest.TestCase):
         controller._poll()
         self.assertEqual(self.restarts, [True])
 
+    def test_ready_update_explains_a_changing_restart_blocker_without_redownload(self):
+        controller = self.controller()
+        blocker = "Salve ou descarte as alterações para atualizar."
+        controller._restart_blocker = lambda: blocker
+        controller.check()
+        self.complete_job()
+        controller.install()
+        self.complete_job()
+        controller._poll()
+        self.assertEqual(controller.status, blocker)
+        self.prepare.assert_not_called()
+        blocker = "Feche a janela do Clarify para aplicar a atualização."
+        controller.install()
+        self.assertEqual(controller.status, blocker)
+        self.assertEqual(self.transport.download.call_count, 1)
+        self.assertEqual(self.restarts, [])
+        blocker = ""
+        controller._poll()
+        self.complete_job()
+        self.prepared.armed.return_value = True
+        controller._poll()
+        self.assertEqual(self.restarts, [True])
+
     def test_disabling_automatic_download_rejects_its_late_result(self):
         controller = self.controller(automatic=True)
         controller.check()

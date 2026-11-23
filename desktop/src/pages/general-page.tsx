@@ -1,3 +1,5 @@
+import { interfaceLanguages } from "../settings/interface-languages";
+import { isMacDesktop } from "../platform";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Picker, Row, Section, Toggle } from "../components/ui";
@@ -12,17 +14,29 @@ const languageNames: Record<string, string> = {
 
 export function GeneralPage({ controller }: SettingsPageProps) {
   const { state, run } = controller;
+  const macDesktop = isMacDesktop();
   return (
     <>
       <Section title={t("Sistema")}>
-        <Toggle
-          title={t("Iniciar com o Windows")}
-          hint={t("Deixe o Clarify pronto quando você precisar.")}
-          checked={state.autostart}
-          onChange={(v) => void run("setAutostart", v)}
-        />
+        <Row title={t("setup_interface_language")}>
+          <Picker literalLabels label={t("setup_interface_language")} value={state.uiLanguage || "en"}
+            options={interfaceLanguages}
+            disabled={controller.busy} onChange={value => void run("personalSetupCommand", "interface_language", JSON.stringify({ interfaceLanguage: value }))} />
+        </Row>
+        {macDesktop ? (
+          state.applicationVersion && (
+            <Row title={t("Versão {v0}", { v0: state.applicationVersion })}>{null}</Row>
+          )
+        ) : (
+          <Toggle
+            title={t("Iniciar com o Windows")}
+            hint={t("Deixe o Clarify pronto quando você precisar.")}
+            checked={state.autostart}
+            onChange={(v) => void run("setAutostart", v)}
+          />
+        )}
       </Section>
-      {state.applicationVersion && (
+      {!macDesktop && state.applicationVersion && (
         <Section title={t("Atualizações")}>
           <Toggle
             title={t("Atualização automática")}
@@ -41,8 +55,10 @@ export function GeneralPage({ controller }: SettingsPageProps) {
               type="button"
               className="w-full"
               disabled={!state.updateSupported || state.updateBusy}
-              onClick={() => void run("checkForUpdates")}
-            >{t("Verificar atualizações")}</Button>
+              onClick={() => void run(state.updateAvailable ? "installUpdate" : "checkForUpdates")}
+            >{state.updateAvailable
+              ? t("Instalar atualização {v0}", { v0: state.updateVersion || "" })
+              : t("Verificar atualizações")}</Button>
           </Row>
         </Section>
       )}

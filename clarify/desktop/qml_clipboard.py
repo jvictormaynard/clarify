@@ -2,7 +2,7 @@
 
 The QML frontend cannot depend on the legacy Tk application.  This module is
 the small platform boundary that gives :class:`workflows.WorkflowService` the
-selection transaction it needs while keeping all Win32 and clipboard
+selection transaction it needs while keeping native focus and clipboard
 ownership rules outside the UI and orchestration layers.
 """
 
@@ -166,15 +166,13 @@ def _same_selected_text(left: Any, right: Any) -> bool:
 class QmlClipboardGateway(ClipboardGateway):
     """Concrete clipboard gateway used by the QML ``WorkflowService``.
 
-    The default callables are the real Win32/native helpers.  Each boundary is
-    injectable so the ownership and focus rules can be tested without Windows,
-    a desktop session, or a GUI.
+    Each native boundary can be tested without a desktop session or a GUI.
     """
 
     def __init__(
         self,
         *,
-        adapter: WindowsClipboardAdapter | None = None,
+        adapter: Any | None = None,
         is_windows: bool | None = None,
         platform_name: str | None = None,
         foreground_window: Callable[[], Any] | None = None,
@@ -194,23 +192,25 @@ class QmlClipboardGateway(ClipboardGateway):
         self.is_windows = (
             self.platform_name == "Windows" if is_windows is None else bool(is_windows)
         )
-        self.adapter = (
-            WindowsClipboardAdapter(is_windows=self.is_windows)
-            if adapter is None
-            else adapter
+        self._macos = None
+        if self.platform_name == "Darwin" and not self.is_windows:
+            if __package__:
+                from .macos_clipboard import MacOSClipboard
+            else:
+                from macos_clipboard import MacOSClipboard
+
+            self._macos = MacOSClipboard()
+        if adapter is None:
+            adapter = self._macos or WindowsClipboardAdapter(is_windows=self.is_windows)
+        self.adapter = adapter
+        self._foreground_window = foreground_window or (
+            self._macos.foreground_window if self._macos else _foreground_window_handle
         )
-        self._foreground_window = (
-            _foreground_window_handle
-            if foreground_window is None
-            else foreground_window
+        self._executable_for_window = executable_for_window or (
+            (lambda window: window.executable) if self._macos else _window_executable
         )
-        self._executable_for_window = (
-            _window_executable
-            if executable_for_window is None
-            else executable_for_window
-        )
-        self._activate_window = (
-            _activate_window if activate_window is None else activate_window
+        self._activate_window = activate_window or (
+            self._macos.activate if self._macos else _activate_window
         )
         self._send_ctrl_c = (
             (lambda: send_ctrl_key("c")) if send_ctrl_c is None else send_ctrl_c
@@ -220,7 +220,9 @@ class QmlClipboardGateway(ClipboardGateway):
             if send_ctrl_v is None
             else send_ctrl_v
         )
-        self._alt_pressed = native_alt_pressed if alt_pressed is None else alt_pressed
+        self._alt_pressed = alt_pressed or (
+            self._macos.modifiers_pressed if self._macos else native_alt_pressed
+        )
         self._run = subprocess.run if run is None else run
         self._sleep = time.sleep if sleep is None else sleep
         self._monotonic = time.monotonic if monotonic is None else monotonic
@@ -231,7 +233,7 @@ class QmlClipboardGateway(ClipboardGateway):
     def capture_target(self) -> SelectionTarget | None:
         """Capture the foreground window before a workflow releases focus."""
 
-        if not self.is_windows:
+        if not self.is_windows and self._macos is None:
             return None
         try:
             window = self._foreground_window()
@@ -246,12 +248,14 @@ class QmlClipboardGateway(ClipboardGateway):
         return SelectionTarget(window, executable)
 
     def is_target_current(self, target: SelectionTarget) -> bool:
-        """Check the HWND at every focus-sensitive transaction boundary."""
+        """Verify the native target at each focus-sensitive boundary."""
 
-        if not self.is_windows or target is None or not target.window:
+        if target is None or not target.window:
             return False
         try:
-            return self._foreground_window() == target.window
+            if self._macos is not None:
+                return self._macos.is_current(target.window)
+            return self.is_windows and self._foreground_window() == target.window
         except Exception:
             return False
 
@@ -344,8 +348,20 @@ class QmlClipboardGateway(ClipboardGateway):
         return None, previous_sequence, observed_sequence
 
     def capture_selection(self, target: SelectionTarget) -> SelectionCapture | None:
-        """Capture selected text while retaining an owned clipboard snapshot."""
+        """Capture selected text and preserve the user's clipboard."""
 
+        if self._macos is not None:
+            if target is None:
+                return None
+            try:
+                selection = self._macos.selection(target.window)
+            except Exception:
+                return None
+            return (
+                SelectionCapture(target, selection[0], selection[1])
+                if selection is not None
+                else None
+            )
         if not self.is_windows or not self.is_target_current(target):
             return None
         previous = self._snapshot_for_selection()
@@ -378,7 +394,7 @@ class QmlClipboardGateway(ClipboardGateway):
         self, snapshot: Any, expected_sequence: int | None, expected_text: str
     ) -> bool:
         if (
-            not self.is_windows
+            (not self.is_windows and self._macos is None)
             or not self._is_restorable(snapshot)
             or expected_sequence is None
         ):
@@ -403,18 +419,69 @@ class QmlClipboardGateway(ClipboardGateway):
         copied_sequence = context.get("copy_observed_sequence")
         self._restore_if_owned(previous, copied_sequence, selected)
 
-    def _write_visible_copy(self, text: str) -> None:
-        """Copy a visible result without claiming selection/paste support."""
+    def _write_visible_copy(self, text: str) -> bool:
+        """Copy a result that the user can paste manually."""
 
         if self.is_windows:
             self.adapter.write_text(text)
-            return
+            return True
+        if self._macos is not None:
+            try:
+                return self.adapter.write_text(text) is not None
+            except ImportError:
+                # A source run without PyObjC can still copy a visible result.
+                pass
         command = (
             ["pbcopy"]
             if self.platform_name == "Darwin"
             else ["xclip", "-selection", "clipboard"]
         )
         self._run(command, input=str(text).encode(), check=True)
+        return True
+
+    def _publish_macos(
+        self, text, target, *, expected_selection=None, allow_unconfirmed=False
+    ):
+        value = str(text)
+        with self._lock:
+            try:
+                if target is None or not self.is_target_current(target):
+                    return (
+                        SelectionDisposition.COPIED
+                        if self._write_visible_copy(value)
+                        else SelectionDisposition.PRESERVED
+                    )
+                before = self._snapshot()
+                sequence = self.adapter.write_text(
+                    value, expected_sequence=before.sequence
+                )
+            except (OSError, RuntimeError, TypeError, ValueError):
+                return SelectionDisposition.PRESERVED
+            if sequence is None:
+                return SelectionDisposition.PRESERVED
+            if self._is_restorable(before):
+                try:
+                    pasted = self._macos.paste(
+                        target.window,
+                        value,
+                        sequence,
+                        expected_selection=expected_selection,
+                        allow_unconfirmed=allow_unconfirmed,
+                        sleep=self._sleep,
+                        monotonic=self._monotonic,
+                    )
+                except Exception:
+                    pasted = False
+                if pasted:
+                    self._sleep(self.restore_delay)
+                    self._restore_if_owned(before, sequence, value)
+                    return SelectionDisposition.PASTED
+            try:
+                if self.adapter.owns_text(sequence, value):
+                    return SelectionDisposition.COPIED
+            except Exception:
+                pass
+            return SelectionDisposition.PRESERVED
 
     def _publish_generated_text(
         self,
@@ -448,18 +515,12 @@ class QmlClipboardGateway(ClipboardGateway):
                 or written_sequence is None
             ):
                 return False
-            if paste_predicate is not None:
-                try:
-                    if not paste_predicate():
-                        return False
-                except Exception:
-                    return False
             try:
+                if paste_predicate is not None and not paste_predicate():
+                    return False
                 pasted = self._send_ctrl_v(value)
             except Exception:
                 return False
-            # Native key injection alone is not proof that the target consumed
-            # Ctrl+V.  Only an explicit True may enter the restore path.
             if pasted is not True:
                 return False
             self._sleep(self.restore_delay)
@@ -470,6 +531,14 @@ class QmlClipboardGateway(ClipboardGateway):
     ) -> SelectionDisposition:
         """Verify the original selection before replacing it with ``result``."""
 
+        if self._macos is not None:
+            if capture is None or capture.context is None:
+                return self._publish_macos(result, None)
+            return self._publish_macos(
+                result,
+                capture.target,
+                expected_selection=(capture.text, capture.context),
+            )
         if not self.is_windows:
             self._write_visible_copy(result)
             return SelectionDisposition.COPIED
@@ -513,10 +582,14 @@ class QmlClipboardGateway(ClipboardGateway):
         return SelectionDisposition.COPIED
 
     def write_dictation_result(
-        self, target: SelectionTarget | None, text: str
+        self, target: SelectionTarget | None, text: str, *, allow_unconfirmed=True
     ) -> SelectionDisposition:
-        """Publish dictation, pasting only into a verified Windows target."""
+        """Publish dictation, pasting only into a verified native target."""
 
+        if self._macos is not None:
+            return self._publish_macos(
+                text, target, allow_unconfirmed=allow_unconfirmed
+            )
         if not self.is_windows:
             self._write_visible_copy(text)
             return SelectionDisposition.COPIED
@@ -533,7 +606,7 @@ class QmlClipboardGateway(ClipboardGateway):
     def owns_clipboard(self) -> bool:
         """Return whether the current clipboard can be safely snapshotted."""
 
-        if not self.is_windows:
+        if not self.is_windows and self._macos is None:
             return False
         try:
             return self._is_restorable(self._snapshot())
@@ -551,6 +624,16 @@ class QmlClipboardGateway(ClipboardGateway):
         value = str(text or "").strip()
         if not value:
             return VoiceTranslationPublication.NONE
+        if self._macos is not None:
+            paste_target = (
+                target if disposition is VoiceTranslationPublication.PASTED else None
+            )
+            published = self._publish_macos(value, paste_target)
+            return {
+                SelectionDisposition.PASTED: VoiceTranslationPublication.PASTED,
+                SelectionDisposition.COPIED: VoiceTranslationPublication.COPY_ONLY,
+                SelectionDisposition.PRESERVED: VoiceTranslationPublication.REJECTED,
+            }[published]
         if disposition is VoiceTranslationPublication.PASTED:
             safe = target is not None and self.is_target_current(target)
             try:
@@ -575,11 +658,17 @@ class QmlClipboardGateway(ClipboardGateway):
         return VoiceTranslationPublication.COPY_ONLY
 
     def activate(self, target: SelectionTarget) -> None:
-        if self.is_windows and target is not None and target.window:
-            self._activate_window(target.window)
+        if target is not None and target.window:
+            if self.is_windows:
+                self._activate_window(target.window)
+            elif self._macos is not None:
+                try:
+                    self._activate_window(target.window)
+                except Exception:
+                    pass
 
     def alt_pressed(self) -> bool:
-        if not self.is_windows:
+        if not self.is_windows and self._macos is None:
             return False
         try:
             return bool(self._alt_pressed())

@@ -47,7 +47,7 @@ export function TextEditing({ controller: c }: SettingsPageProps) {
     <p className="hint">{t(help)}</p>
     {(mode === "clarity" || mode === "action") && c.state.dictationCleanupRefinementAllowed === false && <div>
       <p className="hint" role="status">{t("Revisão indisponível nesta rota. As palavras serão preservadas.")}</p>
-      {!(c.state.accountState?.managed || c.state.accountState?.signedIn) && <Button variant="text" onClick={() => void c.navigate("style", c.state.textActionDictationContext === "local_asr" ? "local_asr_refinement" : "refinement")}>{t("Configurar revisão")}</Button>}
+      {!(c.state.accountState?.managed) && <Button variant="text" onClick={() => void c.navigate("style", c.state.textActionDictationContext === "local_asr" ? "local_asr_refinement" : "refinement")}>{t("Configurar revisão")}</Button>}
     </div>}
   </>;
 }

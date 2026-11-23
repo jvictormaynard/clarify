@@ -7,6 +7,8 @@ request freezes the PC configuration and dictionary before it calls providers.
 from __future__ import annotations
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
 import tempfile
@@ -19,7 +21,7 @@ from dictionary_snippets import (
 )
 from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
-from provider_types import ProviderError, ProviderCapability
+from provider_types import ProviderError, ProviderCapability, TranscriptionResult
 from repositories import AppConfig
 from shared.dictation_policy import cleanup_level as parse_cleanup_level
 from shared.output_preferences import (
@@ -143,6 +145,11 @@ class ComputerProcessor:
         self.config = config
         self.dictionary_service = dictionary_service
         self.registry = registry if registry is not None else PROVIDER_REGISTRY
+        self._live_lock = threading.RLock()
+        self._live_signature = None
+        self._live_check = None
+        self._live_pool = None
+        self._live_stopped = False
 
     def _current(self) -> AppConfig:
         value = (
@@ -509,6 +516,122 @@ class ComputerProcessor:
             snapshot, dictionary, style, target, explicit, has_action
         )
 
+    def start_readiness(self):
+        with self._live_lock:
+            self._live_stopped = False
+
+    def stop_readiness(self):
+        with self._live_lock:
+            self._live_stopped = True
+            check, pool = self._live_check, self._live_pool
+            self._live_pool = None
+            if check:
+                check[2].cancel()
+        if pool:
+            pool.shutdown(wait=False, cancel_futures=True)
+        if check:
+            try:
+                check[1].result(timeout=2)
+            except Exception:
+                pass
+
+    def _native_live_configured(self):
+        current = self._current()
+        route = current.workflow(WorkflowScope.TRANSCRIPTION)
+        return (
+            route.provider_id == "local_asr"
+            and route.model_id == "nemotron-3.5-streaming"
+            and self._ready_for(current, "dictate")
+        )
+
+    def refresh_live_readiness(self):
+        """Stat outside the host lock; hash only changed installations on one worker."""
+        if not self._native_live_configured():
+            with self._live_lock:
+                self._live_signature = None
+            return
+        from local_asr_catalog import installer_for
+
+        try:
+            installer = installer_for("nemotron-3.5-streaming")
+            signature = []
+            for path, size, digest in installer._expected_installed_files():
+                stat = path.stat()
+                signature.append(
+                    (
+                        str(path),
+                        size,
+                        digest,
+                        stat.st_dev,
+                        stat.st_ino,
+                        stat.st_size,
+                        stat.st_mtime_ns,
+                        stat.st_ctime_ns,
+                    )
+                )
+            signature = tuple(signature)
+        except (OSError, ValueError, RuntimeError):
+            with self._live_lock:
+                self._live_signature = None
+            return
+        with self._live_lock:
+            if self._live_stopped:
+                return
+            self._live_signature = signature
+            check = self._live_check
+            if check and not check[1].done():
+                if check[0] != signature:
+                    check[2].cancel()
+                return
+            if check and check[0] == signature and not check[2].cancelled:
+                return
+            if self._live_pool is None:
+                self._live_pool = ThreadPoolExecutor(
+                    max_workers=1, thread_name_prefix="computer-assets"
+                )
+            token = CancellationToken()
+            future = self._live_pool.submit(
+                installer.status, cancel_check=token.raise_if_cancelled
+            )
+            self._live_check = (signature, future, token)
+
+    @property
+    def live_recognition(self) -> bool:
+        if not self._native_live_configured():
+            return False
+        with self._live_lock:
+            check = self._live_check
+            if (
+                self._live_stopped
+                or not check
+                or check[0] != self._live_signature
+                or check[2].cancelled
+                or not check[1].done()
+            ):
+                return False
+            try:
+                return check[1].result().get("state") == "installed"
+            except Exception:
+                return False
+
+    def require_live(self, prepared):
+        route = prepared.snapshot.config.workflow(WorkflowScope.TRANSCRIPTION)
+        if (
+            route.provider_id != "local_asr"
+            or route.model_id != "nemotron-3.5-streaming"
+        ):
+            raise ComputerActionNotReady(
+                "Live PCM is unsupported; use explicit WAV processing"
+            )
+
+    def live_engine(self, prepared):
+        self.require_live(prepared)
+        config = prepared.snapshot.config
+        route = config.workflow(WorkflowScope.TRANSCRIPTION)
+        return self.registry.adapter("local_asr").select_backend(
+            route.model_id, config.local_asr_device
+        )
+
     def process_dictation(
         self,
         audio_wav: bytes,
@@ -523,6 +646,7 @@ class ComputerProcessor:
         text_action_revision: int | None = None,
         text_action_language: str | None = None,
         prepared: PreparedDictation | None = None,
+        pretranscribed: TranscriptionResult | None = None,
     ) -> dict[str, Any]:
         cancel_token.raise_if_cancelled()
         prepared = prepared or self.prepare_dictation(
@@ -545,7 +669,9 @@ class ComputerProcessor:
             path = Path(directory) / "dictation.wav"
             path.write_bytes(audio_wav)
             result = service.transcribe(
-                RecordingSnapshot(path, audio_wav, cancel_token),
+                RecordingSnapshot(
+                    path, audio_wav, cancel_token, pretranscribed=pretranscribed
+                ),
                 "prompt",
                 language,
                 dictation_snapshot=snapshot,

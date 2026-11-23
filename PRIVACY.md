@@ -1,33 +1,31 @@
 # Clarify privacy notice
 
-Effective date: 26 October 2026.
+Source notice updated: 16 November 2026. Deployment of this source is a separate step.
 
 Clarify is an open-source app maintained by João Victor Maynard Mota. This
-notice describes the optional hosted beta at `clarify-api.victormaynard.com`
+notice describes the optional account service at `clarify-api.victormaynard.com`
 and the Clarify desktop and iOS clients. Self-hosted services have their own
 operators and policies.
 
 ## Choose how to process your audio
 
-- Without an account, a personal provider key sends audio and text directly
-  to the selected provider. The Clarify account service does not receive them.
-- Desktop local inference processes audio on the device. It does not silently
-  switch to a cloud provider. Local inference is not available on iOS.
-- Without a Clarify account, desktop users can connect an eligible ChatGPT plan
-  for rewriting, translation, and text refinement. These requests send source
-  text, instructions, and any applied vocabulary or snippets directly to OpenAI.
-  This connection does not send audio or grant access to ChatGPT conversations
-  or memories. Local transcription can be combined with this cloud text step.
-- In paired-computer mode, the iPhone sends audio or text to the computer over
-  an authenticated HTTPS connection. The computer uses its own models and
-  provider settings. Local transcription runs on that computer. A configured
-  external provider receives the data needed for its operation. Computer history
-  stays on the iPhone and does not synchronize with a Clarify account.
-- In account mode, signing in activates account processing automatically. The Clarify
-  service receives audio and the vocabulary needed for that request. It sends
-  audio to Groq for transcription,
-  then sends the transcript and vocabulary to Groq for rewriting. The result
-  returns to the device.
+- Desktop local inference processes audio on the computer. It does not silently
+  switch to a cloud provider. Signing in does not change this route.
+- A personal provider key sends audio or text directly to the selected provider.
+  The Clarify account service does not receive this processing input.
+- A connected eligible ChatGPT subscription can rewrite, translate or refine text.
+  Source text, instructions and applied vocabulary or snippets go directly to
+  OpenAI. This route sends no audio and grants no access to conversations or memories.
+- OpenCode runs on the user's computer with a separate local configuration. Its
+  selected free provider receives the text needed for that operation. Free access
+  has provider limits. A refusal does not select a paid provider automatically.
+- On iPhone, processing uses an explicitly paired computer. The computer uses its
+  own models and provider settings. Computer history stays on the iPhone and does
+  not synchronize with a Clarify account. Optional on-device Apple speech source
+  remains disabled until native acceptance.
+- Clarify-funded transcription and text processing are retired. Legacy endpoints
+  reject requests with an update-required error before reading processing input
+  or calling a provider. An account alone does not enable mobile processing.
 
 Signing in automatically synchronizes the account dictionary and new account
 transcriptions, including their original and revised text, timestamp and source
@@ -65,21 +63,23 @@ it does not save device credentials, desktop certificates, audio or text.
 This optional TLS relay does not require a Clarify account. It remains disabled
 in builds without a configured relay service.
 
-Cloudflare internet access is a separate route and requires a free, verified
-Clarify account. The account authorizes tunnel allocation; processing still runs
-on the paired computer. The control service stores bounded allocation metadata
-and a hash of the account identifier, not the account's email or processing usage.
-Device credentials, audio and text use HPKE-encrypted envelopes inside HTTPS.
-Cloudflare can observe network metadata and interrupt traffic, but does not
-receive those encrypted contents in plaintext. Direct LAN access remains
-available without a Clarify account.
+New internet connections use WebRTC, directly when possible or through a TURN
+relay. A verified Clarify account authorizes signaling and short-lived relay
+access. Device credentials still authorize processing. Trusted pairing saves the
+computer's public key; signaling cannot replace it. The signaling operator stores
+bounded host enrollment and revocation metadata. Audio and text travel inside the
+encrypted peer connection. The TURN operator can see network addresses, connection
+times and traffic volume. Account sessions stay in native code, outside the
+hidden transport page and keyboard extension. New hosts do not allocate Cloudflare
+tunnels. Existing stored routes and their compatibility modules remain readable.
+Internet access stays disabled without an operator-configured signaling endpoint.
 
 ## Account information and security
 
 The service stores the email address, verified account status, sessions,
-account dictionary, account snippets, synchronized history, and processing usage
-needed to enforce limits. It also stores the date of requested hosted access and
-the most recent hosted activity to determine weekly allocation eligibility.
+account dictionary, account snippets, action definitions and synchronized history.
+Historical processing and funding records remain for accounting; new processing
+does not consume a Clarify inference allocation.
 Resend delivers the email codes. Enter the code in the app; the email does not
 require a browser link. Codes expire after 10 minutes. Sessions expire after
 14 days and can be revoked by signing out.
@@ -97,8 +97,7 @@ Accounts with the same email address are not linked automatically.
 The separate ChatGPT plan connection stores the verified OpenAI account
 identifier, email, client registration, host identifier, and OAuth credentials
 in a separate `chatgpt-secrets` desktop credential store. Windows protects this
-record with current-user DPAPI. Experimental Linux and macOS source runs use the owner-restricted
-file backend. Tokens are not sent to the Clarify account service or Settings web
+record with current-user DPAPI. Linux and macOS use an owner-restricted file. Tokens are not sent to the Clarify account service or Settings web
 interface. Signing out clears the selected connection's tokens and attempts to
 revoke its renewable session. If revocation cannot be confirmed, disconnect the
 app in ChatGPT settings. Retained account registrations allow later sign-in;
@@ -119,10 +118,59 @@ synchronized transcription history; the original recognized transcript is retain
 
 Authorized service operators can access server data; dictionary, snippet and history sync are not
 end-to-end encrypted. Windows protects stored keys and account sessions with
-current-user DPAPI. iOS stores credentials in Keychain. Desktop source runs on
-Linux and macOS use owner-restricted credential files and are experimental.
+current-user DPAPI. iOS stores credentials in Keychain. Linux and macOS use
+owner-restricted files that contain plaintext credentials.
 
 ## Retention and deletion
+
+Desktop dictation keeps stopped recordings in the profile's
+`recording-recovery` folder, including failed processing attempts. History lists
+these recordings even when text history is disabled. They remain until you delete
+the corresponding History item. They do not synchronize with account history. Retry sends
+the selected audio through the current personal provider settings as a new
+request. Cancelled recordings are not added. A crash during capture, before the
+local copy is saved, can leave only the working file. History can also find
+remaining working files after processing ends or the app restarts. A full disk
+can prevent either copy from being saved.
+
+Desktop Meetings transcribes microphone audio on your computer. When you select
+system audio, it also transcribes sound from apps on Windows and macOS 14.2 or
+later. On macOS, Clarify requests system audio access and captures only audio.
+Clarify does not save meeting audio. It saves meeting notes, transcripts and
+summaries in the local profile. You can delete
+them from Meetings. They do not sync with your Clarify account. If you request
+a summary, Clarify sends the transcript and your notes to the configured
+text model on this computer.
+When speaker labels are enabled, Clarify analyzes voices on the device. It
+saves the labels and names you assign with the transcript. It does not save
+voiceprints or use the names to identify people in other meetings.
+On Mac, when the local speaker comparison model is installed, Clarify can
+compare clean system speech to keep a speaker's label after a long gap.
+The comparison vectors stay on the device, in memory, until the active
+meeting ends. This includes time spent paused.
+
+If you enable overlap recovery on Mac, Clarify keeps up to two short
+excerpts of system audio in the queue at a time, including the one it is
+processing. It can compare recovered
+speech with nearby clean speech to match speaker labels in the same meeting.
+Audio and voice vectors stay in memory and are released when processing ends.
+Clarify saves recovered text and any supported labels alongside the original
+transcript.
+
+iPhone stopped recordings remain in the app's private Application Support
+storage until explicit deletion from a History item in Dictation. Audio is excluded from device
+backup and is not synchronized with account history or shared with the keyboard.
+Reprocess uses the paired computer as a new request. Clearing
+text history does not delete recordings. An interrupted capture or a failed
+storage move can leave a working clip in temporary storage; recovery can list
+that clip while it remains available. iOS can remove temporary storage, and a
+forced termination during capture can leave an incomplete recording.
+
+Playback and audio export read the local recording. Undo AI edit changes the
+text shown on this device to the original transcription; it leaves the account's
+stored text unchanged. Deleting an item removes its local audio and deletes its
+text under the existing local or account history policy. Clearing text history
+leaves local audio as items that can still be played, exported or retried.
 
 Desktop maintainer experiments can explicitly enable local benchmark audio
 collection. It is disabled by default and separate from account history. When
@@ -132,10 +180,11 @@ copies older than seven days; removal cannot run while the app is closed.
 These copies do not synchronize or upload automatically. A separate explicit
 benchmark command can send selected copies to the configured test provider.
 
-Uploaded audio uses temporary files removed at the end of request processing.
-An interrupted process can leave temporary files until its container is removed.
-The server caches results for five minutes to avoid charging twice for a retry;
-periodic cleanup removes expired text. Operation metadata is kept for 31 days.
+Computer processing uses temporary audio files removed after normal processing.
+A crash or forced shutdown can leave temporary files. The computer keeps a bounded
+in-memory result cache and durable operation metadata for duplicate and cancelled
+request handling. The account service receives no new inference uploads. Historical
+server processing caches and operation records retain their existing cleanup policy.
 Synchronized account history is stored separately until you delete entries,
 clear account history, or delete the account. Deletion removes stored transcript
 text and retains only a record identifier and synchronization revision so an
@@ -149,7 +198,7 @@ Application logs exclude audio, transcripts, credentials and request headers.
 Hosting and provider services can retain their own connection and usage metadata.
 
 Use the account controls in Settings / Ajustes to delete the account and confirm.
-This removes the account, hosted dictionary and snippets, synchronized history and its local
+This removes the account, synchronized dictionary and snippets, synchronized history and its local
 cache on the device performing deletion, clears processing text and content
 hashes, and detaches processing accounting records. It does not erase guest or
 pre-upgrade local history. Clear local history separately in the app. Daily database

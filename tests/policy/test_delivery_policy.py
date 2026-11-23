@@ -55,13 +55,7 @@ class DeliveryPolicyTests(unittest.TestCase):
                 "ios",
             },
             "distribution/portable-update-policy.json": {"python", "qt", "package"},
-            "desktop/src-tauri/src/main.rs": {
-                "package",
-                "python",
-                "qt",
-                "settings_unit",
-                "settings_browser",
-            },
+            "desktop/electron/main.cjs": {"desktop_shell"},
             "workflow_provider.py": {
                 "python",
                 "qt",
@@ -133,7 +127,7 @@ class DeliveryPolicyTests(unittest.TestCase):
             ):
                 checks = commands("desktop_shell")
             for check in checks:
-                self.assertEqual(check["argv"][:3], [node, str(cli), "run"])
+                self.assertEqual(check["argv"][:3], [node, str(cli.resolve()), "run"])
         self.assertEqual(
             [check["argv"][-1] for check in checks],
             ["test:electron", "build:electron", "test:electron:smoke"],
@@ -203,6 +197,7 @@ class DeliveryPolicyTests(unittest.TestCase):
     def test_known_release_tools_and_headless_units_do_not_select_product_builds(self):
         for path in (
             "scripts/release_candidate.py",
+            "scripts/release_status.py",
             "scripts/release_delivery.py",
             "scripts/app_store_handoff.py",
         ):
@@ -213,6 +208,10 @@ class DeliveryPolicyTests(unittest.TestCase):
             {"settings_unit"},
         )
         self.assertEqual(impact.select_jobs(["new-unclassified-tool.sh"]), set(JOBS))
+        self.assertEqual(
+            impact.select_jobs(["scripts/deployment_profile_backup.py"]),
+            impact.select_jobs(["scripts/deploy.ps1"]),
+        )
 
     def test_pull_request_tests_the_complete_merge_against_base(self):
         event = {"pull_request": {"base": {"sha": "a" * 40}, "head": {"sha": "c" * 40}}}

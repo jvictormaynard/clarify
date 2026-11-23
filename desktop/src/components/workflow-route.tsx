@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button, Field, Picker, Row, SettingsDisclosure } from "./ui";
 import type { SettingsPageProps } from "../settings/use-settings";
@@ -12,17 +13,32 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
     setRouteOverride,
     selectRouteProvider,
   } = controller;
+  const [openCodeDraftScope, setOpenCodeDraftScope] = useState<string>();
+  const pendingOpenCode = openCodeDraftScope === state.selectedScope && state.routeProviderId !== "opencode";
+  const openCode = state.personalSetupState?.textOptions.find(option => option.id === "opencode");
+  const loadOpenCode = () => run("personalSetupCommand", "connect_opencode", "{}");
+  const chooseProvider = (provider: string) => {
+    if (provider === "opencode" && state.routeProviderId !== provider) {
+      setOpenCodeDraftScope(state.selectedScope);
+      if (openCode?.runtimeInstalled && !openCode.models?.length && !state.personalSetupState?.busy) {
+        void loadOpenCode();
+      }
+      return;
+    }
+    setOpenCodeDraftScope(undefined);
+    void selectRouteProvider(provider);
+  };
   return (
     <>
       <Row title={t("Serviço")}>
         <Picker
           label={t("Serviço")}
-          value={state.routeProviderId}
+          value={pendingOpenCode ? "opencode" : state.routeProviderId}
           options={state.routeProviders}
-          onChange={(value) => void selectRouteProvider(value)}
+          onChange={chooseProvider}
         />
       </Row>
-      {state.routeProviderId === "chatgpt" && (
+      {!pendingOpenCode && state.routeProviderId === "chatgpt" && (
         <div>
           <p className="hint" role="status">{t(state.chatgptState?.connected && state.chatgptState.planEnabled
             ? "Usando seu plano ChatGPT" : "Conecte o ChatGPT e permita o uso do plano.")}</p>
@@ -34,11 +50,18 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
       <Row title={t("Modelo")}>
         <Picker
           label={t("Modelo")}
-          value={state.routeModelId}
-          options={state.routeModelOptions}
-          onChange={(value) => void run("setRouteModelId", value)}
-          onRefresh={() => void run("refreshRouteModels")}
-          busy={state.routeModelStatus === "loading"}
+          value={pendingOpenCode ? "" : state.routeModelId}
+          options={pendingOpenCode ? openCode?.models ?? [] : state.routeModelOptions}
+          onChange={(value) => {
+            if (!pendingOpenCode) {
+              void run("setRouteModelId", value);
+              return;
+            }
+            void run("savePreference", "setOpenCodeRouteModel", [state.selectedScope, value])
+              .then(saved => { if (saved) setOpenCodeDraftScope(undefined); });
+          }}
+          onRefresh={() => void (pendingOpenCode ? loadOpenCode() : run("refreshRouteModels"))}
+          busy={pendingOpenCode ? state.personalSetupState?.busy : state.routeModelStatus === "loading"}
           empty={
             state.routeProviderId === "local_asr"
               ? t("Nenhum modelo instalado.")
@@ -46,7 +69,15 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           }
         />
       </Row>
-      {["empty", "not_configured", "error"].includes(
+      {pendingOpenCode && state.personalSetupState?.error && (
+        <p role="status" className="hint">{t(state.personalSetupState.error)}</p>
+      )}
+      {pendingOpenCode && openCode?.runtimeInstalled === false && (
+        <Button onClick={() => void loadOpenCode()} disabled={state.personalSetupState?.busy}>
+          {t("setup_install_opencode")}
+        </Button>
+      )}
+      {!pendingOpenCode && ["empty", "not_configured", "error"].includes(
         state.routeModelStatus,
       ) && (
         <Button variant="text" onClick={() => void navigate("models")}>
@@ -56,7 +87,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           <ArrowRight size={15} />
         </Button>
       )}
-      {!["local_asr", "chatgpt"].includes(state.routeProviderId) && (
+      {!pendingOpenCode && !["local_asr", "chatgpt", "opencode"].includes(state.routeProviderId) && (
         <SettingsDisclosure key={state.selectedScope} title={t("Modelo e endereço personalizados")}>
           <Field
             title={t("ID do modelo")}

@@ -14,6 +14,18 @@ not identify the current source version or current Apple availability. Check
 
 ## Computer connection candidate
 
+Current source uses the paired computer for transcription and text processing.
+A Clarify account supplies optional libraries and remote signaling authorization,
+with no funded inference quota. Signing in alone does not enable the keyboard
+processing route. The dated delivery sections below describe earlier versions.
+The optional Apple SpeechAnalyzer source remains disabled pending native acceptance.
+Incremental phone-to-computer PCM capture is also an experimental source path.
+It requires `ClarifyExperimentalLiveCapture=true` in the containing app's Info.plist
+and foreground admission. Official configuration leaves it disabled until native
+background acceptance. Keyboard and background dictation retain the existing WAV
+path, selected before recording. A captured live operation is never replayed as
+WAV automatically. Backgrounding does not invoke a new whole-recording cancel.
+
 The mobile workspace has five direct tabs: **Início**, **Dicionário**,
 **Snippets**, **Estilo**, and **Ações**. Home contains keyboard activation and
 date-grouped history. Dictionary and Snippets open their lists and editors.
@@ -53,20 +65,20 @@ sets the output language. Each operation keeps its accepted preference snapshot.
 Choose **Meu computador** on the sign-in page or under **Ajustes > Processamento**, then scan the QR
 inside Clarify. The computer must have its iPhone connection enabled. Direct LAN
 routes require access to the computer's private network. A Clarify account is
-not required for LAN processing. Internet access in the Cloudflare preview needs
-a free, verified Clarify account and one initial pairing on the same network.
-Login can continue that pairing without another QR scan. The account authorizes
-the connection; models and provider keys remain on the computer. See the
-[Cloudflare transport contract](../docs/computer-connection.md#cloudflare-internet-access).
-The optional TLS byte relay remains a separate transport.
+not required for LAN processing. Internet access in the new source uses direct WebRTC with TURN fallback. It
+requires an operator-configured HTTPS signaling endpoint and a Clarify account.
+The exact `ClarifyWebRTCSignalURL` must match the trusted pairing route. New hosts
+do not allocate Cloudflare tunnels. See [the WebRTC operator contract](../connect/webrtc/README.md).
+Existing computer history remains separate from account history. An offline or
+revoked computer never selects a hosted fallback.
 
-The existing recorder, keyboard bridge and local history store serve both modes.
+The existing recorder, keyboard bridge and local history store serve computer processing.
 Computer mode also exposes selected-text actions in the keyboard,
 and text processing in the Actions tab. It uses the computer's configured dictionary and
 snippets. This protocol does not upload an iPhone library. Computer history has
 its own stable computer scope and is never synchronized with a hosted account.
 An offline or revoked computer connection does not select hosted processing.
-Switching modes or disconnecting stops capture and rejects former operations.
+Switching computers or disconnecting stops capture and rejects former operations.
 
 QR parsing, device credentials and HTTPS requests stay in Swift. Keychain stores
 the device session and trusted routes in the containing app only. The keyboard
@@ -74,7 +86,27 @@ gets a nonsecret state projection. Pinned LAN and DNS routes require an exact
 SHA-256 hash of the leaf DER certificate. Other public DNS routes with a null pin
 retain platform CA trust. Redirects are rejected.
 The recorder's AAC clip is converted locally to PCM16 mono 16 kHz WAV, capped at
-300 seconds. Conversion and upload cancellation remove temporary audio.
+300 seconds. Converted request WAVs remain temporary. Stopped source recordings are kept
+in app-only storage and appear as normal History items in Dictation,
+including when processing fails or is cancelled. Reprocess uses the current
+paired computer and current dictation settings as a new request.
+History shows the timestamp and source device to the left of each transcript,
+without inline action controls. Hold an item
+to open the native context menu for copying, audio playback, transcription retry,
+export and deletion, as available. Failed or interrupted items show the audio
+duration and a retry button. Processing items hide that button. VoiceOver exposes
+the same actions through its action menu. While the keyboard session remains
+active, a recoverable recording failure also exposes Retry in the keyboard error
+panel. It reprocesses the saved audio as a new operation without opening the
+microphone. Only the containing app owns the audio path; the keyboard sends the
+failed operation ID. Changed destinations, cancelled attempts and duplicate taps
+cannot retarget that retry. Automatic insertion retains the original document
+owner; a retry from another document requires explicit Insert.
+Undo AI edit shows the original text on this device; it does not change account
+history on other devices. Clearing text history leaves saved audio as local items.
+Source audio is excluded from device backup and never enters account-history
+sync or the keyboard's shared storage. A forced termination during capture can
+still leave an incomplete temporary clip.
 
 `shared/ui_strings.json` owns the shared translations; generate the native catalog
 with `scripts/sync_locales.py`. Native contracts, UIKit fixtures,
@@ -82,7 +114,7 @@ camera permission/cancel, local-network permission, pinned TLS, actual keyboard
 insertion and physical iPhone acceptance still require macOS/iOS validation.
 Local TypeScript or bundle checks do not establish TestFlight availability.
 
-### Optional relay build configuration and trust
+### Legacy optional relay build configuration and trust
 
 `shared/computer_connect.json` owns the public relay hostname and port for both
 desktop and iOS builds. A null `relay_host` keeps the public service disabled.
@@ -159,8 +191,8 @@ unverified until those checks and the coordinator's delivery gates complete.
 
 This candidate combines Google, Microsoft and GitHub sign-in with the complete
 source delivered as TestFlight 0.10.4 (37). Email-code login remains available.
-Account shows funded weekly usage, pending reservations and the next reset in
-the device's time zone. Processing requires an available funded allocation.
+Account retains sign-in, libraries and account deletion. Processing requires a
+paired computer with a ready personal route; there is no funded allocation.
 
 The planned app, keyboard and activity extension version was 0.11.0 (38).
 At that planning point, the checked-in Expo identity was 0.10.4 (37), pending a
@@ -221,6 +253,10 @@ iPhone Settings page also includes setup and privacy help.
 The practice step has a local text field in the guide. Done is enabled only
 when that field contains non-whitespace text; it does not use a global transcript
 or require another app or manual confirmation. Practice text is not persisted.
+
+Hold the keyboard Space bar, then drag left or right to move the text cursor.
+Release your finger at the position where you want to type. A held Space bar
+does not insert a space. Vertical movement across wrapped lines is not supported.
 
 Tap the keyboard microphone once to start continuous recording. There is no hold
 or upward lock gesture. A panel within the same keyboard height provides separate
@@ -677,6 +713,11 @@ simulator. No public API removes that system UI.
 Start, upward lock and finish use retained, prepared standard medium-impact
 generators. Typing uses a lighter impact. Generators do not depend
 on the extension's remote window and do not scale the standard pulse intensity.
+Each new key highlight also requests the standard system keyboard click through
+`UIDevice.playInputClick()`. UIKit controls playback from the keyboard-sound
+setting and input-view visibility. Non-key typing feedback and recording actions
+do not request this click. Audible output and click timing need physical-device
+acceptance.
 The host enables haptics before activating audio input. Mobile and desktop use
 the same original WAV cues from `assets/sounds/`: two hollow pops with 55 ms
 between note starts. Start ascends; stop and recording cancellation descend.

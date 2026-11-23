@@ -1,0 +1,296 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": [
+    "@shadcn/lint"
+  ],
+  "categories": {
+    "correctness": "off"
+  },
+  "settings": {
+    "shadcn": {
+      "componentImports": [
+        "(?:^|/)components/(?:ui|primitives)(?:/|$)",
+        "^\\./primitives/"
+      ],
+      "note": "See docs/desktop-design-system.md. Use a shared variant or size; put layout on the parent."
+    }
+  },
+  "rules": {
+    "shadcn/no-restyle": [
+      "error",
+      {
+        "allow": [
+          "layout"
+        ],
+        "contracts": [
+          {
+            "pattern": "^(Button|InlineButton)$",
+            "allow": [
+              "layout",
+              "google-sign-in",
+              "auth-guest-button",
+              "page-search-trigger",
+              "shortcut",
+              "shortcut-control",
+              "history-retry-action",
+              "history-delete",
+              "history-read-more",
+              "library-refresh",
+              "guide-info-button",
+              "guide-step-arrow",
+              "guide-step-previous",
+              "guide-step-next"
+            ]
+          },
+          {
+            "pattern": "^(Input|Textarea|TextArea)$",
+            "allow": [
+              "layout",
+              "prompt"
+            ]
+          },
+          {
+            "pattern": "^Section$",
+            "allow": [
+              "layout",
+              "account-card"
+            ]
+          },
+          {
+            "pattern": "^SettingsDisclosure$",
+            "allow": [
+              "layout",
+              "account-server",
+              "danger-zone"
+            ]
+          },
+          {
+            "pattern": "^DialogPopup$",
+            "allow": [
+              "layout",
+              "settings-dialog",
+              "profile-editor",
+              "text-action-editor",
+              "feature-guide-dialog",
+              "history-full-dialog"
+            ]
+          },
+          {
+            "pattern": "^(Collapsible|CollapsibleTrigger|CollapsiblePanel|DialogTitle|DialogDescription|DialogHeader|DialogFooter|Tooltip.*)$",
+            "allow": [
+              "layout",
+              "spacing",
+              "color",
+              "typography",
+              "shape",
+              "effects",
+              "motion",
+              "settings-disclosure",
+              "history-row",
+              "history-with-audio",
+              "history-summary",
+              "history-detail-panel",
+              "library-editor-title",
+              "library-editor-description",
+              "guide-tooltip",
+              "guide-tooltip-positioner"
+            ]
+          }
+        ]
+      }
+    ],
+    "shadcn/no-raw-colors": [
+      "error",
+      {
+        "allow": [
+          "text-button",
+          "text-action-editor",
+          "text-action-editor-content",
+          "text-action-preview",
+          "text-action-controls",
+          "text-action-row",
+          "text-action-summary"
+        ]
+      }
+    ],
+    "shadcn/no-arbitrary-values": [
+      "error",
+      {
+        "allow": [
+          "layout"
+        ]
+      }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@base-ui/react",
+              "@base-ui/react/*"
+            ],
+            "message": "Keep Base UI behavior in components/primitives; compose its exports in features."
+          }
+        ]
+      }
+    ],
+    "shadcn/no-inline-styles": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/components/primitives/**",
+        "src/components/ui.tsx"
+      ],
+      "rules": {
+        "shadcn/no-restyle": "off",
+        "shadcn/no-arbitrary-values": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "src/components/language-mark.tsx",
+        "src/components/provider-brand-icon.tsx"
+      ],
+      "rules": {
+        "shadcn/no-raw-colors": "off"
+      }
+    },
+    {
+      "files": [
+        "src/components/titlebar.tsx"
+      ],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": [
+              "layout",
+              "window-close",
+              "rounded-none",
+              "border-0",
+              "p-0",
+              "hover:bg-window-control-hover",
+              "hover:bg-window-close",
+              "hover:text-primary-foreground",
+              "[&:active:not([aria-haspopup])]:scale-100"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/pages/meetings-page.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Button$",
+                "allow": [
+                  "layout",
+                  "meeting-active-link",
+                  "meeting-back",
+                  "meeting-destructive",
+                  "meeting-find",
+                  "meeting-list-row",
+                  "meeting-new",
+                  "meeting-search-clear",
+                  "meeting-speaker-name"
+                ]
+              },
+              { "pattern": "^Input$", "allow": ["layout", "meeting-title-field"] },
+              { "pattern": "^TextArea$", "allow": ["layout", "meeting-markdown", "meeting-notes"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/pages/onboarding-page.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              { "pattern": "^Button$", "allow": ["layout", "setup-provider-action", "setup-more"] },
+              { "pattern": "^SettingsDisclosure$", "allow": ["layout", "setup-model-options", "setup-endpoint"] },
+              { "pattern": "^DialogPopup$", "allow": ["layout", "setup-dialog"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/pages/dictation-page.tsx",
+        "src/components/iphone-demo.tsx",
+        "src/components/feature-guide.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "height",
+              "animation-delay"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/pages/account-page.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "width"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/pill.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allow": [
+              "width"
+            ],
+            "allowDynamicIdentifiers": [
+              "submenuPosition"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "src/components/primitives/input.tsx"
+      ],
+      "rules": {
+        "shadcn/no-inline-styles": [
+          "error",
+          {
+            "allowDynamicIdentifiers": [
+              "nativeStyle"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

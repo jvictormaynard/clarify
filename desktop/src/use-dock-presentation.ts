@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { electron } from './platform';
 
 /** Presentation only. Workflow, native focus and mouse capture keep their owners. */
-export function useDockPresentation(closeMenus: () => void) {
+export function useDockPresentation(closeMenus: () => void, menuOpen: boolean) {
   const [expanded, setExpanded] = useState(false);
   const inside = useRef(false);
   const pressed = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const close = useRef(closeMenus);
   close.current = closeMenus;
+  const closeDelay = useRef(0);
+  closeDelay.current = menuOpen ? 140 : 60;
   const clear = () => { clearTimeout(timer.current); timer.current = undefined; };
   const collapse = () => { clear(); close.current(); setExpanded(false); };
   const enter = () => { inside.current = true; clear(); setExpanded(true); };
@@ -16,7 +18,7 @@ export function useDockPresentation(closeMenus: () => void) {
     inside.current = false; clear();
     timer.current = setTimeout(() => {
       if (!inside.current && !pressed.current) collapse();
-    }, 300);
+    }, closeDelay.current);
   };
   const release = () => { pressed.current = false; if (!inside.current) leave(); };
   useEffect(() => {

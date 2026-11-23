@@ -37,7 +37,7 @@ contributions do not need a native Windows build or an Apple account.
 ### Settings design or web behavior
 
 Use Python 3.12 and Node.js 22. The default Electron shell does not need Rust
-or WebView2. On Windows, prepare the locked Python environment:
+or a separate web runtime. On Windows, prepare the locked Python environment:
 
 ```powershell
 .\scripts\setup.ps1 -Dev
@@ -77,10 +77,8 @@ the full Windows acceptance checklist. Read
 [docs/architecture.md](docs/architecture.md) before moving responsibilities
 between modules.
 
-The legacy Tauri build still needs Rust MSVC, Visual Studio C++ Build Tools,
-the Windows SDK, and WebView2. End users do not need these build tools.
 Use `desktop/src/` for Settings and the pill, `desktop/electron/` for the window
-host, `clarify/desktop/qml/` for recovery views, and the
+host, `clarify/desktop/qml/` for native file import, and the
 root provider modules for ASR and text processing. `clarify/desktop/` contains
 the production Qt adapters. Do not add features to legacy `app.py` or the
 historical comparison tools under `spikes/`.
@@ -125,9 +123,9 @@ Keep targeted reproductions and direct rendered proof for UI changes. Follow the
 [workflow](docs/agents/workflow.md#validation-by-affected-contract) for check
 repetition and unavailable gates.
 
-PR CI selects checks from the complete diff. Main pushes require full standard
-validation, with authenticated exact-source PR evidence reuse where supported.
-Scheduled and manual runs add extended checks. No special branch prefix, label,
+PR CI selects checks from the complete diff. Main pushes select affected tasks
+and consumers, with authenticated exact-source PR evidence reuse where supported.
+Scheduled and default manual runs validate all components. No special branch prefix, label,
 paid service or secret is required. Pushes to a branch with an open PR run one
 PR workflow. Maintainers may need to approve a first-time fork's workflow run.
 
@@ -152,9 +150,9 @@ with `python -m piptools compile --strip-extras --output-file=...` and include
 both resulting diffs. Do not add an audit exception without a reviewed rationale
 in `dependency-audit.json`.
 
-Commit `desktop/package-lock.json` and `desktop/src-tauri/Cargo.lock` when
-changing their dependencies. Dependabot covers both ecosystems. Browser tests
-do not prove native Windows focus, hotkeys, tray behavior or WebView2 integration.
+Commit `desktop/package-lock.json` when changing desktop dependencies.
+Dependabot covers the npm dependencies. Browser tests
+do not prove native Windows focus, hotkeys, tray behavior or Electron integration.
 
 For native Windows behavior and release acceptance, check the built executable,
 including affected focus, shortcuts, tray, transparency and DPI behavior. A

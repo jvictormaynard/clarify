@@ -108,6 +108,35 @@ class WorkflowServiceTests(WorkflowFixture, unittest.TestCase):
         self.assertEqual(self.statistics.dictations[0][1], 7)
         self.assertIsNone(session.retry_audio)
 
+    def test_provider_and_account_failures_keep_explicit_copy_only_retry(self):
+        from clarify_account import AccountError
+        from provider_http import ProviderTimeoutError, InvalidResponseError
+
+        for error in (
+            AccountError("interrupted", code="connection_failed"),
+            ProviderTimeoutError(provider="groq", operation="transcription"),
+            InvalidResponseError(provider="groq", operation="transcription"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                self.setUp()
+                self.provider.on_transcribe = lambda: (_ for _ in ()).throw(error)
+                target = self.clipboard.capture_target()
+                self.service.dispatch(StartDictation(target, "transcription", "pt"))
+                self.service.dispatch(StopDictation())
+                self.assertTrue(self.service.state.can_retry)
+                self.assertIsNone(self.audio.failures[0].__traceback__)
+                self.assertEqual(self.clipboard.writes, [])
+                self.provider.on_transcribe = None
+                self.assertTrue(
+                    self.service.dispatch(
+                        RetryDictation(self.service.state.operation_id)
+                    )
+                )
+                self.assertEqual(self.service.state.status_key, "dictation_recovered")
+                self.assertEqual(self.clipboard.writes, ["Transcribed"])
+                self.assertEqual(self.clipboard.auto_pastes, [])
+                self.assertEqual((self.audio.started, self.audio.stopped), (1, 1))
+
     def test_discard_and_shutdown_release_retry_audio(self):
         def fail():
             raise TranscriptionTransportError("offline")

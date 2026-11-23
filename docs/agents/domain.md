@@ -26,7 +26,7 @@ manual or create a second root glossary.
 | Recording session | The owner of capture lifecycle and its temporary audio, separate from provider inference |
 | Settings draft | Edits that become persisted configuration only through the shared validated apply transaction |
 | SecretStore | The provider-keyed credential boundary; Windows uses current-user DPAPI |
-| Pill | The production Qt/QML workflow surface, separate from React/Tauri Settings |
+| Pill | The React workflow surface in the retained Electron desktop host |
 | Community release | The unsigned portable track with its explicit assets and limits |
 | Signed release | The publisher-verified installer/update track gated by the distribution contract |
 | Sponsored quota | An individual hosted-processing allowance funded before grant, fixed until the common weekly expiry and presented as a percentage |

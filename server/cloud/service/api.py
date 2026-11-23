@@ -1,16 +1,10 @@
-import tempfile
-import uuid
-import hashlib
 import json
-import logging
 
 from allauth.account.models import EmailAddress
 from django.contrib.auth import get_user_model
-from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
 from rest_framework import exceptions, permissions
-from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView, exception_handler as drf_handler
 
@@ -20,54 +14,9 @@ from dictionary_snippets import (
     DictionarySnippets,
     Snippet,
 )
-from shared.processing_contract import CONTRACT, capabilities as processing_capabilities
-from . import audio, groq, history, ledger, text_actions
+from . import history, ledger, text_actions
 from .middleware import take_rate
 from .models import Dictionary, Operation, SnippetLibrary
-
-
-logger = logging.getLogger(__name__)
-MAX_DICTATION_RESULT_BYTES = 384 * 1024
-
-
-def processing_failure(
-    user,
-    operation_id,
-    code,
-    phase,
-    status,
-    *,
-    operation=None,
-    replayable=False,
-    cost=None,
-    input_tokens=0,
-    output_tokens=0,
-    cost_estimated=False,
-):
-    """Expose bounded diagnostics, never exception text or provider responses."""
-    result = {"code": code, "phase": phase, "operation_id": str(operation_id)}
-    if operation:
-        ledger.settle(
-            operation,
-            result=result if replayable else None,
-            cost=cost,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_estimated=cost_estimated,
-        )
-    logger.warning(
-        "processing_failure code=%s phase=%s operation_id=%s",
-        code,
-        phase,
-        operation_id,
-    )
-    return Response(
-        {
-            **result,
-            "usage": ledger.usage(user),
-        },
-        status=status,
-    )
 
 
 def exception_handler(error, context):
@@ -112,9 +61,9 @@ class AccountView(ServiceView):
             {
                 "id": str(request.user.pk),
                 "email": request.user.email,
-                "usage": ledger.usage(request.user),
-                "output_preferences_supported": True,
-                "processing_contract": processing_capabilities("account"),
+                "hosted_inference_available": False,
+                "inference_code": "inference_retired",
+                "output_preferences_supported": False,
             }
         )
 
@@ -142,9 +91,22 @@ class AccountView(ServiceView):
         return Response(status=204)
 
 
-class UsageView(ServiceView):
-    def get(self, request):
-        return Response(ledger.usage(request.user))
+class InferenceRetiredView(APIView):
+    # Reject before authentication, parsing or funded admission.
+    authentication_classes = []
+    permission_classes = []
+    parser_classes = []
+
+    def post(self, request):
+        return Response(
+            {"code": "inference_retired", "update_required": True}, status=410
+        )
+
+    get = post
+
+
+class UsageView(InferenceRetiredView):
+    pass
 
 
 class HistorySyncView(ServiceView):
@@ -301,353 +263,16 @@ class TextActionsView(ServiceView):
             return Response({"code": error.code}, status=error.status)
 
 
-class DictationView(ServiceView):
-    parser_classes = [MultiPartParser]
-
-    def post(self, request):
-        if (
-            not settings.CLARIFY_FUNDED_ENABLED
-            or not settings.CLARIFY_GROQ_KEY
-            or not request.user.funded_access
-        ):
-            return Response({"code": "hosted_unavailable"}, status=503)
-        if not take_rate("dictation", str(request.user.pk), 6):
-            return Response({"code": "rate_limited"}, status=429)
-        try:
-            from shared.dictation_policy import cleanup_level as parse_cleanup_level
-            from shared.writing_style_policy import writing_style as parse_writing_style
-            from shared.output_preferences import (
-                output_language as parse_output_language,
-            )
-
-            if set(request.data) - {
-                "audio",
-                "operation_id",
-                "language",
-                "cleanup_level",
-                "writing_style",
-                "output_language",
-                "text_action_id",
-                "text_action_revision",
-                "text_action_language",
-            }:
-                raise ValueError()
-            level = parse_cleanup_level(request.data.get("cleanup_level"))
-            style = parse_writing_style(request.data.get("writing_style"))
-            target = parse_output_language(request.data.get("output_language"))
-            if any(len(request.data.getlist(key)) != 1 for key in request.data):
-                raise ValueError()
-            operation_id = uuid.UUID(request.data["operation_id"])
-            language = request.data.get("language", "auto")
-            if language not in {"auto", "pt", "en", "es", "de", "ru"}:
-                raise ValueError()
-            action_id = request.data.get("text_action_id")
-            action_revision = request.data.get("text_action_revision")
-            action_language = request.data.get("text_action_language", "auto")
-            if action_id is not None or action_revision is not None:
-                if (
-                    not text_actions.valid_id(action_id)
-                    or not isinstance(action_revision, str)
-                    or not action_revision.isascii()
-                    or not action_revision.isdecimal()
-                    or not text_actions.valid_revision(int(action_revision), minimum=1)
-                    or action_language not in text_actions.LANGUAGES
-                ):
-                    raise ValueError()
-                action_revision = int(action_revision)
-            elif "text_action_language" in request.data:
-                raise ValueError()
-            upload = request.FILES["audio"]
-            if not 0 < upload.size <= settings.CLARIFY_MAX_UPLOAD_BYTES:
-                raise ValueError()
-        except (KeyError, TypeError, ValueError, AttributeError):
-            return Response({"code": "invalid_audio_request"}, status=400)
-        operation = None
-        outcome = None
-        action = None
-        try:
-            digest = audio.fingerprint(
-                upload,
-                language,
-                cleanup_level=level,
-                writing_style=style,
-                **({"output_language": target} if target is not None else {}),
-            )
-            if action_id is not None:
-                digest = hashlib.sha256(
-                    json.dumps(
-                        [
-                            "dictation-text-action",
-                            digest,
-                            action_id,
-                            action_revision,
-                            action_language,
-                        ],
-                        ensure_ascii=False,
-                    ).encode("utf-8")
-                ).hexdigest()
-                previous = ledger.replay(request.user, operation_id, digest)
-                if previous is not None:
-                    return Response(
-                        {**previous.result, "usage": ledger.usage(request.user)},
-                        status=422
-                        if previous.result.get("code") == "snippet_result_too_large"
-                        else 200,
-                    )
-                action = text_actions.resolve(
-                    request.user, action_id, action_revision, action_language
-                )
-            with tempfile.TemporaryDirectory(prefix="clarify-cloud-") as directory:
-                path, duration_ms = audio.decode(upload, directory)
-                operation, fresh = ledger.reserve(
-                    request.user, operation_id, digest, duration_ms
-                )
-                if not fresh:
-                    return Response(
-                        {**operation.result, "usage": ledger.usage(request.user)},
-                        status=422
-                        if operation.result.get("code") == "snippet_result_too_large"
-                        else 200,
-                    )
-                vocabulary = Dictionary.objects.filter(user=request.user).first()
-                snippets = SnippetLibrary.objects.filter(user=request.user).first()
-                outcome = groq.dictation(
-                    path,
-                    duration_ms,
-                    vocabulary.entries if vocabulary else [],
-                    language,
-                    snippets=snippets.entries if snippets else [],
-                    cleanup_level=level,
-                    writing_style=style,
-                    **({"output_language": target} if target is not None else {}),
-                    cost_budget=operation.reserved_cost,
-                    authorize=lambda total: ledger.authorize(operation, total),
-                    **(
-                        {"text_action": action, "text_action_language": action_language}
-                        if action is not None
-                        else {}
-                    ),
-                )
-                if outcome.result.get("snippet_expanded") is True and any(
-                    len(outcome.result[name].encode("utf-8")) > history.MAX_TEXT_BYTES
-                    for name in ("transcript", "text")
-                ):
-                    # Both clients save the original and final text through the
-                    # existing history protocol before publishing a result.
-                    raise groq.SnippetResultTooLarge()
-                with ledger.successful_settlement(
-                    operation,
-                    result=outcome.result,
-                    cost=outcome.cost,
-                    input_tokens=outcome.input_tokens,
-                    output_tokens=outcome.output_tokens,
-                    cost_estimated=outcome.cost_estimated,
-                ):
-                    result = {**outcome.result, "usage": ledger.usage(request.user)}
-                    if (
-                        len(
-                            request.accepted_renderer.render(
-                                result,
-                                request.accepted_media_type,
-                                self.get_renderer_context(),
-                            )
-                        )
-                        > MAX_DICTATION_RESULT_BYTES
-                    ):
-                        raise groq.SnippetResultTooLarge()
-                return Response(result)
-        except ledger.Rejected as error:
-            return processing_failure(
-                request.user,
-                operation_id,
-                error.code,
-                "validation"
-                if error.code in {"invalid_audio", "invalid_duration"}
-                else "admission",
-                error.status,
-                operation=operation,
-            )
-        except groq.NoSpeech as error:
-            return processing_failure(
-                request.user,
-                operation_id,
-                "no_speech",
-                "transcription",
-                422,
-                operation=operation,
-                cost=error.cost,
-            )
-        except groq.SnippetResultTooLarge:
-            return processing_failure(
-                request.user,
-                operation_id,
-                "snippet_result_too_large",
-                "processing",
-                422,
-                operation=operation,
-                replayable=True,
-                cost=outcome.cost if outcome else None,
-                input_tokens=outcome.input_tokens if outcome else 0,
-                output_tokens=outcome.output_tokens if outcome else 0,
-                cost_estimated=outcome.cost_estimated if outcome else False,
-            )
-        except groq.ProviderFailure as error:
-            return processing_failure(
-                request.user,
-                operation_id,
-                "transcription_failed",
-                "transcription",
-                502,
-                operation=operation,
-                cost=error.cost,
-            )
-        except exceptions.PermissionDenied:
-            raise
-        except Exception:
-            return processing_failure(
-                request.user,
-                operation_id,
-                "processing_failed",
-                "processing",
-                502,
-                operation=operation,
-            )
+class DictationView(InferenceRetiredView):
+    pass
 
 
-class TextView(ServiceView):
-    """Bounded rewrite/translation, never a general provider proxy."""
-
-    saved_actions = False
-
-    def post(self, request):
-        if not take_rate("text", str(request.user.pk), 6):
-            return Response({"code": "rate_limited"}, status=429)
-        try:
-            from shared.writing_style_policy import writing_style as parse_writing_style
-
-            fields = {"operation_id", "text", "language"} | (
-                {"action_id", "action_revision"} if self.saved_actions else {"action"}
-            )
-            if (
-                not isinstance(request.data, dict)
-                or not fields <= set(request.data)
-                or set(request.data) - fields - {"writing_style"}
-            ):
-                raise ValueError()
-            style = parse_writing_style(request.data.get("writing_style"))
-            if "writing_style" in request.data and style is None:
-                raise ValueError()
-            operation_id = uuid.UUID(request.data["operation_id"])
-            source, language = request.data["text"], request.data["language"]
-            if not isinstance(language, str) or language not in text_actions.LANGUAGES:
-                raise ValueError()
-            if self.saved_actions:
-                action_id, action_revision = (
-                    request.data["action_id"],
-                    request.data["action_revision"],
-                )
-                if not text_actions.valid_id(
-                    action_id
-                ) or not text_actions.valid_revision(action_revision, minimum=1):
-                    raise ValueError()
-            else:
-                action = request.data["action"]
-                if action not in {"rewrite", "translate"}:
-                    raise ValueError()
-            if (
-                not isinstance(source, str)
-                or not source.strip()
-                or len(source.encode())
-                > CONTRACT["limits"]["account"]["text_input_bytes"]
-            ):
-                raise ValueError()
-            fingerprint = hashlib.sha256(
-                json.dumps(
-                    (
-                        ["text-action", action_id, action_revision, source, language]
-                        if self.saved_actions
-                        else ["text", action, source, language]
-                    )
-                    + (["writing_style", style.value] if style is not None else []),
-                    ensure_ascii=False,
-                ).encode()
-            ).hexdigest()
-        except (KeyError, TypeError, ValueError, AttributeError):
-            return Response({"code": "invalid_text_request"}, status=400)
-        operation = None
-        try:
-            if self.saved_actions:
-                previous = ledger.replay(request.user, operation_id, fingerprint)
-                if previous is not None:
-                    return Response(
-                        {**previous.result, "usage": ledger.usage(request.user)}
-                    )
-                action = text_actions.resolve(
-                    request.user, action_id, action_revision, language
-                )
-            operation, fresh = ledger.reserve(
-                request.user, operation_id, fingerprint, 0, text_operation=True
-            )
-            if fresh:
-                transform = (
-                    groq.action_operation if self.saved_actions else groq.text_operation
-                )
-                outcome = transform(
-                    source,
-                    action,
-                    language,
-                    cost_budget=operation.reserved_cost,
-                    authorize=lambda total: ledger.authorize(operation, total),
-                    **({"writing_style": style} if style is not None else {}),
-                )
-                with ledger.successful_settlement(
-                    operation,
-                    result=outcome.result,
-                    cost=outcome.cost,
-                    input_tokens=outcome.input_tokens,
-                    output_tokens=outcome.output_tokens,
-                    cost_estimated=outcome.cost_estimated,
-                ):
-                    result = outcome.result
-            else:
-                result = operation.result
-            return Response({**result, "usage": ledger.usage(request.user)})
-        except ledger.Rejected as error:
-            return processing_failure(
-                request.user,
-                operation_id,
-                error.code,
-                "admission",
-                error.status,
-                operation=operation,
-            )
-        except groq.ProviderFailure as error:
-            return processing_failure(
-                request.user,
-                operation_id,
-                "text_processing_failed",
-                "text",
-                502,
-                operation=operation,
-                cost=error.cost,
-                input_tokens=error.input_tokens,
-                output_tokens=error.output_tokens,
-            )
-        except exceptions.PermissionDenied:
-            raise
-        except Exception:
-            return processing_failure(
-                request.user,
-                operation_id,
-                "processing_failed",
-                "processing",
-                502,
-                operation=operation,
-            )
+class TextView(InferenceRetiredView):
+    pass
 
 
-class TextActionExecuteView(TextView):
-    saved_actions = True
+class TextActionExecuteView(InferenceRetiredView):
+    pass
 
 
 def health(request):

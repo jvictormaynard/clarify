@@ -11,9 +11,7 @@ from secret_store import MemorySecretStore
 from shared.writing_style_policy import WritingStyle
 import tests.support.workflow_provider as provider_fixture
 import tests.support.workflows as workflow_fixture
-import tests.support.account as account_fixture
-from workflows import StartDictation, StopDictation, SelectionTarget, RecordingSnapshot
-from clarify_account import AccountError
+from workflows import StartDictation, StopDictation, SelectionTarget
 
 
 EDITOR = r"C:\Apps\Editor.exe"
@@ -290,16 +288,6 @@ class ApplicationStyleProviderTests(unittest.TestCase):
         self.assertIsNone(result.writing_style_applied)
         self.assertEqual(result.writing_style_status, "standalone")
 
-    def test_expired_managed_account_never_uses_personal_provider(self):
-        from unittest.mock import Mock
-
-        self.service.account = Mock(managed=True, signed_in=False, hosted=False)
-        self.service.account.transcribe.side_effect = AccountError("Session expired")
-        with self.assertRaises(AccountError):
-            self.service.transcribe(self.audio, "prompt", "pt", writing_style="natural")
-        self.registry.transcribe.assert_not_called()
-        self.registry.rewrite.assert_not_called()
-
 
 class ApplicationStyleWorkflowTests(unittest.TestCase):
     setUp = workflow_fixture.WorkflowFixture.setUp
@@ -346,47 +334,3 @@ class ApplicationStyleWorkflowTests(unittest.TestCase):
         self.assertIsNone(self.service.state.writing_style_applied)
         self.assertEqual(self.clipboard.auto_pastes, [])
         self.assertEqual(self.statistics.dictations, [])
-
-
-class ApplicationStyleAccountTests(unittest.TestCase):
-    setUp = account_fixture.AccountFixture.setUp
-    response = account_fixture.AccountFixture.response
-    signed_in = account_fixture.AccountFixture.signed_in
-
-    def test_managed_sends_only_enum_and_requires_confirmed_style(self):
-        self.signed_in()
-        self.account._last_sync_attempt = self.account._clock()
-        self.request.return_value = self.response(
-            {
-                "transcript": "Não envie 42.",
-                "text": "Não envie 42.",
-                "rewritten": True,
-                "writing_style_requested": "natural",
-                "writing_style_applied": "natural",
-                "writing_style_status": "applied",
-                "refinement_attempted": True,
-                "refinement_failed": False,
-            }
-        )
-        result = self.account.transcribe(
-            RecordingSnapshot(Path("unused"), b"fake"),
-            "pt",
-            self.service,
-            writing_style="natural",
-        )
-        self.assertEqual(result.writing_style_applied, "natural")
-        fields = self.request.call_args.kwargs["data"]
-        self.assertEqual(set(fields), {"operation_id", "language", "writing_style"})
-        self.assertEqual(fields["writing_style"], "natural")
-        self.request.return_value = self.response(
-            {"transcript": "Source", "text": "Source", "rewritten": True}
-        )
-        self.request.reset_mock()
-        with self.assertRaises(AccountError):
-            self.account.transcribe(
-                RecordingSnapshot(Path("unused"), b"fake"),
-                "pt",
-                self.service,
-                writing_style="natural",
-            )
-        self.request.assert_called_once()

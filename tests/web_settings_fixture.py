@@ -12,13 +12,13 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from PySide6.QtCore import QCoreApplication, QObject, Signal, Qt, Slot, QTimer
+from PySide6.QtCore import QCoreApplication, QObject, Signal, Qt, Slot
 from types import SimpleNamespace
 from tests.support.settings import _repositories, _MicrophoneBackend
 from microphone_controls import MicrophoneInventory, MicrophoneDevice
 from local_asr_product import LocalASRProductState
 from clarify.desktop.qml_settings import QmlSettingsController
-from clarify.desktop.qml_web_settings import SettingsProtocol, WebSettingsProcess
+from clarify.desktop.qml_web_settings import SettingsProtocol
 from contextlib import ExitStack
 
 _fixture_stdout_lock = threading.Lock()
@@ -150,7 +150,7 @@ class OnboardingAccount:
         )
         if "--signed-in" in sys.argv:
             self.state.update(
-                signedIn=True, hosted=True, managed=True, email="test@example.test"
+                signedIn=True, hosted=False, managed=False, email="test@example.test"
             )
 
     def snapshot(self):
@@ -232,7 +232,7 @@ class OnboardingAccount:
         if action == "confirm":
             if value != "123456":
                 raise AccountError("Código inválido. Tente novamente.")
-            self.state.update(signedIn=True, pending="", hosted=True, managed=True)
+            self.state.update(signedIn=True, pending="", hosted=False, managed=False)
             self.state["usage"] = weekly_usage()
         else:
             self.state.update(email=value, pending=action)
@@ -250,62 +250,10 @@ class OnboardingAccount:
         self.state.update(
             signedIn=True,
             pending="",
-            hosted=True,
-            managed=True,
+            hosted=False,
+            managed=False,
             email=f"{provider}@example.test",
         )
-
-
-def check_native_corners(process_id):
-    """Inspect only the isolated fixture's HWND; never inspect user windows."""
-    import ctypes
-    from ctypes import wintypes
-
-    user32 = ctypes.windll.user32
-    dwm = ctypes.windll.dwmapi
-    user32.GetWindowThreadProcessId.argtypes = [
-        wintypes.HWND,
-        ctypes.POINTER(wintypes.DWORD),
-    ]
-    dwm.DwmGetWindowAttribute.argtypes = [
-        wintypes.HWND,
-        wintypes.DWORD,
-        ctypes.c_void_p,
-        wintypes.DWORD,
-    ]
-    matches = []
-
-    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-    def visit(hwnd, _):
-        pid = wintypes.DWORD()
-        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        if pid.value == process_id:
-            corner = wintypes.DWORD()
-            corner_result = dwm.DwmGetWindowAttribute(hwnd, 33, ctypes.byref(corner), 4)
-            if corner_result == 0 and corner.value == 2:
-                matches.append(hwnd)
-                # Border color is a set-only DWM attribute on this Windows
-                # build. Capture the actual frame for visual verification.
-                import os
-
-                screenshot = os.environ.get("CLARIFY_TEST_CHROME_SCREENSHOT")
-                if screenshot:
-                    from PIL import ImageGrab
-
-                    rect = wintypes.RECT()
-                    if (
-                        dwm.DwmGetWindowAttribute(
-                            hwnd, 9, ctypes.byref(rect), ctypes.sizeof(rect)
-                        )
-                        == 0
-                    ):
-                        ImageGrab.grab(
-                            bbox=(rect.left, rect.top, rect.right, rect.bottom)
-                        ).save(screenshot)
-        return True
-
-    user32.EnumWindows(visit, 0)
-    return bool(matches)
 
 
 class Dispatcher(QObject):
@@ -405,8 +353,16 @@ def main():
         patch("clarify.desktop.qml_settings._is_windows", return_value=False),
         patch(
             "local_asr_catalog.installer_for",
-            side_effect=lambda model, device: Mock(
-                status=lambda: {"state": "installed"}
+            side_effect=lambda model, device="cpu": Mock(
+                manifest={"recommended_model": {"id": model}},
+                status=lambda **kwargs: {
+                    "state": "missing"
+                    if "--personal-missing" in sys.argv
+                    else "installed"
+                },
+                requirements=lambda: {
+                    "download_bytes": 157286400 if model == "ggml-base" else 314572800
+                },
             ),
         ),
     ):
@@ -442,6 +398,9 @@ def main():
             from provider_registry import PROVIDER_REGISTRY
 
             chatgpt = FakeChatGPTSession()
+            if "--chatgpt-connected" in sys.argv:
+                chatgpt.sign_in(open_browser=Mock())
+                chatgpt.acknowledge_plan_notice()
             if "--chatgpt-no-plan" in sys.argv:
                 chatgpt.state.update(
                     connected=True,
@@ -460,18 +419,145 @@ def main():
                 )
             )
             fixtures.enter_context(patch("webbrowser.open", return_value=True))
+        if "--personal-catalog" in sys.argv:
+            from provider_registry import PROVIDER_REGISTRY
+            from provider_types import ModelCatalog
+
+            # Synthetic catalog only; never install or call a real text service.
+            adapter = PROVIDER_REGISTRY.adapter("opencode")
+            available = fixtures.enter_context(
+                patch.object(
+                    adapter,
+                    "available",
+                    return_value="--opencode-runtime-missing" not in sys.argv,
+                )
+            )
+
+            def install_opencode(_token=None):
+                available.return_value = True
+
+            fixtures.enter_context(
+                patch.object(adapter, "install", side_effect=install_opencode)
+            )
+            catalog = ModelCatalog(
+                (),
+                (
+                    "opencode/fixture-free-a",
+                    *(f"opencode/fixture-free-{number}" for number in range(12)),
+                    "opencode/fixture-free-b",
+                ),
+            )
+            fixtures.enter_context(
+                patch.object(adapter, "validate", return_value=catalog)
+            )
+            fixtures.enter_context(
+                patch.object(adapter, "discover_models", return_value=catalog)
+            )
+            if "--personal-catalog-error" in sys.argv:
+                from provider_types import ProviderConfigurationError
+
+                adapter.validate.side_effect = ProviderConfigurationError(
+                    "opencode",
+                    "Could not load OpenCode's free models. Check your connection and try again.",
+                )
+                fixtures.enter_context(
+                    patch.object(
+                        PROVIDER_REGISTRY.adapter("openai"),
+                        "validate",
+                        side_effect=ProviderConfigurationError(
+                            "openai", "Invalid API key."
+                        ),
+                    )
+                )
         onboarding = "--onboarding" in sys.argv
         if not onboarding:
             repositories.config.apply(
                 replace(repositories.config.load(), onboarding_completed=True)
             )
+        local_product = Mock(
+            state=LocalASRProductState(
+                "installed", requirements={"download_bytes": 314572800}
+            ),
+            busy=False,
+        )
+        if "--personal-install" in sys.argv:
+            from local_asr import (
+                LocalASRInstaller,
+                LocalASRSidecarManager,
+                default_manifest_path,
+            )
+            from tests.support.local_asr_product import FakeInstaller
+            from local_asr_product import LocalASRProductController
+
+            class SetupInstaller(FakeInstaller):
+                def platform_supported(self):
+                    return True
+
+                def status(self, cancel_check=None):
+                    return super().status()
+
+                def install(self, callback=None, cancel_event=None):
+                    if self.install_calls:
+                        threading.Timer(1.0, self.release.set).start()
+                    return super().install(callback, cancel_event)
+
+            setup_installer = SetupInstaller()
+            pack = LocalASRInstaller(
+                manifest_path=default_manifest_path().parent
+                / "local_asr_manifests/ggml-turbo-q5-cuda.json",
+            )
+            setup_installer.requirements_value = pack.requirements()
+            setup_installer.asset = pack.asset
+            missing = Mock(
+                requirements=pack.requirements,
+                asset=pack.asset,
+                status=lambda **kwargs: {"state": "not_installed"},
+            )
+            fixtures.enter_context(
+                patch(
+                    "local_asr_catalog.memory_bytes",
+                    return_value=(15 * 1024**3, 1495 * 1024**2),
+                )
+            )
+            fixtures.enter_context(
+                patch("local_asr_catalog._free_install_disk", return_value=42 * 1024**3)
+            )
+            fixtures.enter_context(
+                patch(
+                    "local_asr_catalog.devices",
+                    return_value=[
+                        {"id": "auto", "label": "Automatic"},
+                        {"id": "cpu", "label": "CPU"},
+                        {
+                            "id": "cuda:0",
+                            "label": "GeForce RTX 3070 Ti Laptop GPU",
+                            "driver": "591.59",
+                            "memory_mb": 8192,
+                        },
+                    ],
+                )
+            )
+            fixtures.enter_context(
+                patch(
+                    "local_asr_catalog.installer_for",
+                    side_effect=lambda model, device="cpu": (
+                        setup_installer
+                        if (model, device) == ("ggml-turbo-q5", "cuda:0")
+                        else missing
+                    ),
+                )
+            )
+            fixtures.enter_context(
+                patch.object(LocalASRSidecarManager, "start", return_value=0.0)
+            )
+            local_product = LocalASRProductController(installer=setup_installer)
         settings = QmlSettingsController(
             repositories,
             account_service=OnboardingAccount(directory)
             if onboarding or "--signed-in" in sys.argv or "--social-wait" in sys.argv
             else None,
             microphone_backend=backend,
-            local_product=Mock(state=LocalASRProductState("installed"), busy=False),
+            local_product=local_product,
             chatgpt_session=chatgpt,
         )
         if "--text-actions" in sys.argv:
@@ -540,6 +626,46 @@ def main():
             # Clipboard effects stay inside the isolated fixture.
             settings._history_test_clipboard = []
             settings._write_history_clipboard = settings._history_test_clipboard.append
+        if "--recording-recovery" in sys.argv:
+            from recording_recovery import RecordingRecovery
+            from tests.support.audio_history import wav_bytes
+
+            recovery = RecordingRecovery(Path(directory))
+            recovery.save(wav_bytes(frames=16000 * 181))
+            from clarify.desktop.qml_runtime import (
+                QtRecordingAudioGateway,
+                QtHistoryRecorder,
+            )
+            from tests.support.workflows import WorkflowFixture
+            from provider_types import TranscriptionResult
+
+            fixture = WorkflowFixture()
+            fixture.setUp()
+            fixture.provider.transcribe = lambda *_args, **_kwargs: TranscriptionResult(
+                "Texto recuperado editado.",
+                "gemini",
+                "gemini-test",
+                raw_text="Texto recuperado original.",
+                refined_text="Texto recuperado editado.",
+            )
+            repositories.config.apply(
+                replace(repositories.config.load(), history_enabled=True)
+            )
+            history = QtHistoryRecorder(repositories, fixture.scheduler)
+            fixture.service.subscribe(history.on_state)
+            audio = QtRecordingAudioGateway(SimpleNamespace(config=None, sox=None))
+
+            def reprocess_recording(path):
+                with patch(
+                    "clarify.desktop.qml_runtime._data_directory",
+                    return_value=Path(directory),
+                ):
+                    recording = audio.create_recovery_session(path)
+                return recording is not None and fixture.service.recover_dictation(
+                    recording, "auto"
+                )
+
+            settings._recording_reprocessor = reprocess_recording
         if "--history" in sys.argv:
             from history_store import HistoryRecord, HistoryStore
             from datetime import datetime, timezone
@@ -597,33 +723,6 @@ def main():
                     ),
                     encoding="utf-8",
                 )
-        native = "--native" in sys.argv
-        host = None
-        if native:
-            host = WebSettingsProcess(
-                settings,
-                SimpleNamespace(surface="settings", closeSettings=app.quit),
-                lambda: app.exit(3),
-                app,
-            )
-            if not host.show():
-                raise RuntimeError("Native test executable is missing")
-            if "--check-chrome" in sys.argv:
-                chrome_attempts = 0
-
-                def verify_chrome():
-                    nonlocal chrome_attempts
-                    chrome_attempts += 1
-                    if check_native_corners(host.process.processId()):
-                        print("PASS: native rounded corners", flush=True)
-                    elif chrome_attempts >= 100:
-                        print("FAIL: native corner/border attributes", flush=True)
-                        app.exit(5)
-                    else:
-                        QTimer.singleShot(200, verify_chrome)
-
-                QTimer.singleShot(200, verify_chrome)
-            QTimer.singleShot(90000, lambda: app.exit(4))
         dispatcher = Dispatcher(SettingsProtocol(settings))
 
         def read():
@@ -631,14 +730,11 @@ def main():
                 dispatcher.request.emit(json.loads(line))
             app.quit()
 
-        if not native:
-            threading.Thread(target=read, daemon=True).start()
+        threading.Thread(target=read, daemon=True).start()
         try:
             result = app.exec()
         finally:
             computer.shutdown()
-            if host is not None:
-                host.shutdown()
             settings.shutdown()
             fixtures.close()
         return result

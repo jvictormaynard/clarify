@@ -132,7 +132,7 @@ so dictionary content and credentials are not written to provider logs.
 
 ## Settings workflow
 
-The current React/Tauri Settings window exposes **Dicionário**: add a word or
+The current React/Electron Settings window exposes **Dicionário**: add a word or
 phrase with Enter, search, edit, enable/disable, or remove it. Optional aliases
 and pronunciation appear in a disclosure. Additions, text edits and removals
 remain drafts across tab navigation and use the Dictionary page's Save/Discard

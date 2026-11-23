@@ -83,6 +83,11 @@ export function RecordButton() {
           <View style={[styles.capsule, { backgroundColor: c.background }]} /><View style={[styles.arc, { borderColor: c.background }]} /><View style={[styles.stem, { backgroundColor: c.background }]} />
         </Animated.View>}
     </View>
+    {['recording', 'locked'].includes(state.phase) && !!state.livePartial && <Text
+      accessibilityLabel={`${t("Transcrição ao vivo")}: ${state.livePartial}`}
+      numberOfLines={3} style={{ color: c.text, fontSize: 14, lineHeight: 20, maxWidth: 320, paddingHorizontal: 16 }}>
+      {state.livePartial}
+    </Text>}
     {['recording', 'locked', 'transcribing', 'rewriting'].includes(state.phase) && <Pressable accessibilityRole="button" hitSlop={10} onPress={() => {
       operation.current = latest.current.operationID ?? operation.current;
       control.current?.reset(); send('cancel');

@@ -1,10 +1,7 @@
 """Keep usable ASR text when optional refinement fails; never bypass cancel."""
 
 from dataclasses import replace
-import os
 from pathlib import Path
-import subprocess
-import sys
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
@@ -226,20 +223,3 @@ class RefinementRecoveryTests(unittest.TestCase):
                 self.assertEqual(history_path.read_bytes(), before)
                 bridge.finish()
                 self.assertFalse(bridge.refinementFailed)
-
-    def test_qml_warning_renders_without_focus_and_resets_on_next_operation(self):
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / "support/qml_refinement_recovery_smoke.py"
-                ),
-            ],
-            env=dict(os.environ, QT_QPA_PLATFORM="offscreen"),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("PASS: refinement recovery pill", result.stdout)

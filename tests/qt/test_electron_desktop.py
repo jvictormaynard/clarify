@@ -6,11 +6,11 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import QEventLoop, QObject, Property, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QObject, Property, QProcess, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
-from clarify.desktop.qml_electron import ElectronDesktopProcess
+from clarify.desktop.qml_electron import ElectronDesktopProcess, ElectronQtShell
 from clarify.desktop.qml_settings import QmlSettingsController
 from local_asr_product import LocalASRProductState
 from tests.support.settings import _repositories
@@ -60,9 +60,107 @@ class ElectronDesktopTests(unittest.TestCase):
         self.settings.shutdown()
         self.directory.cleanup()
 
+    def test_leaving_settings_hides_it_and_closes_activity_without_accepting_drafts(
+        self,
+    ):
+        with (
+            patch.object(self.host, "start", return_value=True),
+            patch.object(self.host, "_close_settings_activity") as cleanup,
+        ):
+            self.bridge.openSettings()
+            self.host.show()
+            self.assertTrue(self.host._visible)
+            self.bridge.openFiles()
+            self.assertFalse(self.host._visible)
+            self.assertTrue(self.host.blocks_update())
+            self.assertIn({"window": "settings-hide"}, self.messages)
+            cleanup.assert_called_once()
+            self.bridge.surfaceChanged.emit()
+            cleanup.assert_called_once()
+
+    def test_hidden_settings_receives_playback_stop_without_its_pending_state(self):
+        self.host._ready = True
+        self.host._visible = False
+        self.settings._playback_stop_request = "old-recording"
+        self.host._mark_settings({"historyState"})
+        self.settings._publishPlaybackStop()
+        self.host._flush()
+        self.assertEqual(
+            self.messages[-1],
+            {"event": "settings-audio-stop", "lease": "old-recording"},
+        )
+        self.assertIn("historyState", self.host._settings_dirty)
+        self.host._flush()
+        self.assertEqual(
+            sum(
+                message.get("event") == "settings-audio-stop"
+                for message in self.messages
+            ),
+            1,
+        )
+
+    def test_renderer_failures_restart_with_a_bounded_budget_and_fresh_snapshots(self):
+        with (
+            patch.object(self.host.process, "state", return_value=QProcess.NotRunning),
+            patch.object(self.host.process, "start") as start,
+            patch(
+                "clarify.desktop.qml_electron.desktop_executable",
+                return_value=__import__("pathlib").Path("/test/desktop"),
+            ),
+        ):
+            self.host._visible = True
+            self.host._last_settings = {"dirty": False}
+            self.host._last_workflow = {"surface": "idle"}
+            for expected in range(1, 4):
+                self.host._failed(None)
+                self.assertEqual(self.host._restart_attempts, expected)
+                self.assertTrue(self.host.restart_timer.isActive())
+                self.host._finished(1, None)
+                self.assertEqual(self.host._restart_attempts, expected)
+                self.host.restart_timer.stop()
+                self.host._restart()
+                self.assertIsNone(self.host._last_settings)
+                self.assertIsNone(self.host._last_workflow)
+                self.host._receive({"event": "ready"})
+                self.assertTrue(self.host._ready)
+                self.assertTrue(self.host._visible)
+            self.host._failed(None)
+            self.assertTrue(self.host.failed)
+            self.assertFalse(self.host.restart_timer.isActive())
+            self.host._unavailable.assert_called_once()
+            self.assertEqual(start.call_count, 3)
+            self.assertTrue(self.host.retry())
+            self.assertEqual(self.host._restart_attempts, 0)
+
+    def test_renderer_that_does_not_exit_cannot_restart_forever(self):
+        with (
+            patch.object(self.host.process, "state", return_value=QProcess.Running),
+            patch.object(self.host.process, "kill"),
+        ):
+            self.host._failed(None)
+            for _ in range(20):
+                self.host.restart_timer.stop()
+                self.host._restart()
+            self.assertTrue(self.host.failed)
+            self.assertFalse(self.host.restart_timer.isActive())
+            self.host._unavailable.assert_called_once()
+
+    def test_clean_exit_recovers_and_shutdown_cannot_restart_the_renderer(self):
+        with patch.object(self.host.process, "state", return_value=QProcess.NotRunning):
+            self.host._finished(0, None)
+            self.assertTrue(self.host.restart_timer.isActive())
+            self.assertTrue(self.host._recovering)
+            self.host._receive({"event": "ready"})
+            self.assertFalse(self.host._ready)
+            self.host.shutdown()
+            self.host._failed(None)
+            self.host._finished(0, None)
+            self.assertFalse(self.host.restart_timer.isActive())
+            self.host._unavailable.assert_not_called()
+
     def test_only_entering_picker_grants_foreground_permission_to_the_child(self):
         self.host._ready = True
-        with patch.object(self.host, "_allow_picker_activation") as allow:
+        with patch.object(self.host, "_allow_electron_activation") as allow:
             self.host._flush()
             self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.RECORDING))
             self.host._flush()
@@ -76,6 +174,38 @@ class ElectronDesktopTests(unittest.TestCase):
             self.host._flush()
             allow.assert_called_once()
 
+    def test_windows_dock_opens_active_meeting_without_showing_settings(self):
+        self.host._ready = True
+        self.host.meetings = Mock(state=Mock(return_value={"active": {"id": "note"}}))
+        with (
+            patch("clarify.desktop.qml_electron.sys.platform", "win32"),
+            patch.object(self.host, "_allow_electron_activation") as allow,
+            patch.object(self.bridge, "openSettings") as open_settings,
+        ):
+            self.host._receive({"event": "meetings-open"})
+            allow.assert_called_once()
+            open_settings.assert_not_called()
+            self.assertEqual(self.messages[-1], {"window": "meetings-show"})
+            self.host.meetings.state.return_value = {"active": None}
+            self.host._receive({"event": "meetings-open"})
+            open_settings.assert_called_once_with()
+
+    def test_quit_waits_for_light_meeting_to_save(self):
+        self.host.meetings = Mock(
+            drain_light_capture_for_quit=Mock(side_effect=[True, False])
+        )
+        with (
+            patch("clarify.desktop.qml_electron.sys.platform", "win32"),
+            patch("clarify.desktop.qml_electron.QTimer.singleShot") as schedule,
+        ):
+            self.host._receive({"event": "quit"})
+            wait, retry = schedule.call_args.args
+            self.assertEqual(wait, 250)
+            self.host._receive({"event": "quit"})
+            schedule.assert_called_once()
+            retry()
+            schedule.assert_called_with(0, self.host.application.quit)
+
     @unittest.skipUnless(sys.platform == "win32", "Windows foreground API")
     def test_native_activation_grant_is_limited_to_our_child(self):
         with (
@@ -83,7 +213,7 @@ class ElectronDesktopTests(unittest.TestCase):
             patch("clarify.desktop.qml_electron.ctypes.WinDLL") as library,
         ):
             library.return_value.AllowSetForegroundWindow.return_value = 1
-            self.assertTrue(self.host._allow_picker_activation())
+            self.assertTrue(self.host._allow_electron_activation())
             library.return_value.AllowSetForegroundWindow.assert_called_once_with(1234)
 
     def test_workflow_rpc_rejects_reflection_and_wrong_argument_types(self):
@@ -328,6 +458,20 @@ class ElectronDesktopTests(unittest.TestCase):
             any(message.get("window") == "settings-hide" for message in self.messages)
         )
 
+    def test_second_launch_opens_workspace_without_interrupting_active_work(self):
+        shell = ElectronQtShell(Mock(), desktop=self.host)
+        with (
+            patch.object(self.bridge, "openSettings") as open_settings,
+            patch.object(self.host, "set_pill_visible") as show_pill,
+        ):
+            shell.activationRequested.emit()
+            open_settings.assert_called_once()
+            open_settings.reset_mock()
+            self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.RECORDING))
+            shell.activationRequested.emit()
+            open_settings.assert_not_called()
+            show_pill.assert_called_with(True)
+
     def test_history_stamp_refresh_does_not_read_full_settings_library(self):
         self.host._ready = True
         self.host._visible = True
@@ -360,3 +504,22 @@ class ElectronDesktopTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DesktopBindingTests(unittest.TestCase):
+    def test_pipe_finds_controller_bound_after_electron_construction(self):
+        from clarify.desktop.qml_electron import ElectronDesktopProcess
+
+        sent = []
+        remote = SimpleNamespace(
+            drain=lambda: iter([{"event": "computer-webrtc-config", "config": None}])
+        )
+        desktop = SimpleNamespace(
+            _webrtc=None,
+            settings=SimpleNamespace(_computer=SimpleNamespace(webrtc=remote)),
+            _ready=True,
+            _send=sent.append,
+        )
+        ElectronDesktopProcess._flush_webrtc(desktop)
+        self.assertIs(desktop._webrtc, remote)
+        self.assertEqual(sent[0]["event"], "computer-webrtc-config")

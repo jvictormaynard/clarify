@@ -6,17 +6,17 @@ import json
 import ctypes
 import os
 from pathlib import Path
+import platform
 import sys
 
-from PySide6.QtCore import QProcess, QProcessEnvironment, QTimer
-from PySide6.QtWidgets import QSystemTrayIcon
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer
 
 try:
     from .qml_web_settings import (
         MAX_SETTINGS_MESSAGE_BYTES,
         METHODS,
         PROPERTIES,
-        WebSettingsProcess,
+        SettingsProtocol,
     )
     from .qt_shell import QtShell
 except ImportError:
@@ -24,7 +24,7 @@ except ImportError:
         MAX_SETTINGS_MESSAGE_BYTES,
         METHODS,
         PROPERTIES,
-        WebSettingsProcess,
+        SettingsProtocol,
     )
     from qt_shell import QtShell
 
@@ -39,6 +39,7 @@ WORKFLOW_PROPERTIES = (
     "refinementFailed",
     "canShowResult",
     "canRetryTranscription",
+    "recoveryResultVisible",
     "cancellationVisible",
     "canUndoCancellation",
     "feedbackVisible",
@@ -102,6 +103,20 @@ def desktop_executable() -> Path | None:
     if override:
         path = Path(override)
         return path if path.is_absolute() and path.is_file() else None
+    if sys.platform == "darwin":
+        executable = Path("Clarify Desktop.app/Contents/MacOS/Clarify Desktop")
+        if getattr(sys, "frozen", False):
+            path = Path(sys.executable).resolve().parent.parent / "Helpers" / executable
+        else:
+            arch = "arm64" if platform.machine() == "arm64" else "x64"
+            path = (
+                Path(__file__).resolve().parents[2]
+                / "desktop"
+                / "electron-dist"
+                / f"Clarify Desktop-darwin-{arch}"
+                / executable
+            )
+        return path if path.is_file() else None
     roots = [Path(sys.executable).parent]
     if getattr(sys, "_MEIPASS", None):
         roots.insert(0, Path(sys._MEIPASS))
@@ -112,12 +127,62 @@ def desktop_executable() -> Path | None:
     return None
 
 
-class ElectronDesktopProcess(WebSettingsProcess):
+class ElectronDesktopProcess(QObject):
     """Keep presentation alive; controllers retain operation and data ownership."""
 
-    def __init__(self, settings, bridge, status, fallback, application, parent=None):
-        super().__init__(settings, bridge, fallback, parent)
+    def __init__(
+        self,
+        settings,
+        bridge,
+        status,
+        unavailable,
+        application,
+        parent=None,
+        *,
+        meetings=None,
+    ):
+        super().__init__(parent)
+        self.settings = settings
+        self.bridge = bridge
+        self._unavailable = unavailable
+        self.protocol = SettingsProtocol(settings)
+        self.meetings = meetings
+        self._last_meetings = None
+        self._meeting_drafts = False
+        self._meetings_timer = QTimer(self)
+        self._meetings_timer.setInterval(250)
+        self._meetings_timer.timeout.connect(self._publish_meetings)
+        self._webrtc = getattr(getattr(settings, "_computer", None), "webrtc", None)
+        self._webrtc_timer = QTimer(self)
+        self._webrtc_timer.setInterval(20)
+        self._webrtc_timer.timeout.connect(self._flush_webrtc)
+        self._webrtc_timer.start()
+        self.process = QProcess(self)
+        self.process.readyReadStandardOutput.connect(self._read)
+        self.process.readyReadStandardError.connect(self.process.readAllStandardError)
+        self.process.finished.connect(self._finished)
+        self.process.errorOccurred.connect(self._failed)
+        self.buffer = bytearray()
+        self.failed = False
+        self._visible = False
+        self._shutting_down = False
+        self._quit_requested = False
+        self._recovering = False
+        self._restart_attempts = 0
+        self._stop_attempts = 0
+        self.startup_timer = QTimer(self)
+        self.startup_timer.setSingleShot(True)
+        self.startup_timer.setInterval(15000)
+        self.startup_timer.timeout.connect(lambda: self._failed(None))
+        self.restart_timer = QTimer(self)
+        self.restart_timer.setSingleShot(True)
+        self.restart_timer.timeout.connect(self._restart)
+        self.health_timer = QTimer(self)
+        self.health_timer.setSingleShot(True)
+        self.health_timer.setInterval(30000)
+        self.health_timer.timeout.connect(self._healthy)
         self.application = application
+        bridge.surfaceChanged.connect(self._sync_settings_visibility)
         self.status = status
         self._settings_dirty: set[str] = set()
         self._workflow_dirty = True
@@ -131,7 +196,6 @@ class ElectronDesktopProcess(WebSettingsProcess):
         environment.remove("ELECTRON_RUN_AS_NODE")
         environment.remove("NODE_OPTIONS")
         self.process.setProcessEnvironment(environment)
-        self.process.started.disconnect()
         self.flush_timer = QTimer(self)
         self.flush_timer.setSingleShot(True)
         self.flush_timer.setInterval(16)
@@ -143,7 +207,9 @@ class ElectronDesktopProcess(WebSettingsProcess):
         self.history_timer.timeout.connect(self._check_history)
         self._connect_notifications(bridge, WORKFLOW_PROPERTIES, self._mark_workflow)
         self._connect_notifications(
-            status, ("audioLevel", "recordingReady", "targetIcon"), self._mark_workflow
+            status,
+            ("audioLevel", "recordingReady", "targetIcon", "liveTranscript"),
+            self._mark_workflow,
         )
         self._connect_notifications(
             settings, (*PROPERTIES, "quickMicrophoneId"), self._mark_settings
@@ -185,15 +251,56 @@ class ElectronDesktopProcess(WebSettingsProcess):
             self.flush_timer.start()
 
     def start(self, *, visible=True):
+        if self._shutting_down or self.failed or self._recovering:
+            return False
+        self._visible = self._visible or visible
         path = desktop_executable()
-        if path is None or self.failed:
+        if path is None:
+            self.failed = True
+            self._unavailable()
             return False
         if self.process.state() == QProcess.ProcessState.NotRunning:
             self.buffer.clear()
             self._ready = False
-            self.process.start(str(path), [])
+            self._last_settings = self._last_workflow = None
+            self._settings_dirty = set(PROPERTIES)
+            self._workflow_dirty = True
             self.startup_timer.start()
+            self.process.start(str(path), [])
         return True
+
+    def retry(self):
+        """Explicit recovery after the bounded automatic restart budget."""
+        if self._shutting_down:
+            return False
+        self.restart_timer.stop()
+        self.failed = self._recovering = False
+        self._restart_attempts = 0
+        self._stop_attempts = 0
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self._recovering = True
+            self.restart_timer.start(0)
+            return True
+        return self.start(visible=self._visible)
+
+    def _healthy(self):
+        self._restart_attempts = 0
+
+    def _restart(self):
+        if self._shutting_down:
+            return
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.kill()
+            self._stop_attempts += 1
+            if self._stop_attempts >= 20:
+                self.failed = True
+                self._recovering = False
+                self._unavailable()
+            else:
+                self.restart_timer.start(100)
+            return
+        self._recovering = False
+        self.start(visible=self._visible)
 
     def show(self):
         if not self.start():
@@ -206,13 +313,24 @@ class ElectronDesktopProcess(WebSettingsProcess):
             self._publish_settings(full=True)
         return True
 
-    def activate(self):
-        if self._visible:
-            self._window_command("show")
+    def _sync_settings_visibility(self):
+        if self._visible and self.bridge.surface != "settings":
+            self.hide()
+
+    def _close_settings_activity(self):
+        self.settings.practiceCommand("close")
+        self.settings.cancelChatGPT()
+        self.settings.cancelTextActionPreview()
+        self.settings.closeComputerPairing()
+        self.settings.stopMicrophoneTest()
+        self.settings.cancelHotkeyCapture()
 
     def hide(self):
         self.history_timer.stop()
-        super().hide()
+        self._close_settings_activity()
+        if self._visible:
+            self._visible = False
+            self._window_command("hide")
 
     def _check_history(self):
         if self._visible and self._last_settings is not None:
@@ -239,7 +357,7 @@ class ElectronDesktopProcess(WebSettingsProcess):
 
     def blocks_update(self):
         # A hidden, clean retained renderer is not an update operation.
-        return self._visible or not self._accepted_close
+        return self._visible or not self._accepted_close or self._meeting_drafts
 
     def _send(self, message):
         if self.process.state() != QProcess.ProcessState.Running:
@@ -274,6 +392,7 @@ class ElectronDesktopProcess(WebSettingsProcess):
             recordingReady=self.status.recordingReady,
             level=self.status.audioLevel,
             targetIcon=self.status.targetIcon,
+            liveTranscript=getattr(self.status, "liveTranscript", ""),
             uiLanguage=self.settings.uiLanguage,
         )
         return state
@@ -332,16 +451,20 @@ class ElectronDesktopProcess(WebSettingsProcess):
                     state["surface"] == "translation_picker"
                     and previous_surface != "translation_picker"
                 ):
-                    self._allow_picker_activation()
+                    self._allow_electron_activation()
                 self._last_workflow = state
                 self._send({"event": "workflow", "state": state})
             self._workflow_dirty = False
         if self._visible and self._settings_dirty:
             self._publish_settings()
+        elif "audioPlaybackStopRequest" in self._settings_dirty:
+            self._settings_dirty.discard("audioPlaybackStopRequest")
+            lease = self.settings.audioPlaybackStopRequest
+            if lease:
+                self._send({"event": "settings-audio-stop", "lease": lease})
 
-    def _allow_picker_activation(self):
-        # The native hotkey belongs to this process. Pass its foreground
-        # permission to our presentation child after selection capture ends.
+    def _allow_electron_activation(self):
+        # Give the presentation child the engine's foreground permission.
         if sys.platform != "win32":
             return False
         pid = int(self.process.processId())
@@ -389,7 +512,7 @@ class ElectronDesktopProcess(WebSettingsProcess):
                 return {**reply, "error": "Could not apply desktop command"}
         if method in {"quit", "toggleWindow"} and not args:
             if method == "quit":
-                QTimer.singleShot(0, self.application.quit)
+                self._request_quit()
             else:
                 self.toggle_pill()
             return {**reply, "result": True}
@@ -408,16 +531,98 @@ class ElectronDesktopProcess(WebSettingsProcess):
         except Exception:
             return {**reply, "error": "Could not apply desktop command"}
 
+    def _flush_webrtc(self):
+        if self._webrtc is None:
+            self._webrtc = getattr(
+                getattr(self.settings, "_computer", None), "webrtc", None
+            )
+        if self._webrtc is not None and self._ready:
+            for message in self._webrtc.drain():
+                self._send(message)
+
+    def _request_quit(self):
+        if self._quit_requested or self._shutting_down:
+            return
+        self._quit_requested = True
+        self._finish_quit()
+
+    def _finish_quit(self):
+        if self._shutting_down:
+            return
+        if self.meetings is not None and self.meetings.drain_light_capture_for_quit():
+            self._publish_meetings()
+            QTimer.singleShot(250, self._finish_quit)
+            return
+        if sys.platform == "darwin":
+            # Leave the Qt loop without reentering Cocoa's application
+            # termination while the child process is being drained.
+            QTimer.singleShot(0, lambda: self.application.exit(0))
+        else:
+            QTimer.singleShot(0, self.application.quit)
+
+    def _publish_meetings(self):
+        if self.meetings is None or not self._ready or self._shutting_down:
+            return
+        state = self.meetings.state()
+        if state != self._last_meetings:
+            self._last_meetings = state
+            self._send({"event": "meetings", "state": state})
+
     def _receive(self, request):
-        if not isinstance(request, dict):
+        if self._shutting_down or not isinstance(request, dict):
             return
         event = request.get("event")
+        if event == "computer-webrtc" and self._webrtc is not None:
+            self._webrtc.submit(request)
+            return
+        if event == "computer-webrtc-state" and self._webrtc is not None:
+            self._webrtc.connected = request.get("connected") is True
+            return
         if event == "ready":
             self._ready = True
+            if self._recovering or self.failed or self._shutting_down:
+                self._ready = False
+                return
             self.startup_timer.stop()
+            self.health_timer.start()
+            if self._visible:
+                self.history_timer.start()
             self._window_command("show" if self._visible else "hide")
             self._workflow_dirty = True
             self._flush()
+            if self.meetings is not None:
+                self._last_meetings = None
+                self._publish_meetings()
+                self._meetings_timer.start()
+            return
+        if event == "meetings-open" and self.meetings is not None:
+            self._publish_meetings()
+            meeting_state = self._last_meetings or {}
+            self._allow_electron_activation()
+            if sys.platform not in {"darwin", "win32"} or not (
+                meeting_state.get("active") or meeting_state.get("interruptedId")
+            ):
+                self.bridge.openSettings()
+            self._send({"window": "meetings-show"})
+            return
+        if event == "meetings-interruption-opened" and self.meetings is not None:
+            meeting_id = request.get("meetingId")
+            if isinstance(meeting_id, str):
+                self.meetings.acknowledge_interruption(meeting_id)
+                self._publish_meetings()
+            return
+        if event == "meetings-drafts" and self.meetings is not None:
+            self._meeting_drafts = request.get("pending") is True
+            return
+        if event == "meetings-media-released" and self.meetings is not None:
+            capture_id = request.get("captureId")
+            if isinstance(capture_id, str):
+                self.meetings.release_media(capture_id)
+                self._publish_meetings()
+            return
+        if event == "meetings-suspended" and self.meetings is not None:
+            self.meetings.interrupt()
+            self._publish_meetings()
             return
         if event == "settings-hidden":
             self._accepted_close = True
@@ -429,7 +634,7 @@ class ElectronDesktopProcess(WebSettingsProcess):
             self.bridge.closeSettings()
             return
         if event == "quit":
-            self.application.quit()
+            self._request_quit()
             return
         if type(request.get("id")) is not int:
             return
@@ -446,6 +651,10 @@ class ElectronDesktopProcess(WebSettingsProcess):
             self._send(reply)
         elif request.get("channel") == "workflow":
             self._send(self.dispatch_workflow(request))
+        elif request.get("channel") == "meetings" and self.meetings is not None:
+            reply = self.meetings.dispatch(request)
+            self._publish_meetings()
+            self._send(reply)
         else:
             self._send({"id": request["id"], "error": "Unsupported desktop channel"})
 
@@ -464,30 +673,61 @@ class ElectronDesktopProcess(WebSettingsProcess):
             self._receive(request)
 
     def _failed(self, error):
-        self.flush_timer.stop()
-        self.history_timer.stop()
-        super()._failed(error)
-        if not self._shutting_down and self.bridge.surface != "settings":
-            self.fallback()
+        if self._shutting_down or self._recovering or self.failed:
+            return
+        self._ready = False
+        self._meetings_timer.stop()
+        self._meeting_drafts = False
+        if self.meetings is not None:
+            self.meetings.interrupt()
+        if self._webrtc is not None:
+            self._webrtc.stop()
+        self._recovering = True
+        self._stop_attempts = 0
+        for timer in (
+            self.startup_timer,
+            self.flush_timer,
+            self.history_timer,
+            self.health_timer,
+        ):
+            timer.stop()
+        self._close_settings_activity()
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.kill()
+        if self._restart_attempts >= 3:
+            self.failed = True
+            self._recovering = False
+            self._unavailable()
+            return
+        delay = (250, 1000, 3000)[self._restart_attempts]
+        self._restart_attempts += 1
+        self.restart_timer.start(delay)
 
     def _finished(self, code, status):
         self._ready = False
-        self.flush_timer.stop()
-        self.history_timer.stop()
-        if not self._shutting_down:
-            self.failed = True
-        # Even a clean unexpected Electron exit is a presentation failure. It
-        # must restore native Settings instead of treating it as accepted close.
-        super()._finished(code if self._shutting_down else 1, status)
-        if not self._shutting_down and self.bridge.surface != "settings":
-            self.fallback()
+        if self.meetings is not None:
+            self.meetings.release_media()
+        # Unexpected clean exits require the same recovery as crashes.
+        self._failed(None)
 
     def shutdown(self):
         self._shutting_down = True
         self._ready = False
-        self.flush_timer.stop()
-        self.history_timer.stop()
-        super().shutdown()
+        self._meetings_timer.stop()
+        for timer in (
+            self.startup_timer,
+            self.flush_timer,
+            self.history_timer,
+            self.restart_timer,
+            self.health_timer,
+        ):
+            timer.stop()
+        self._close_settings_activity()
+        if self.process.state() != QProcess.ProcessState.NotRunning:
+            self.process.terminate()
+            if not self.process.waitForFinished(1000):
+                self.process.kill()
+                self.process.waitForFinished(1000)
 
 
 class ElectronQtShell(QtShell):
@@ -497,34 +737,25 @@ class ElectronQtShell(QtShell):
         self.desktop = desktop
         super().__init__(window, **kwargs)
 
-    def restore_native_tray(self):
-        if (
-            self.is_running
-            and self.tray is None
-            and QSystemTrayIcon.isSystemTrayAvailable()
-        ):
-            self._create_tray()
-            self._install_window_close_filter()
+    def activate_existing_window(self):
+        if not self.desktop.failed and self.desktop.bridge.surface in {
+            "idle",
+            "success",
+            "settings",
+        }:
+            self.desktop.bridge.openSettings()
+        else:
+            self.show_window()
 
     def show_window(self):
-        if self.desktop.failed or self.desktop.bridge.surface == "files":
+        if self.desktop.bridge.surface == "files":
             super().show_window()
-        else:
-            self.desktop.set_pill_visible(True)
-
-    def show_window_without_activation(self):
-        if self.desktop.failed:
-            super().show_window_without_activation()
         else:
             self.desktop.set_pill_visible(True)
 
     def hide_window(self):
         super().hide_window()
-        if not self.desktop.failed:
-            self.desktop.set_pill_visible(False)
+        self.desktop.set_pill_visible(False)
 
     def toggle_window(self):
-        if self.desktop.failed:
-            super().toggle_window()
-        else:
-            self.desktop.toggle_pill()
+        self.desktop.toggle_pill()

@@ -1,10 +1,11 @@
 import { useDockPresentation } from './use-dock-presentation';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Copy, FileAudio, LoaderCircle, Mic, RotateCcw, Settings, Square, X, ClipboardPaste, Sparkles, ChevronRight } from 'lucide-react';
+import { TriangleAlert, Check, Copy, FileAudio, LoaderCircle, Mic, RotateCcw, Settings, Square, X, ClipboardPaste, Sparkles, ChevronRight } from 'lucide-react';
 import { LanguageMark } from './components/language-mark';
 import { electron } from './platform';
 import { setUiLanguage } from './i18n';
 import { pillText as t } from './pill-labels';
+import { meetingsLabel, type MeetingActivity } from './meetings/labels';
 import './styles/pill.css';
 import type { WritingStyle } from './settings/bridge';
 
@@ -44,9 +45,10 @@ function CaptureWave({level, active}: {level: number; active: boolean}) {
 }
 
 export interface WorkflowState {
+  liveTranscript?: string;
   surface: string; status: string; result: string; busy: boolean; recording: boolean;
   showRecordingStop: boolean; refinementFailed: boolean; canShowResult: boolean;
-  canRetryTranscription: boolean; cancellationVisible: boolean; canUndoCancellation: boolean;
+  recoveryResultVisible: boolean; canRetryTranscription: boolean; cancellationVisible: boolean; canUndoCancellation: boolean;
   feedbackVisible: boolean; feedbackOperationId: number; feedbackTitle: string; completionId: string; recordingShortcut: string;
   transitionPending: boolean; writingStyleCaption: string; writingStyleFinished: boolean;
   writingStyleApplied: boolean; mode: string; language: string;
@@ -65,6 +67,8 @@ function languageName(code: string, locale: string) {
 }
 export function Pill() {
   const [state, setState] = useState<Partial<WorkflowState>>({surface: 'idle'});
+  const [meetingActivity, setMeetingActivity] = useState<MeetingActivity>();
+  const [meetingId, setMeetingId] = useState<string>();
   const [error, setError] = useState('');
   const moreOptions = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState(false);
@@ -109,7 +113,7 @@ export function Pill() {
       if (first) { focusSubmenu.current = false; first.focus({preventScroll:true}); }
     }
   }, [menu, submenu, state.microphoneDevices, state.microphoneInventoryBusy, state.textActions]);
-  const dock = useDockPresentation(() => { setMenu(false); setLanguageMenu(false); setSubmenu(null); });
+  const dock = useDockPresentation(() => { setMenu(false); setLanguageMenu(false); setSubmenu(null); }, menu || languageMenu);
   const [completion, setCompletion] = useState("");
   const seenCompletion = useRef("");
   const feedbackLabel = useRef<HTMLSpanElement>(null);
@@ -125,7 +129,7 @@ export function Pill() {
     const layout = feedbackLayer.current && getComputedStyle(feedbackLayer.current);
     const inset = layout ? parseFloat(layout.paddingLeft) + parseFloat(layout.paddingRight) + parseFloat(layout.columnGap) : 60;
     setFeedbackWidth(Math.min(620, Math.max(120, Math.ceil((feedbackLabel.current?.scrollWidth || 0) + (feedbackActions.current?.offsetWidth || 0) + inset + 2))));
-  }, [state.feedbackVisible, state.feedbackTitle, state.canUndoCancellation, state.canRetryTranscription, state.canShowResult, state.uiLanguage, state.targetIcon]);
+  }, [state.feedbackVisible, state.feedbackTitle, state.canUndoCancellation, state.canRetryTranscription, state.canShowResult, state.recoveryResultVisible, state.refinementFailed, state.surface, state.uiLanguage, state.targetIcon]);
   useLayoutEffect(() => {
     if (completion && doneContent.current) setDoneWidth(Math.max(72, Math.ceil(doneContent.current.getBoundingClientRect().width) + 24));
   }, [completion, state.uiLanguage]);
@@ -163,6 +167,10 @@ export function Pill() {
     document.title = 'Clarify';
     const off = electron()?.subscribe(message => {
       if (message.event === 'workflow') { const next = message.state as unknown as WorkflowState; setUiLanguage(next.uiLanguage); setState(next); }
+      if (message.event === 'meeting-status') {
+        setMeetingActivity(message.state.status as MeetingActivity | undefined);
+        setMeetingId(message.state.id as string | undefined);
+      }
     });
     void electron()?.ready();
     return () => {
@@ -178,28 +186,38 @@ export function Pill() {
     return () => clearTimeout(timer);
   }, [state.completionId, state.busy, state.recording, state.transitionPending, state.feedbackVisible]);
   useEffect(() => {
-    if (!state.feedbackVisible || state.canRetryTranscription) return;
+    if (!state.feedbackVisible || state.canRetryTranscription || state.recoveryResultVisible) return;
     const timer = setTimeout(() => run('dismissFeedback', state.feedbackOperationId), state.cancellationVisible || state.refinementFailed ? 5000 : 3200);
     return () => clearTimeout(timer);
-  }, [state.feedbackVisible, state.feedbackOperationId, state.canRetryTranscription, state.cancellationVisible, state.refinementFailed]);
+  }, [state.feedbackVisible, state.feedbackOperationId, state.canRetryTranscription, state.recoveryResultVisible, state.cancellationVisible, state.refinementFailed]);
   // Native hit testing must follow the painted edges throughout expansion.
   useLayoutEffect(() => {
+    const host = electron();
+    if (!host) return;
     const elements = Array.from(document.querySelectorAll('[data-pill-interactive]'));
-    const update = () => void electron()?.window('regions', elements.map(element => {
-      const bounds = element.getBoundingClientRect();
-      const padding = element.hasAttribute("data-dock-hover-target") ? 8 : 0;
-      const x = Math.max(0, bounds.x - padding), y = Math.max(0, bounds.y - padding);
-      return {x, y, width: Math.min(innerWidth, bounds.right + padding) - x, height: Math.min(innerHeight, bounds.bottom + padding) - y};
-    }));
+    let previousRegions = '';
+    const update = () => {
+      const regions = elements.map(element => {
+        const bounds = element.getBoundingClientRect();
+        const padding = element.hasAttribute("data-dock-hover-target") ? 8 : 0;
+        const x = Math.max(0, bounds.x - padding), y = Math.max(0, bounds.y - padding);
+        return {x, y, width: Math.min(innerWidth, bounds.right + padding) - x, height: Math.min(innerHeight, bounds.bottom + padding) - y};
+      });
+      const serialized = JSON.stringify(regions);
+      if (serialized === previousRegions) return;
+      previousRegions = serialized;
+      void host.window('regions', regions);
+    };
     const observer = new ResizeObserver(update);
     window.addEventListener('resize', update);
     elements.forEach(element => observer.observe(element)); update();
     let frame = 0;
     const until = performance.now() + 400;
     const animateRegions = () => { update(); if (performance.now() < until) frame = requestAnimationFrame(animateRegions); };
-    frame = requestAnimationFrame(animateRegions);
+    // Menu entrance motion translates the bounds without changing their size.
+    if (menu || languageMenu) frame = requestAnimationFrame(animateRegions);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', update); };
-  }, [state.surface, menu, languageMenu, submenu, submenuPosition, completion, error, dock.expanded, state.feedbackVisible]);
+  }, [state.surface, menu, languageMenu, submenu, submenuPosition, completion, error, dock.expanded, state.feedbackVisible, meetingActivity, meetingId]);
   const button = (label: string, icon: React.ReactNode, method: Method, disabled = false) => <button type="button" aria-label={t(label)} disabled={disabled} onClick={() => run(method)}>{icon}<span className="pill-tooltip">{method === 'startRecordingFromButton' ? <>{t('Ditar')}{state.recordingShortcut && <kbd>{state.recordingShortcut}</kbd>}</> : t(label)}</span></button>;
   const processing = state.busy || state.transitionPending || state.surface === 'processing' || state.surface === 'voice_processing';
   const result = ['result', 'voice_result', 'voice_error'].includes(state.surface || '');
@@ -207,12 +225,13 @@ export function Pill() {
   const feedback = retainedFeedback.current;
   const done = !!completion && !processing && !state.recording && !state.feedbackVisible;
   const capture = !!(state.recording || processing || state.feedbackVisible || done);
-  const starting = state.transitionPending || (state.recording && !state.recordingReady);
+  const starting = (state.transitionPending && !state.canRetryTranscription && !state.cancellationVisible) || (state.recording && !state.recordingReady);
+  const problem = !!state.feedbackVisible && (state.surface === 'error' || state.surface === 'voice_error' || !!state.refinementFailed);
   const width = state.feedbackVisible ? feedbackWidth : done ? doneWidth : state.recording ? (state.showRecordingStop ? (starting ? 112 : 128) : starting ? (state.targetIcon ? 96 : 72) : state.targetIcon ? 104 : 72) : state.targetIcon ? 96 : 72;
   const collapsed = !dock.expanded && !capture && !result && !translation && !menu && !languageMenu && !error;
   return <main className="pill-stage" onPointerDownCapture={dock.press} onPointerUpCapture={dock.release} onPointerCancelCapture={dock.release}>
-    <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
-      style={capture && !result && !translation ? {width} : undefined}
+    <section data-pill-interactive data-dock-hover-target={!result && !translation ? "" : undefined} data-collapsed={collapsed} data-surface={state.surface} data-feedback={!!state.feedbackVisible} data-feedback-problem={problem} data-starting={!!starting} data-done={done} data-target={!!state.targetIcon} data-recording={!!state.recording} className={`workflow-pill ${result || translation ? 'pill-panel' : capture ? 'pill-capture' : 'pill-idle'}${collapsed ? ' pill-collapsed' : ''}`} aria-label={t(state.status || 'Clarify')} aria-busy={!!starting}
+      style={{ width: capture && !result && !translation ? width : undefined }}
       tabIndex={!capture && !result && !translation ? 0 : undefined}
       onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave}
       onFocusCapture={dock.expand}
@@ -236,7 +255,8 @@ export function Pill() {
         <div className="pill-actions"><span>{t('Traduzir para')}</span>{button('Cancelar', <X />, 'cancelTranslation')}</div>
         <div className="pill-languages">{state.translationOptions?.map(option => <button key={option.code} onClick={() => run('chooseTranslation', option.code)}><LanguageMark code={option.code} /><span>{option.label || option.name || option.code}</span></button>)}</div>
       </> : capture ? <>
-        {state.targetIcon && !done && (!state.showRecordingStop || state.feedbackVisible) && <img className="pill-target-icon" src={state.targetIcon} alt="" />}
+        {!problem && state.targetIcon && !done && (!state.showRecordingStop || state.feedbackVisible) && <img className="pill-target-icon" src={state.targetIcon} alt="" />}
+        {problem && <TriangleAlert className="pill-problem-icon" aria-hidden="true" />}
         <span className="pill-sr-only" role="status">{t(done ? 'Concluído' : state.feedbackVisible ? state.feedbackTitle || '' : state.status || '')}</span>
         <div className="pill-live-layer" data-visible={!state.feedbackVisible} aria-hidden={!!state.feedbackVisible}>
           <div className="pill-motion-layer" data-visible={!!starting}><LoaderCircle className="pill-spinner" /></div>
@@ -252,14 +272,14 @@ export function Pill() {
           <span ref={feedbackLabel} className="pill-feedback-label">{t(feedback.feedbackTitle || '')}</span>
           <div ref={feedbackActions} className="pill-feedback-actions">
             {feedback.cancellationVisible ? <button className="pill-undo" disabled={!state.feedbackVisible || !state.canUndoCancellation} onClick={() => run('undoCancellation')}>{t('Desfazer')}</button> : <>
-              {feedback.canShowResult && button('Ver resultado', <Copy />, 'showResult', !state.feedbackVisible)}
+              {feedback.recoveryResultVisible ? button('Copiar', <Copy />, 'copyResult', !state.feedbackVisible) : feedback.canShowResult && button('Ver resultado', <Copy />, 'showResult', !state.feedbackVisible)}
               {feedback.canRetryTranscription && button('Tentar novamente', <RotateCcw />, 'retryTranscription', !state.feedbackVisible)}
               <button aria-label={t('Fechar')} disabled={!state.feedbackVisible} onClick={() => run('dismissFeedback', state.feedbackOperationId)}><X /></button>
             </>}
           </div>
         </div>
       </> : <>
-          {button('Iniciar gravação', <Mic />, 'startRecordingFromButton')}
+          {button('Iniciar gravação', <Mic />, 'startRecordingFromButton', !!meetingActivity && meetingActivity !== "interrupted")}
           <button className="pill-language" aria-label={t('Idioma de saída')} aria-expanded={languageMenu} onClick={() => {clearSubmenuTimer(); setSubmenu(null); setLanguageMenu(!languageMenu); setMenu(false);}}><LanguageMark code={state.language} /><span className="pill-tooltip">{t("Idioma de saída")}</span></button>
           <button ref={moreOptions} aria-label={t('Mais opções')} aria-expanded={menu} onClick={() => {
             setMenu(!menu); setLanguageMenu(false); setSubmenu(null);
@@ -268,6 +288,19 @@ export function Pill() {
       </>}
       </div>
     </section>
+    {meetingActivity && !result && !translation && <div className="pill-meeting" data-active={meetingActivity === "recording"}>
+      <button type="button" data-pill-interactive
+        onClick={() => void electron()?.call("meetings", "open", []).catch(error => setError(String(error)))}>
+        <span aria-hidden="true" />{meetingsLabel(meetingActivity)}
+      </button>
+      {meetingId && (meetingActivity === "recording" || meetingActivity === "paused") &&
+        <button type="button" data-pill-interactive className="pill-meeting-stop"
+          aria-label={meetingsLabel("stop")} title={meetingsLabel("stop")}
+          onClick={() => void electron()?.window("stopMeeting", meetingId).catch(error => setError(String(error)))}>
+          <Square aria-hidden="true" />
+        </button>}
+    </div>}
+    {state.recording && state.liveTranscript && <div className="pill-live-transcript" role="status" aria-live="polite" aria-atomic="true" aria-label={t('Transcrição ao vivo')}>{state.liveTranscript}</div>}
     {languageMenu && <nav data-pill-interactive className="pill-menu pill-language-menu" onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave} aria-label={t('Idioma de saída')}>
       {['auto', 'en', 'pt', 'es', 'de', 'ru'].map(code => <button key={code} aria-pressed={state.language === code} onClick={() => {
         setLanguageMenu(false);

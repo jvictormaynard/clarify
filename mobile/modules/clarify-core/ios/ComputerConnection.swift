@@ -4,6 +4,8 @@ final class ComputerConnection {
   static let shared = ComputerConnection()
   typealias Transport = (URLRequest, ComputerRoute) async throws -> (Data, HTTPURLResponse)
   typealias GrantRequest = @MainActor (ComputerRemoteRegistration, UUID) async throws -> ComputerConnectGrant
+  private var webRTC: ComputerWebRTCTransport?
+  private var webRTCIdentity = UUID()
   private let transport: Transport
   private let requestGrant: GrantRequest
   private let cloudflareConfiguration: () throws -> ComputerCloudflareConfiguration?
@@ -20,9 +22,11 @@ final class ComputerConnection {
   private(set) var processingCapabilities = ProcessingCapabilities.unavailable
   private(set) var status = "unpaired"
   private(set) var remoteStatus = "unavailable"
+  private var liveAdvertised = false
+  @MainActor var liveRecognitionAvailable: Bool { liveAdvertised && ready && webRTC?.canStartOperation == true }
   private var activeRoute: ComputerRoute?
   private var invalidated: (() -> Void)?
-  private var operations: [String: (credential: ComputerCredential, route: ComputerRoute, wireID: UUID)] = [:]
+  private var operations: [String: (credential: ComputerCredential, route: ComputerRoute, wireID: UUID, live: ComputerLiveCapture?)] = [:]
   // Keep local action tombstones for this connection's lifetime. A delayed
   // command or uncertain response cannot mint a new remote operation.
   private var retiredOperations = Set<String>()
@@ -41,6 +45,15 @@ final class ComputerConnection {
     if self.credential != nil { status = "offline" }
     if self.credential?.routes.contains(where: { $0.hpkePublicKey != nil }) == true { remoteStatus = "registered" }
   }
+  @MainActor func configureWebRTC(_ connection: ComputerWebRTCTransport?) throws {
+    guard !busy && operations.isEmpty else { throw ComputerFailure.busy }
+    guard connection == nil || connection?.computerID == credential?.computerID else {
+      throw ComputerFailure.authentication
+    }
+    webRTCIdentity = UUID()
+    webRTC?.close(); webRTC = connection
+    remoteStatus = connection == nil ? "unavailable" : "connected"
+  }
   var configured: Bool { credential != nil }
   var scope: String? { credential?.scope }
   func setInvalidationHandler(_ handler: @escaping () -> Void) { invalidated = handler }
@@ -48,14 +61,14 @@ final class ComputerConnection {
     var result: [String: Any] = ["paired": configured, "computerID": credential?.computerID.uuidString ?? "",
       "computerName": credential?.computerName ?? "", "status": status, "ready": ready, "busy": busy,
       "actionReadiness": actionReadiness.snapshot, "remoteStatus": remoteStatus,
-      "remoteAvailable": credential?.routes.contains(where: { $0.hpkePublicKey != nil }) == true,
+      "remoteAvailable": webRTC != nil || credential?.routes.contains(where: { $0.hpkePublicKey != nil }) == true,
       "outputPreferencesSupported": outputPreferencesSupported, "processingContract": processingCapabilities.value]
     result.merge(textActions.snapshot) { _, new in new }; return result
   }
   func isReady(for action: String) -> Bool { actionReadiness.allows(action) }
   func accepts(_ owner: UInt64) -> Bool { generation == owner && configured }
   @MainActor private func send(_ method: String, path: String, route: ComputerRoute, token: String? = nil,
-    json: [String: Any]? = nil, timeout: TimeInterval = 15, owner: UInt64? = nil) async throws -> (Data, Int) {
+    json: [String: Any]? = nil, timeout: TimeInterval = 15, owner: UInt64? = nil, via retainedPeer: ComputerWebRTCTransport? = nil) async throws -> (Data, Int) {
     _ = try route.validated(relayHost: ComputerRelayConfiguration.host(), cloudflare: cloudflareConfiguration())
     guard path.hasPrefix("/v1/computer/"), let url = URL(string: route.url + path) else { throw ComputerFailure.invalidResponse }
     var request = URLRequest(url: url); request.httpMethod = method; request.timeoutInterval = timeout
@@ -70,7 +83,10 @@ final class ComputerConnection {
     }
     try Task.checkCancellation()
     let data: Data, response: HTTPURLResponse
-    do { (data, response) = try await transport(request, route) }
+    do {
+      if let peer = retainedPeer ?? (token == credential?.sessionToken ? webRTC : nil), !["/v1/computer/pair", "/v1/computer/remote"].contains(path) { (data, response) = try await peer.send(request) }
+      else { (data, response) = try await transport(request, route) }
+    }
     catch is CancellationError { throw CancellationError() }
     catch {
       try Task.checkCancellation()
@@ -117,8 +133,9 @@ final class ComputerConnection {
     let raw = try ComputerJSON.object(data, maximum: ComputerProtocolLimits.maximumResponseBytes)
     guard let reply = try? JSONDecoder().decode(Reply.self, from: data), ComputerJSON.integer(raw["schema_version"]) == 1,
       reply.computer_id == invitation.computerID else { throw ComputerFailure.invalidResponse }
-    let credential = ComputerCredential(computerID: reply.computer_id, computerName: reply.computer_name,
+    var credential = ComputerCredential(computerID: reply.computer_id, computerName: reply.computer_name,
       deviceID: reply.device_id, sessionToken: reply.session_token, routes: invitation.routes)
+    credential.webrtc = invitation.webrtc
     try credential.validate(); try save(credential)
     self.credential = credential; generation &+= 1; activeRoute = route; ready = false; status = "offline"
     actionReadiness = .unavailable
@@ -169,8 +186,9 @@ final class ComputerConnection {
       guard remote.hpkePublicKey == registration.hpkePublicKey,
         URLComponents(string: remote.url)?.host == grant.hostname else { throw ComputerFailure.invalidResponse }
       let routes = Array(paired.routes.filter { $0.isLAN && $0.url != remote.url }.prefix(3)) + [remote]
-      let updated = ComputerCredential(computerID: paired.computerID, computerName: paired.computerName,
+      var updated = ComputerCredential(computerID: paired.computerID, computerName: paired.computerName,
         deviceID: paired.deviceID, sessionToken: paired.sessionToken, routes: routes)
+      updated.webrtc = paired.webrtc
       try checkOwner(); try save(updated)
       credential = updated; remoteStatus = "registered"
     } catch {
@@ -188,9 +206,10 @@ final class ComputerConnection {
     let remote = try ComputerRoute.parse(raw, cloudflare: configuration)
     guard remote.hpkePublicKey != nil,
       paired.routes.compactMap(\.hpkePublicKey).allSatisfy({ $0 == remote.hpkePublicKey }) else { throw ComputerFailure.invalidResponse }
-    let updated = ComputerCredential(computerID: paired.computerID, computerName: paired.computerName,
+    var updated = ComputerCredential(computerID: paired.computerID, computerName: paired.computerName,
       deviceID: paired.deviceID, sessionToken: paired.sessionToken,
       routes: Array(paired.routes.filter(\.isLAN).prefix(3)) + [remote])
+    updated.webrtc = paired.webrtc
     try save(updated); credential = updated; remoteStatus = "registered"
   }
   @MainActor func resumeRemoteRegistration() async throws {
@@ -208,6 +227,22 @@ final class ComputerConnection {
     defer {
       if !refreshed { textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable; actionReadiness = .unavailable; ready = false; activeRoute = nil }
     }
+    if let current = webRTC, !current.canStartOperation {
+      webRTCIdentity = UUID(); webRTC = nil; current.close()
+    }
+    #if canImport(WebKit)
+    if webRTC == nil, let binding = credential.webrtc, CloudAccount.shared.configured {
+      let connectionID = UUID(); webRTCIdentity = connectionID
+      let engine = try ComputerWebRTCEngine(computerID: credential.computerID, binding: binding) { [weak self] in
+        guard let self, self.generation == owner, self.webRTCIdentity == connectionID else { return }
+        for operation in self.operations.values { operation.live?.cancel() }
+        self.webRTC = nil; self.remoteStatus = "unavailable"; self.ready = false
+        self.actionReadiness = .unavailable
+      }
+      do { try await engine.connect(); guard accepts(owner) else { engine.close(); throw CancellationError() }; webRTC = engine; remoteStatus = "connected" }
+      catch { engine.close(); remoteStatus = "failed" }
+    }
+    #endif
     for route in credential.routes {
       try Task.checkCancellation()
       guard accepts(owner) else { throw CancellationError() }
@@ -228,6 +263,7 @@ final class ComputerConnection {
           reply.action_readiness == nil || reply.action_readiness?.dictate == reply.ready else { throw ComputerFailure.invalidResponse }
         // Older hosts advertise only dictation. Text needs an explicit capability.
         actionReadiness = reply.action_readiness ?? ComputerActionReadiness(dictate: reply.ready, rewrite: false, translate: false)
+        liveAdvertised = ComputerJSON.boolean(raw["live_recognition"]) == true && webRTC != nil
         processingCapabilities = try ProcessingCapabilities(raw["processing_contract"])
         textActions = catalog; outputPreferencesSupported = ComputerJSON.boolean(raw["output_preferences_supported"]) == true
         activeRoute = route; ready = reply.ready; status = (actionReadiness.available || catalog.actions.contains { $0.enabled && $0.ready }) ? "ready" : "not_ready"
@@ -251,9 +287,12 @@ final class ComputerConnection {
     guard accepts(owner) else { throw CancellationError() }
     ready = false; status = "offline"; throw ComputerFailure.offline
   }
-  private func invalidate() throws {
+  @MainActor private func invalidate() throws {
     // Clear in-memory authority even if Keychain deletion fails. The mode stays
     // computer, so expiry never enables hosted processing.
+    for operation in operations.values { operation.live?.cancel() }
+    webRTC?.close(); webRTC = nil
+    if credential?.webrtc != nil { remoteStatus = "unavailable" }
     credential = nil; activeRoute = nil; ready = false; status = "revoked"; generation &+= 1
     remoteStatus = "unavailable"
     actionReadiness = .unavailable
@@ -261,28 +300,102 @@ final class ComputerConnection {
     invalidated?()
     try save(nil)
   }
-  @MainActor func disconnect() {
-    let previous = credential, route = activeRoute ?? credential?.routes.first
-    suspend()
-    try? invalidate()
-    if let previous, let route {
-      Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/session", route: route, token: previous.sessionToken, timeout: 2) }
-    }
-  }
-  @MainActor func suspend() {
-    for id in Array(operations.keys) { cancelOperation(id) }
+  @MainActor func disconnect() { retireConnection(revoke: true) }
+  @MainActor func suspend() { retireConnection(revoke: false) }
+  @MainActor private func retireConnection(revoke: Bool) {
+    // Local authority ends now. Keep only this old transport alive long enough
+    // to cancel/revoke; a new pairing never supplies its credential or route.
+    let peer = webRTC, previous = credential, route = activeRoute ?? credential?.routes.first
+    webRTCIdentity = UUID(); webRTC = nil
+    let pending = Array(operations.values)
+    for operation in pending { operation.live?.cancel() }
+    retiredOperations.formUnion(operations.keys); operations.removeAll()
     generation &+= 1; ready = false; activeRoute = nil
+    if credential?.webrtc != nil { remoteStatus = "unavailable" }
     if remoteStatus == "registering" { remoteStatus = "cancelled" }
     actionReadiness = .unavailable
     textActions = .unavailable; outputPreferencesSupported = false; processingCapabilities = .unavailable
     if configured { status = "offline" }
+    if revoke { try? invalidate() }
+    Task { @MainActor in
+      defer { peer?.close() }
+      if revoke, let previous, let route {
+        _ = try? await self.send("DELETE", path: "/v1/computer/session", route: route,
+          token: previous.sessionToken, timeout: 2, via: peer)
+      } else {
+        await withTaskGroup(of: Void.self) { group in
+          for operation in pending.prefix(8) {
+            group.addTask { @MainActor in
+              _ = try? await self.send("DELETE", path: "/v1/computer/operations/" + operation.wireID.uuidString,
+                route: operation.route, token: operation.credential.sessionToken, timeout: 2, via: peer)
+            }
+          }
+        }
+      }
+    }
   }
   @MainActor func cancelOperation(_ id: String) {
     guard let localID = UUID(uuidString: id) else { return }
     let key = localID.uuidString
     retiredOperations.insert(key)
     guard let operation = operations.removeValue(forKey: key) else { return }
-    Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/operations/" + operation.wireID.uuidString, route: operation.route, token: operation.credential.sessionToken, timeout: 2) }
+    operation.live?.cancel()
+    let peer = webRTC
+    Task { @MainActor in _ = try? await self.send("DELETE", path: "/v1/computer/operations/" + operation.wireID.uuidString,
+      route: operation.route, token: operation.credential.sessionToken, timeout: 2, via: peer) }
+  }
+  // Claim before capture. The existing registry owns cancellation and retirement.
+  @MainActor func prepareLive(_ operationID: String, preferences: OutputPreferences,
+    policy: DictationPolicy, partial: @escaping (String) -> Void) throws -> ComputerLiveCapture? {
+    guard liveRecognitionAvailable else { return nil }
+    guard let localID = UUID(uuidString: operationID), let credential, let route = activeRoute,
+      let peer = webRTC, !busy else { throw ComputerFailure.notReady }
+    let key = localID.uuidString
+    guard !retiredOperations.contains(key) else { throw CancellationError() }
+    guard operations[key] == nil else { throw ComputerFailure.busy }
+    let frozen = policy.frozenPreferences(preferences, capabilities: processingCapabilities, catalog: textActions, computer: true)
+    try processingCapabilities.validate(frozen)
+    var metadata: [String: Any] = ["language": "auto"]
+    metadata.merge(try frozen.requestFields(supported: outputPreferencesSupported, dictation: true)) { _, new in new }
+    metadata.merge(try policy.fields(capabilities: processingCapabilities, catalog: textActions, computer: true)) { _, new in new }
+    let wireID = try newOperationID(), owner = generation
+    let requireOriginal = processingCapabilities.available
+    let capture = ComputerLiveCapture()
+    operations[key] = (credential, route, wireID, capture)
+    @MainActor func request(_ action: String, _ body: [String: Any]) async throws -> (Data, [String: Any]) {
+      try Task.checkCancellation()
+      guard self.accepts(owner), self.operations[key]?.wireID == wireID else { throw CancellationError() }
+      let (data, code) = try await peer.recognition(action, operationID: wireID, token: credential.sessionToken, body: body)
+      try Task.checkCancellation()
+      guard self.accepts(owner), self.operations[key]?.wireID == wireID else { throw CancellationError() }
+      if [401, 403].contains(code) { try self.invalidate(); throw ComputerFailure.authentication }
+      guard code == 200 else { throw ComputerFailure.notReady }
+      return (data, try ComputerJSON.object(data, maximum: ComputerProtocolLimits.maximumResponseBytes))
+    }
+    capture.start(admit: {
+      let (_, reply) = try await request("start", metadata)
+      guard ComputerJSON.boolean(reply["started"]) == true,
+        reply["format"] as? String == "pcm16_mono_16000",
+        ComputerJSON.integer(reply["max_frame_bytes"]) == 2560 else { throw ComputerFailure.invalidResponse }
+    }, feed: { sequence, frames in
+      let batch: [[String: Any]] = frames.enumerated().map { ["sequence": sequence + $0.offset, "data": $0.element.base64EncodedString()] }
+      let (_, reply) = try await request("feed", ["frames": batch])
+      guard ComputerJSON.integer(reply["accepted"]) == sequence + frames.count - 1 else { throw ComputerFailure.invalidResponse }
+      if let value = reply["partial"] {
+        guard let text = value as? String, text.utf8.count <= 32768 else { throw ComputerFailure.invalidResponse }
+        partial(text)
+      }
+    }, finish: { bytes, hash in
+      let (data, raw) = try await request("finish", ["bytes": bytes, "sha256": hash])
+      let result = try ComputerResult.decode(data, operationID: wireID.uuidString)
+      guard policy.accepts(raw) else { throw ComputerFailure.invalidResponse }
+      let applied = frozen.applied(in: raw, dictation: true, requireOriginalConfirmation: requireOriginal)
+      let fallback = !result.successful && frozen.hasDictationFallback(in: raw) ? result.text : result.transcript
+      self.operations.removeValue(forKey: key); self.retiredOperations.insert(key)
+      return ComputerResult(operationID: localID, transcript: result.transcript, text: result.text,
+        rewritten: result.rewritten, successful: result.successful).checkingPreferences(applied, original: fallback)
+    }, abort: { self.cancelOperation(operationID) })
+    return capture
   }
   @MainActor func process(_ operationID: String, action: String? = nil, text: String? = nil, wav: Data? = nil,
     language: String = ClarifyLocale.language, savedAction: TextActionDescriptor? = nil,
@@ -320,7 +433,7 @@ final class ComputerConnection {
     let requiresOriginalConfirmation = processingCapabilities.available
     let wireID = try newOperationID()
     json["operation_id"] = wireID.uuidString
-    operations[key] = (credential, route, wireID)
+    operations[key] = (credential, route, wireID, nil)
     defer { operations.removeValue(forKey: key); retiredOperations.insert(key) }
     do {
       let (data, code) = try await send("POST", path: action == nil ? "/v1/computer/dictations" : "/v1/computer/text", route: route,

@@ -27,6 +27,117 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProviderRegistryContractTests(ProviderRegistryFixture, unittest.TestCase):
+    def test_keyless_loopback_text_omits_auth_and_public_hosts_require_keys(self):
+        http = FakeHttp(
+            FakeResponse({"data": [{"id": "local-text"}]}),
+            FakeResponse({"choices": [{"message": {"content": "Local result"}}]}),
+        )
+        registry = build_provider_registry(http)
+        connection = ProviderConnection("", "http://127.0.0.1:8765/v1")
+        self.assertIn(
+            "local-text", registry.discover_models("openai", connection).text_models
+        )
+        result = registry.rewrite(
+            "openai",
+            RewriteRequest("Source", "local-text", "en", "Edit", "Source"),
+            connection,
+        )
+        self.assertEqual(result.text, "Local result")
+        self.assertTrue(
+            all(
+                "Authorization" not in call[2].get("headers", {}) for call in http.calls
+            )
+        )
+        for endpoint in ("https://api.openai.com/v1", "http://localhost.example/v1"):
+            with (
+                self.subTest(endpoint=endpoint),
+                self.assertRaises(ProviderConfigurationError),
+            ):
+                registry.discover_models("openai", ProviderConnection("", endpoint))
+
+    def test_keyless_loopback_real_http_discovery_generation_and_redirect_rejection(
+        self,
+    ):
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from provider_http import ProviderHttpClient, ProviderError
+        from provider_adapters import is_keyless_loopback_url
+
+        calls = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                calls.append((self.path, self.headers.get("Authorization"), None))
+                if self.path.startswith("/redirect/"):
+                    self.send_response(302)
+                    self.send_header("Location", "/forbidden")
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(json.dumps({"data": [{"id": "local-text"}]}).encode())
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                calls.append((self.path, self.headers.get("Authorization"), body))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {"choices": [{"message": {"content": "Local result"}}]}
+                    ).encode()
+                )
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            registry = build_provider_registry(ProviderHttpClient())
+            endpoint = f"http://127.0.0.1:{server.server_port}"
+            connection = ProviderConnection("", endpoint + "/v1")
+            self.assertEqual(
+                registry.discover_models("openai", connection).text_models,
+                ("local-text",),
+            )
+            result = registry.rewrite(
+                "openai",
+                RewriteRequest("Source", "local-text", "en", "Edit", "Source"),
+                connection,
+            )
+            self.assertEqual(result.text, "Local result")
+            self.assertEqual(
+                [call[0] for call in calls], ["/v1/models", "/v1/chat/completions"]
+            )
+            self.assertTrue(all(call[1] is None for call in calls))
+            self.assertEqual(calls[1][2]["model"], "local-text")
+            with self.assertRaises(ProviderError):
+                registry.discover_models(
+                    "openai", ProviderConnection("", endpoint + "/redirect")
+                )
+            self.assertEqual(len(calls), 3)
+            for invalid in (
+                "http://localhost.example/v1",
+                "http://192.168.1.1/v1",
+                "http://127.1/v1",
+                "file://localhost/v1",
+                "http://user@localhost/v1",
+            ):
+                with self.subTest(endpoint=invalid):
+                    self.assertFalse(is_keyless_loopback_url(invalid))
+                    with self.assertRaises(ProviderConfigurationError):
+                        registry.discover_models(
+                            "openai", ProviderConnection("", invalid)
+                        )
+            self.assertEqual(len(calls), 3)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_groq_transcription_uses_only_canonical_vocabulary(self):
         for endpoint in (
             "https://api.groq.com/openai/v1",
@@ -175,7 +286,8 @@ class ProviderRegistryContractTests(ProviderRegistryFixture, unittest.TestCase):
         registry = build_provider_registry(http)
 
         self.assertEqual(
-            registry.provider_ids, ("gemini", "openai", "groq", "local_asr", "chatgpt")
+            registry.provider_ids,
+            ("gemini", "openai", "groq", "local_asr", "chatgpt", "opencode"),
         )
         self.assertEqual(registry.describe("openai").display_name, "OpenAI")
         self.assertEqual(registry.describe("groq").audio_model_key, "groq_audio_model")

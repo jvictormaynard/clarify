@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { navigate, openStyleReview } from "./settings-navigation";
+import { navigate, openSettings, openStyleReview } from "./settings-navigation";
 
 let child: ChildProcessWithoutNullStreams;
 let id = 0;
@@ -115,7 +115,6 @@ test.beforeEach(async ({ page }, info) => {
   child = spawn(process.env.CLARIFY_TEST_PYTHON, ["-u", ...fixture,
     "--chatgpt", ...(info.title.includes("permission") ? ["--chatgpt-no-plan"] : []),
     ...(info.title.includes("cancellation") ? ["--chatgpt-wait"] : []),
-    ...(info.title.includes("Clarify account") ? ["--signed-in"] : []),
   ], { windowsHide: true, env: { ...process.env, CLARIFY_TEST_UI_LANGUAGE: "en" } });
   child.stderr.on("data", data => process.stderr.write(data));
   createInterface({ input: child.stdout }).on("line", line => {
@@ -134,10 +133,17 @@ test.beforeEach(async ({ page }, info) => {
     await route.fulfill({ json: await result });
   });
   await page.addInitScript(() => {
-    (window as any).__TAURI_INTERNALS__ = { invoke: async (_: string, request: unknown) => {
+    const listeners = new Set<(message: any) => void>();
+    (window as any).__testSettings = async (request: unknown) => {
       const response = await fetch("/__test_rpc", { method: "POST", body: JSON.stringify(request) });
       const reply = await response.json(); if (reply.error) throw reply.error; return reply.result;
-    } };
+    };
+    (window as any).clarifyDesktop = {
+      call: async (_channel: string, method: string, args: unknown[]) => (window as any).__testSettings({method,args}),
+      subscribe: (callback: (message:any) => void) => {listeners.add(callback);return () => listeners.delete(callback);},
+      onWindow: () => () => {}, ready: async () => {}, window: async () => {},
+    };
+    setInterval(() => {if(listeners.size)void (window as any).__testSettings({method:'poll',args:[]}).then((state:any)=>listeners.forEach(callback=>callback({event:'settings',state}))).catch(()=>{});},150);
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Welcome back", exact: true })).toBeVisible({ timeout: 30000 });
@@ -150,7 +156,7 @@ test.afterEach(async () => {
 });
 
 async function snapshot(page: Page) {
-  return page.evaluate(() => (window as any).__TAURI_INTERNALS__.invoke("settings_call", { method: "snapshot", args: [] }));
+  return page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
 }
 
 async function selectChatGPT(page: Page) {
@@ -342,14 +348,6 @@ test("ChatGPT failed reconnection and cancellation preserve the saved account", 
   });
 });
 
-test("Clarify account keeps personal provider controls hidden", async ({ page }) => {
-  await navigate(page, "Clarify account");
-  await expect(page.getByRole("button", { name: "Models and services", exact: true })).toHaveCount(0);
-  await navigate(page, "Style");
-  await expect(page.getByRole("combobox", { name: /^(Text editing|Edição do texto)$/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review model and instructions", exact: true })).toHaveCount(0);
-});
-
 test("ChatGPT profile models stay available without changing the Style draft", async ({ page }, info) => {
   await selectChatGPT(page);
   await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
@@ -359,8 +357,9 @@ test("ChatGPT profile models stay available without changing the Style draft", a
   await openStyleReview(page, "en");
   const prompt = page.getByRole("textbox", { name: "Instructions", exact: true });
   await prompt.fill("Keep this Style draft.");
-  await navigate(page, "Models and services");
-  await page.getByRole("button", { name: "Edit Rewriting profile", exact: true }).click();
+  const settings = await openSettings(page, "Models and services");
+  await settings.getByRole("tab", { name: "Text processing", exact: true }).click();
+  await settings.getByRole("button", { name: "Edit Rewriting profile", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Processing profile", exact: true });
   await editor.getByRole("combobox", { name: "Profile service", exact: true }).click();
   await page.getByRole("option", { name: "ChatGPT (subscription)", exact: true }).click();

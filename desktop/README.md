@@ -1,133 +1,75 @@
-# Clarify Settings
+# Clarify desktop
 
-React/TypeScript with reusable Base UI controls and Tailwind CSS, hosted by
-Tauri 2 / WebView2. Settings use the web UI;
-the recording engine and pill remain in Python/Qt.
+React/TypeScript and Electron provide the desktop interface, including the pill,
+Settings, menus and result views. Python/Qt owns capture, workflows, hotkeys,
+storage and the private process protocol. Native audio-file import is retained
+in `clarify/desktop/qml/AudioFilesWindow.qml`.
 
 ## Source map
 
-```text
-src/
-  main.tsx                    React entrypoint
-  app.tsx                     Window layout, navigation and page selection
-  components/                 Reusable controls and shared Settings views
-    primitives/               Base UI controls, variants and overlay composition
-    settings-navigation.tsx   Grouped sidebar navigation
-  lib/utils.ts                Conditional and merged utility classes
-  pages/                      General, Dictation, Text, Dictionary, Shortcuts, Models
-  settings/
-    bridge.ts                 Typed commands and serialized Settings state
-    use-settings.ts           Drafts, operations, save/discard and navigation
-    use-settings-window.ts    Native close requests and window lifecycle
-    recording.ts              Recording draft conversion and validation
-    settings-dialogs.tsx      Confirmation and shortcut dialogs
-    navigation.ts             Page IDs, labels and icons
-  styles/
-    tokens.css                Colors, type, spacing, radius and motion values
-    base.css                  Document defaults
-    components.css            Common control states and dialogs
-    primitives.css            Shared overlay surfaces and opaque fallbacks
-    pages.css                 Feature-specific layouts
-    layout.css                Window layout and responsive overrides
+- `src/main.tsx` selects the Settings window or pill renderer.
+- `src/app.tsx`, `pages/` and `components/` own the workspace and shared controls.
+- `src/pill.tsx` owns the one pill presentation and its interaction states.
+- `src/settings/` owns typed commands, draft state and operation ordering.
+- `electron/` owns native windows, focus, hit testing and private pipe transport.
+- `assets/` contains the shared desktop branding files.
+- `src/styles/` owns semantic tokens, components and layouts.
+
+Use the [desktop design system](../docs/desktop-design-system.md). Keep controls
+shared through `components/ui.tsx` and preserve native passive-pill behavior.
+
+## Development and build
+
+Use the pinned Python requirements and `package-lock.json`. Frontend checks use
+Node.js 22 or newer:
+
+```powershell
+npm ci
+npm run lint:ui
+npm run typecheck
+npm run test:unit
+npm run build
 ```
 
-Add a page under `pages/`. Use the controls in `components/ui.tsx`:
-`Button`, `Field`, `Input`, `TextArea`, `Picker`, `Toggle`, `Row`, `Section`, and
-`Confirm`. `Field` owns the input label and help-text association. `Toggle`
-provides the same association for switches. Base UI imports belong in
-`components/primitives/`; page code uses the facade and does not duplicate
-keyboard, focus or popup behavior.
+Build the Windows shell from the repository root:
 
-Put multi-command operations in `use-settings.ts`. Its operation boundary owns
-ordered transactions, local pending states, errors and success updates. Choice
-controls persist only their preference. Text drafts remain local until a contextual
-save or the explicit save-all action on close. Native close handling has its own hook. Command argument
-tuples in `bridge.ts` check frontend callers; the Python allowlist remains the
-runtime authority. Keep providers, persisted configuration and credentials in
-their existing Python owners.
-
-Use `styles/tokens.css` for shared values and common theme roles. Keep values
-specific to one component with that component's styles. Keep feature geometry in
-`pages.css` and window geometry in `layout.css`. The Qt/QML pill retains its
-existing theme and behavior. Settings tests cover help-text associations,
-placeholder contrast, keyboard selection, drafts, persistence and window geometry.
-
-The [desktop design system](../docs/desktop-design-system.md) records the pinned
-shared tokens, component rules and UX contracts.
-`Section` places its heading above a shared `.section-content` panel. Sidebar
-buttons remain available during settings operations. Managed-account visibility
-applies to navigation and the rendered pages. The sidebar search opens pages and
-stable sections with keyboard navigation. It respects managed-account visibility
-and retains text drafts. Long option lists and libraries keep their own filters.
-
-The Python engine remains the sole owner of configuration, secrets, audio,
-shortcuts and clipboard delivery. `clarify/desktop/qml_web_settings.py` defines a
-small allowlisted protocol over QProcess stdin/stdout. Saved API keys are not
-included in snapshots. No HTTP listener, browser filesystem API or shell API
-is exposed. The frontend has no production mock-data fallback.
-
-## Development
-
-Use Node 22 or newer, Rust, and the Tauri platform prerequisites. On Windows,
-install the Visual C++ build tools, Windows SDK and WebView2 runtime.
-
-```
-npm run build:settings
-npm run deploy -- -SettingsExecutable <absolute-path-to-dist/clarify-settings.exe>
+```powershell
+.\scripts\build-desktop.ps1
+$env:CLARIFY_DESKTOP_EXECUTABLE = (Resolve-Path ".\dist\desktop-shell\Clarify Desktop.exe").Path
+.\.venv\Scripts\python.exe clarify\desktop\qml_app.py
 ```
 
-Run these commands from the repository root. `scripts/build.ps1` also accepts
-`-SettingsExecutable`; omitting it preserves the QML-only build. The build script
-stages files on a local drive to avoid UNC issues. Keep the lockfiles.
+On macOS, run `npm run build:electron` in this directory. The Qt engine finds
+the result for the current architecture under `electron-dist/`. See
+[macOS setup](../docs/development.md#macos-setup) to build the complete app bundle.
 
-For frontend development, run `npm ci` and `npm run dev` in `desktop`.
-Vite alone is not connected to user settings. The standalone host requires a
-Python parent implementing the private pipe protocol.
+`npm run dev` starts Vite for frontend work; it does not connect to user settings.
+The product shell requires its Python parent and private standard input/output
+protocol. There is no public Settings HTTP server.
 
-## Lifecycle and migration scope
+`build.ps1` embeds the Electron shell by default. `-DesktopShellDirectory` accepts
+a prebuilt shell from the same source revision. The manifest and SBOM cover its
+renderer, native runtime and license notices.
 
-`_SettingsWindowVisibility` opens the bundled host. Missing binaries, launch
-failures and startup timeouts fall back to QML. Explicit Settings requests restore
-a minimized window. Starting a workflow hides settings without discarding drafts.
-Closing settings prompts about unsaved edits and terminates the separate host.
+## Lifecycle
 
-General, Dictation, Text, Shortcuts, and Models & services are in the web UI.
-Recording boundaries and silence detection are under Dictation. Text includes
-the local-transcription cleanup route. Custom model IDs/endpoints, shortcut resets,
-credential removal, local-model removal/use/measurement and experimental streaming
-are integrated into their relevant sections. There is no advanced-options handoff.
-Audio file import remains in the pill's quick menu. Dictionary and diagnostic
-pages were not part of the QML SettingsWindow; the earlier description was wrong.
-QML is retained only as a launch-failure fallback and for QML-only builds.
+The Electron process remains resident when Settings closes. Native controllers
+retain capture and workflow ownership. A renderer crash or startup timeout uses
+bounded restarts and publishes fresh state to the new renderer. After three
+unsuccessful restarts, a small native dialog offers Retry or Close. The app never
+switches to a second pill, Settings page or result interface.
 
-## Tests
+Saved audio remains under its engine-owned recovery store. UI recovery does not
+repeat transcription or paste a result. Existing operation and clipboard guards
+continue to decide those effects.
 
-- `desktop/unit-tests/`: hook, queue and React operation ownership. Run
-  `npm run test:unit` without Python or a browser.
-- `desktop/boot-tests/`: production bundle boot. Run `npm run build` and
-  `npm run test:boot`.
-- `tests/qt/test_web_settings.py`: RPC allowlist, secret exclusion, real draft/save/
-  discard, lifecycle and explicit activation.
-- `desktop/tests/settings.spec.ts`: real React UI with an isolated Qt controller;
-  keyboard/model search, persistence, invalid input, microphone test lifecycle
-  and screenshots at 640/820/1040 px.
-- `desktop/scripts/native-smoke.mjs`: real Tauri and QProcess pipes, model save,
-  unsaved close/cancel/discard and process termination.
+## Validation
 
-`npm test` runs unit and browser tests. Use `npm run test:browser` for the browser
-and bridge cases alone. Local and CI browser tests use locked Chromium by default.
-Set `CLARIFY_TEST_BROWSER=msedge` to check an installed Edge browser explicitly.
-Set `CLARIFY_TEST_PYTHON` to a Python with
-PySide6, and `CLARIFY_TEST_FIXTURE` to the absolute `tests/web_settings_fixture.py`
-path, then run `npm test` from the staged desktop directory. The native test also
-needs `CLARIFY_SETTINGS_EXECUTABLE` and `CLARIFY_TEST_OUTPUT`. Its remote-debugging
-port is test-only, never enabled by the app. Fixtures use temporary config, fake
-audio and installation status: no real capture or paid provider requests.
+`lint:ui` enforces the shared control and color policy. `typecheck` includes it.
+`test:unit` covers hooks, queues, operation ownership and lint policy fixtures. `test:browser` and
+`test:boot` use isolated Python fixtures and synthetic devices. `test:electron`
+checks the host protocol. The Windows packaged smoke test verifies the actual
+host and private pipes, including native passive focus and hit testing.
 
-The native test reports startup and summed working sets. These include test
-overhead and can double-count shared memory; they are not an Electron comparison
-or an end-user latency guarantee.
-
-References: [Tauri](https://v2.tauri.app/start/),
-[Base UI](https://base-ui.com/react/overview/accessibility),
-[Tailwind CSS](https://tailwindcss.com/docs).
+Use [CI delivery](../docs/ci-delivery.md) for the selected commands and platform
+gates. Browser evidence does not replace native Windows acceptance.

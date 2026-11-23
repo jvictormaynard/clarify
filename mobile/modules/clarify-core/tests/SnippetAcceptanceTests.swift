@@ -4,18 +4,13 @@ import XCTest
 // This test is opt-in. The ordinary suite never reads credentials, records audio,
 // or calls the service. The fixture uses dedicated temporary accounts only.
 final class SnippetAcceptanceTests: XCTestCase {
-  private struct Clip: Decodable { let filename: String; let kind: String; let expectedTextContains: [String]? }
   private struct Fixture: Decodable {
     let endpoint: String; let userID: String; let token: String
     let peerUserID: String?; let peerToken: String?
-    let trigger: String; let replacement: String; let recursiveTrigger: String?; let clips: [Clip]
+    let trigger: String; let replacement: String; let recursiveTrigger: String?
   }
   private struct AcceptanceFailure: Error {}
   private func require(_ condition: Bool) throws { if !condition { throw AcceptanceFailure() } }
-  private func normalized(_ value: String) -> String {
-    value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
-      .split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-  }
   @MainActor func testLiveSnippetService() async throws {
     guard let file = ProcessInfo.processInfo.environment["CLARIFY_SNIPPETS_ACCEPTANCE_FILE"],
       let reportPath = ProcessInfo.processInfo.environment["CLARIFY_SNIPPETS_ACCEPTANCE_REPORT"] else {
@@ -52,35 +47,6 @@ final class SnippetAcceptanceTests: XCTestCase {
       let onePass = [Snippet(trigger: "first phrase", replacement: "second phrase"), Snippet(trigger: "second phrase", replacement: "Forbidden")]
       try require(try Snippet.expand("first phrase", entries: onePass) == "second phrase")
       evidence["single_pass"] = true
-      var hosted = 0, standalone = 0, inline = 0
-      for clip in fixture.clips {
-        let outcome = try await account.dictate(root.appendingPathComponent(clip.filename), operationID: UUID().uuidString, library: library)
-        try require(outcome.successful && outcome.snippetExpanded == true)
-        try require(!outcome.text.contains(recursive.replacement))
-        try require(normalized(outcome.transcript).contains(normalized(fixture.trigger)))
-        if clip.kind == "standalone" {
-          try require(outcome.text == fixture.replacement && !outcome.rewritten); standalone += 1
-        } else {
-          // Rewriting sees the expanded source and may change its spelling or
-          // line breaks. Check synthetic semantic markers rather than imposing
-          // the former post-rewrite verbatim insertion contract.
-          let markers = clip.expectedTextContains ?? []
-          try require((2...8).contains(markers.count) && markers.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
-          try require(outcome.rewritten && !normalized(outcome.text).contains(normalized(fixture.trigger)))
-          try require(markers.allSatisfy { normalized(outcome.text).contains(normalized($0)) })
-          inline += 1
-        }
-        let entry = HistoryEntry(id: UUID().uuidString, createdAt: Date().timeIntervalSince1970, transcript: outcome.transcript,
-          text: outcome.text, rewritten: outcome.successful)
-        try library.record(entry, scope: account.historyScope)
-        try require(try reopened.history(scope: account.historyScope).entries.contains(entry))
-        hosted += 1
-      }
-      try require(try reopened.history(scope: account.historyScope).entries.count == hosted)
-      evidence["hosted_cases"] = hosted; evidence["standalone_cases"] = standalone; evidence["inline_cases"] = inline
-      evidence["original_transcript_preserved"] = true
-      evidence["inline_rewritten"] = inline > 0; evidence["inline_markers_preserved"] = inline > 0
-      evidence["history_persisted"] = true
       var peerIsolated = false
       if let peerID = fixture.peerUserID, let peerToken = fixture.peerToken {
         var peerState = state; peerState.userID = peerID

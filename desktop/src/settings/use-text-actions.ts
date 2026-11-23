@@ -1,3 +1,4 @@
+import { isMacDesktop, shortcutKey } from "../platform";
 import { copyTextActionPreview } from "./bridge";
 import { useDraft } from "./use-draft";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
@@ -154,16 +155,17 @@ export function useTextActions(state: Settings | undefined, run: Runner) {
     if (event.key === "Escape") { await cancelCapture(); return; }
     if (event.repeat) return;
     const key = ({ Control: "CTRL", Alt: "ALT", Shift: "SHIFT", Meta: "WIN" } as Record<string, string>)[event.key];
+    if (isMacDesktop() && (key || event.type === "keyup")) return;
     if (event.type === "keydown" && key) { modifier.current = event.key; return; }
     if (event.type === "keyup" && (!key || modifier.current !== event.key)) return;
     modifier.current = null;
     const modifiers = [...(event.ctrlKey ? ["ctrl"] : []), ...(event.altKey ? ["alt"] : []),
       ...(event.shiftKey ? ["shift"] : []), ...(event.metaKey ? ["win"] : [])];
-    await applyShortcut({ key: key || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
+    await applyShortcut({ key: key || shortcutKey(event),
       modifiers: modifiers.filter(value => value.toUpperCase() !== key) });
   };
   const captureMouse = async (event: MouseEvent<HTMLInputElement>) => {
-    if (!capturingRef.current || ![3, 4].includes(event.button)) return;
+    if (!capturingRef.current || isMacDesktop() || ![3, 4].includes(event.button)) return;
     event.preventDefault(); event.stopPropagation();
     await applyShortcut({ key: event.button === 3 ? "XBUTTON1" : "XBUTTON2",
       modifiers: [...(event.ctrlKey ? ["ctrl"] : []), ...(event.altKey ? ["alt"] : []),

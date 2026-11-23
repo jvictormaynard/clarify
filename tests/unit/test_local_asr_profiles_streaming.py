@@ -28,6 +28,15 @@ class ProfileTests(unittest.TestCase):
     def test_all_profiles_have_verified_separate_manifests(self):
         roots = set()
         for model in MODELS:
+            if model in {
+                "nemotron-3.5-streaming",
+                "parakeet-v3-int8",
+                "granite-5-turboctc",
+            }:
+                installer = installer_for(model)
+                self.assertEqual(installer.manifest["recommended_model"]["id"], model)
+                self.assertEqual(installer_for(model, "cuda:0").root, installer.root)
+                continue
             for device in ("cpu", "cuda:0"):
                 installer = installer_for(model, device)
                 self.assertEqual(installer.manifest["recommended_model"]["id"], model)
@@ -45,6 +54,36 @@ class ProfileTests(unittest.TestCase):
             self.assertFalse(
                 any(other != root and root in other.parents for other in roots)
             )
+
+    def test_catalog_expansion_keeps_saved_models_and_cpu_only_routes(self):
+        self.assertTrue(
+            {
+                "ggml-base",
+                "ggml-small",
+                "ggml-medium",
+                "nemotron-3.5-streaming",
+                "parakeet-v3-int8",
+                "granite-5-turboctc",
+                "ggml-turbo-q5",
+            }
+            <= set(MODELS)
+        )
+        for model in MODELS:
+            with self.subTest(model=model):
+                config = AppConfig.from_mapping({"local_asr_model": model})
+                restored = AppConfig.from_mapping(config.to_mapping())
+                self.assertEqual(restored.local_asr.audio_model, model)
+        for model in (
+            "parakeet-v3-int8",
+            "granite-5-turboctc",
+            "nemotron-3.5-streaming",
+        ):
+            with (
+                self.subTest(model=model),
+                patch("local_asr_catalog._fingerprint") as fingerprint,
+            ):
+                self.assertEqual(measured_device(model), "cpu")
+                fingerprint.assert_not_called()
 
     def test_config_roundtrip_and_invalid_inputs(self):
         config = AppConfig.from_mapping(

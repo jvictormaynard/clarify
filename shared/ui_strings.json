@@ -1,4 +1,39 @@
 {
+  "Atalhos indisponíveis ({v0})": {
+    "pt": "Atalhos indisponíveis ({v0})",
+    "en": "Unavailable shortcuts ({v0})",
+    "es": "Atajos no disponibles ({v0})"
+  },
+  "Diagnóstico": {
+    "pt": "Diagnóstico",
+    "en": "Diagnostics",
+    "es": "Diagnóstico"
+  },
+  "Gerar diagnóstico": {
+    "pt": "Gerar diagnóstico",
+    "en": "Generate diagnostics",
+    "es": "Generar diagnóstico"
+  },
+  "Conteúdo do diagnóstico": {
+    "pt": "Conteúdo do diagnóstico",
+    "en": "Diagnostic contents",
+    "es": "Contenido del diagnóstico"
+  },
+  "Salvar diagnóstico": {
+    "pt": "Salvar diagnóstico",
+    "en": "Save diagnostics",
+    "es": "Guardar diagnóstico"
+  },
+  "Não foi possível gerar o diagnóstico. Tente novamente.": {
+    "pt": "Não foi possível gerar o diagnóstico. Tente novamente.",
+    "en": "Could not generate diagnostics. Try again.",
+    "es": "No se pudo generar el diagnóstico. Inténtalo de nuevo."
+  },
+  "Gere um arquivo com versão, ambiente e erros técnicos. Revise antes de compartilhar. Nada é enviado automaticamente.": {
+    "pt": "Gere um arquivo com versão, ambiente e erros técnicos. Revise antes de compartilhar. Nada é enviado automaticamente.",
+    "en": "Generate a file with version, environment and technical errors. Review it before sharing. Nothing is sent automatically.",
+    "es": "Genera un archivo con la versión, el entorno y los errores técnicos. Revísalo antes de compartirlo. Nada se envía automáticamente."
+  },
   "Usar o servidor de produção?": {
     "pt": "Usar o servidor de produção?",
     "en": "Use the production server?",
@@ -830,9 +865,9 @@
     "es": "Practicar dictado"
   },
   "practice_destination": {
-    "pt": "O texto aparece nesta tela, sem cópia ou inserção automática. A prática usa sua configuração atual. O processamento da conta pode consumir cota e salvar o ditado no histórico da conta.",
-    "en": "The text appears on this screen, with no automatic copy or insertion. Practice uses your current settings. Account processing can use quota and save dictation in account history.",
-    "es": "El texto aparece en esta pantalla, sin copia ni inserción automática. La práctica usa tus ajustes actuales. El procesamiento de la cuenta puede consumir cuota y guardar el dictado en el historial de la cuenta."
+    "pt": "O texto aparece nesta tela, sem cópia ou inserção automática. A prática usa os modelos e serviços selecionados.",
+    "en": "The text appears on this screen, with no automatic copy or insertion. Practice uses your selected models and services.",
+    "es": "El texto aparece en esta pantalla, sin copia ni inserción automática. La práctica usa los modelos y servicios seleccionados."
   },
   "practice_level": {
     "pt": "Nível do microfone",
@@ -2268,6 +2303,11 @@
     "pt": "Serviço na nuvem",
     "en": "Cloud service",
     "es": "Servicio en la nube"
+  },
+  "Serviços e modelos locais": {
+    "pt": "Serviços e modelos locais",
+    "en": "Services and local models",
+    "es": "Servicios y modelos locales"
   },
   "Serviços na nuvem": {
     "pt": "Serviços na nuvem",
@@ -8658,5 +8698,805 @@
     "pt": "Selecione de uma a cinco palavras, com até 256 caracteres.",
     "en": "Select one to five words, up to 256 characters.",
     "es": "Selecciona entre una y cinco palabras, hasta 256 caracteres."
+  },
+  "Gravações neste computador": {
+    "pt": "Gravações neste computador",
+    "en": "Recordings on this computer",
+    "es": "Grabaciones en este equipo"
+  },
+  "O áudio completo fica neste computador até você excluir. Reprocessar usa a conta e as configurações atuais.": {
+    "pt": "O áudio completo fica neste computador até você excluir. Reprocessar usa a conta e as configurações atuais.",
+    "en": "Full audio stays on this computer until you delete it. Reprocess uses the current account and settings.",
+    "es": "El audio completo permanece en este equipo hasta que lo elimines. Reprocesar usa la cuenta y la configuración actuales."
+  },
+  "Atualizar gravações": {
+    "pt": "Atualizar gravações",
+    "en": "Refresh recordings",
+    "es": "Actualizar grabaciones"
+  },
+  "Reprocessar": {
+    "pt": "Reprocessar",
+    "en": "Reprocess",
+    "es": "Reprocesar"
+  },
+  "Excluir gravação": {
+    "pt": "Excluir gravação",
+    "en": "Delete recording",
+    "es": "Eliminar grabación"
+  },
+  "Esta ação remove o áudio completo deste computador.": {
+    "pt": "Esta ação remove o áudio completo deste computador.",
+    "en": "This removes the full audio from this computer.",
+    "es": "Esta acción elimina el audio completo de este equipo."
+  },
+  "Reprocessamento iniciado. O resultado será exibido no aplicativo.": {
+    "pt": "Reprocessamento iniciado. O resultado será exibido no aplicativo.",
+    "en": "Reprocessing started. The result will appear in the app.",
+    "es": "Se inició el reprocesamiento. El resultado aparecerá en la aplicación."
+  },
+  "Não foi possível acessar a gravação. Aguarde o processamento atual e tente novamente.": {
+    "pt": "Não foi possível acessar a gravação. Aguarde o processamento atual e tente novamente.",
+    "en": "Could not access the recording. Wait for current processing to finish, then try again.",
+    "es": "No se pudo acceder a la grabación. Espera a que termine el procesamiento actual e inténtalo de nuevo."
+  },
+  "Limpar histórico remove as transcrições. Exclua os áudios separadamente em Gravações neste computador, no Histórico.": {
+    "pt": "Limpar histórico remove as transcrições. Exclua os áudios separadamente em Gravações neste computador, no Histórico.",
+    "en": "Clear history removes transcriptions. Delete audio separately under Recordings on this computer in History.",
+    "es": "Limpiar historial elimina las transcripciones. Elimina el audio por separado en Grabaciones en este equipo, en Historial."
+  },
+  "Gravações neste iPhone": {
+    "pt": "Gravações neste iPhone",
+    "en": "Recordings on this iPhone",
+    "es": "Grabaciones en este iPhone"
+  },
+  "O áudio completo fica salvo neste dispositivo, mesmo se o processamento falhar. Reprocessar usa sua conta e as configurações atuais.": {
+    "pt": "O áudio completo fica salvo neste dispositivo, mesmo se o processamento falhar. Reprocessar usa sua conta e as configurações atuais.",
+    "en": "Full audio stays saved on this device, even if processing fails. Reprocess uses your current account and settings.",
+    "es": "El audio completo queda guardado en este dispositivo, aunque falle el procesamiento. Reprocesar usa tu cuenta y configuración actuales."
+  },
+  "Áudio completo salvo neste dispositivo": {
+    "pt": "Áudio completo salvo neste dispositivo",
+    "en": "Full audio saved on this device",
+    "es": "Audio completo guardado en este dispositivo"
+  },
+  "Reprocessar áudio": {
+    "pt": "Reprocessar áudio",
+    "en": "Reprocess audio",
+    "es": "Reprocesar audio"
+  },
+  "Não foi possível transcrever": {
+    "pt": "Não foi possível transcrever",
+    "en": "Could not transcribe",
+    "es": "No se pudo transcribir"
+  },
+  "Áudio salvo": {
+    "pt": "Áudio salvo",
+    "en": "Audio saved",
+    "es": "Audio guardado"
+  },
+  "Transcrição concluída": {
+    "pt": "Transcrição concluída",
+    "en": "Transcription complete",
+    "es": "Transcripción completada"
+  },
+  "Processando áudio…": {
+    "pt": "Processando áudio…",
+    "en": "Processing audio…",
+    "es": "Procesando audio…"
+  },
+  "Aguarde o processamento atual.": {
+    "pt": "Aguarde o processamento atual.",
+    "en": "Wait for current processing to finish.",
+    "es": "Espera a que termine el procesamiento actual."
+  },
+  "Esta ação remove o áudio completo deste iPhone. A transcrição será mantida.": {
+    "pt": "Esta ação remove o áudio completo deste iPhone. A transcrição será mantida.",
+    "en": "This removes the full audio from this iPhone. The transcription will stay saved.",
+    "es": "Esta acción elimina el audio completo de este iPhone. La transcripción se conservará."
+  },
+  "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Exclua os áudios separadamente em Gravações neste iPhone.": {
+    "pt": "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Exclua os áudios separadamente em Gravações neste iPhone.",
+    "en": "Full audio stays on this iPhone until you delete it. Clear history removes text. Delete audio separately under Recordings on this iPhone.",
+    "es": "El audio completo permanece en este iPhone hasta que lo elimines. Borrar el historial elimina los textos. Elimina el audio por separado en Grabaciones en este iPhone."
+  },
+  "O histórico desta conexão fica neste iPhone.": {
+    "pt": "O histórico desta conexão fica neste iPhone.",
+    "en": "History for this connection stays on this iPhone.",
+    "es": "El historial de esta conexión permanece en este iPhone."
+  },
+  "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone.": {
+    "pt": "Novos ditados da conta são sincronizados entre seus dispositivos. Registros antigos e ditados sem conta permanecem neste iPhone.",
+    "en": "New account dictations sync across your devices. Older records and dictations without an account stay on this iPhone.",
+    "es": "Los nuevos dictados de la cuenta se sincronizan entre tus dispositivos. Los registros antiguos y los dictados sin cuenta permanecen en este iPhone."
+  },
+  "Gravação recuperada. O áudio pode estar incompleto.": {
+    "pt": "Gravação recuperada. O áudio pode estar incompleto.",
+    "en": "Recording recovered. The audio may be incomplete.",
+    "es": "Grabación recuperada. El audio puede estar incompleto."
+  },
+  "Tentar transcrição novamente": {
+    "pt": "Tentar transcrição novamente",
+    "en": "Retry transcription",
+    "es": "Intentar transcribir de nuevo"
+  },
+  "Desfazer edição de IA": {
+    "pt": "Desfazer edição de IA",
+    "en": "Undo AI edit",
+    "es": "Deshacer edición de IA"
+  },
+  "Extrair áudio": {
+    "pt": "Extrair áudio",
+    "en": "Export audio",
+    "es": "Extraer audio"
+  },
+  "Reproduzir áudio": {
+    "pt": "Reproduzir áudio",
+    "en": "Play audio",
+    "es": "Reproducir audio"
+  },
+  "Pausar áudio": {
+    "pt": "Pausar áudio",
+    "en": "Pause audio",
+    "es": "Pausar audio"
+  },
+  "Áudio não processado": {
+    "pt": "Áudio não processado",
+    "en": "Audio not processed",
+    "es": "Audio sin procesar"
+  },
+  "Não foi possível abrir o áudio. Tente novamente.": {
+    "pt": "Não foi possível abrir o áudio. Tente novamente.",
+    "en": "Could not open the audio. Try again.",
+    "es": "No se pudo abrir el audio. Inténtalo de nuevo."
+  },
+  "Não foi possível extrair o áudio.": {
+    "pt": "Não foi possível extrair o áudio.",
+    "en": "Could not export the audio.",
+    "es": "No se pudo extraer el audio."
+  },
+  "Mostra a transcrição original neste dispositivo.": {
+    "pt": "Mostra a transcrição original neste dispositivo.",
+    "en": "Shows the original transcription on this device.",
+    "es": "Muestra la transcripción original en este dispositivo."
+  },
+  "Esta ação remove o áudio salvo deste computador.": {
+    "pt": "Esta ação remove o áudio salvo deste computador.",
+    "en": "This removes the saved audio from this computer.",
+    "es": "Esta acción elimina el audio guardado en este equipo."
+  },
+  "Esta ação remove o áudio salvo deste iPhone.": {
+    "pt": "Esta ação remove o áudio salvo deste iPhone.",
+    "en": "This removes the saved audio from this iPhone.",
+    "es": "Esta acción elimina el audio guardado en este iPhone."
+  },
+  "O áudio salvo neste dispositivo também será excluído.": {
+    "pt": "O áudio salvo neste dispositivo também será excluído.",
+    "en": "The audio saved on this device will also be deleted.",
+    "es": "También se eliminará el audio guardado en este dispositivo."
+  },
+  "Limpar histórico remove os textos. Os áudios restantes continuam como itens no histórico até você excluir.": {
+    "pt": "Limpar histórico remove os textos. Os áudios restantes continuam como itens no histórico até você excluir.",
+    "en": "Clear history removes text. Remaining audio stays as history items until you delete it.",
+    "es": "Limpiar historial elimina los textos. El audio restante permanece como elementos del historial hasta que lo elimines."
+  },
+  "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Os áudios restantes continuam como itens no histórico.": {
+    "pt": "O áudio completo fica neste iPhone até você excluir. Apagar o histórico remove os textos. Os áudios restantes continuam como itens no histórico.",
+    "en": "Full audio stays on this iPhone until you delete it. Clear history removes text. Remaining audio stays as history items.",
+    "es": "El audio completo permanece en este iPhone hasta que lo elimines. Borrar el historial elimina los textos. El audio restante permanece como elementos del historial."
+  },
+  "Tentar transcrever áudio de {duration}.": {
+    "pt": "Tentar transcrever áudio de {duration}.",
+    "en": "Retry your {duration} transcript.",
+    "es": "Intentar transcribir de nuevo el audio de {duration}."
+  },
+  "Não foi possível iniciar a interface do Clarify.": {
+    "pt": "Não foi possível iniciar a interface do Clarify.",
+    "en": "The Clarify interface could not be started.",
+    "es": "No se pudo iniciar la interfaz de Clarify."
+  },
+  "Tente abrir a interface novamente ou feche o Clarify. Os áudios salvos continuam no histórico.": {
+    "pt": "Tente abrir a interface novamente ou feche o Clarify. Os áudios salvos continuam no histórico.",
+    "en": "Retry the interface or close Clarify. Saved audio remains in history.",
+    "es": "Intenta abrir la interfaz de nuevo o cierra Clarify. El audio guardado permanece en el historial."
+  },
+  "A interface do Clarify não foi encontrada. Reinstale o aplicativo.": {
+    "pt": "A interface do Clarify não foi encontrada. Reinstale o aplicativo.",
+    "en": "The Clarify interface is missing. Reinstall the app.",
+    "es": "No se encontró la interfaz de Clarify. Reinstala la aplicación."
+  },
+  "Conclua as tarefas em andamento para atualizar.": {
+    "pt": "Conclua as tarefas em andamento para atualizar.",
+    "en": "Finish the active tasks to update.",
+    "es": "Termina las tareas en curso para actualizar."
+  },
+  "Salve ou descarte as alterações para atualizar.": {
+    "pt": "Salve ou descarte as alterações para atualizar.",
+    "en": "Save or discard your changes to update.",
+    "es": "Guarda o descarta los cambios para actualizar."
+  },
+  "Feche a prática de ditado para atualizar.": {
+    "pt": "Feche a prática de ditado para atualizar.",
+    "en": "Close dictation practice to update.",
+    "es": "Cierra la práctica de dictado para actualizar."
+  },
+  "Pare o teste do microfone para atualizar.": {
+    "pt": "Pare o teste do microfone para atualizar.",
+    "en": "Stop the microphone test to update.",
+    "es": "Detén la prueba del micrófono para actualizar."
+  },
+  "Aguarde a tarefa do modelo local terminar para atualizar.": {
+    "pt": "Aguarde a tarefa do modelo local terminar para atualizar.",
+    "en": "Wait for the local model task to finish before updating.",
+    "es": "Espera a que termine la tarea del modelo local para actualizar."
+  },
+  "Aguarde a conexão com o provedor terminar para atualizar.": {
+    "pt": "Aguarde a conexão com o provedor terminar para atualizar.",
+    "en": "Wait for the provider connection to finish before updating.",
+    "es": "Espera a que termine la conexión con el proveedor para actualizar."
+  },
+  "Feche a janela do Clarify para aplicar a atualização.": {
+    "pt": "Feche a janela do Clarify para aplicar a atualização.",
+    "en": "Close the Clarify window to apply the update.",
+    "es": "Cierra la ventana de Clarify para aplicar la actualización."
+  },
+  "Conclua a gravação ou o processamento e feche o resultado para atualizar.": {
+    "pt": "Conclua a gravação ou o processamento e feche o resultado para atualizar.",
+    "en": "Finish recording or processing and close the result to update.",
+    "es": "Termina la grabación o el procesamiento y cierra el resultado para actualizar."
+  },
+  "Instalar atualização {v0}": {
+    "pt": "Instalar atualização {v0}",
+    "en": "Install update {v0}",
+    "es": "Instalar actualización {v0}"
+  },
+  "setup_progress": {
+    "pt": "Progresso da configuração",
+    "en": "Setup progress",
+    "es": "Progreso de configuración"
+  },
+  "setup_languages": {
+    "pt": "Quais idiomas você fala?",
+    "en": "Which languages do you speak?",
+    "es": "¿Qué idiomas hablas?"
+  },
+  "setup_speech": {
+    "pt": "Um modelo para sua voz",
+    "en": "A model for your voice",
+    "es": "Un modelo para tu voz"
+  },
+  "setup_text": {
+    "pt": "Quer ajustar o texto?",
+    "en": "Would you like to edit the text?",
+    "es": "¿Quieres ajustar el texto?"
+  },
+  "setup_install": {
+    "pt": "Prepare seu primeiro ditado",
+    "en": "Prepare your first dictation",
+    "es": "Prepara tu primer dictado"
+  },
+  "setup_welcome_hint": {
+    "pt": "Fale. O Clarify transforma sua voz em texto. Sem conta obrigatória.",
+    "en": "Speak. Clarify turns your voice into text. No account required.",
+    "es": "Habla. Clarify convierte tu voz en texto. No necesitas una cuenta."
+  },
+  "setup_language_hint": {
+    "pt": "Selecione um idioma ou use a detecção automática para falar em vários idiomas. Isso não muda o idioma da interface.",
+    "en": "Select a language or use automatic detection for multiple languages. This does not change the interface language.",
+    "es": "Selecciona un idioma o usa la detección automática para varios idiomas. Esto no cambia el idioma de la interfaz."
+  },
+  "setup_recommend_gpu": {
+    "pt": "Usa a placa {v0} com {v1} GiB de memória de vídeo.",
+    "en": "Uses your {v0} with {v1} GiB of video memory.",
+    "es": "Usa tu tarjeta {v0} con {v1} GiB de memoria de vídeo."
+  },
+  "setup_recommend_parakeet": {
+    "pt": "Seu processador de {v0} núcleos lógicos e {v1} GiB de RAM podem executar este modelo. Ele é compatível com os idiomas selecionados.",
+    "en": "Fits your {v0} logical CPU cores and {v1} GiB of RAM and supports the selected languages.",
+    "es": "Se ajusta a tus {v0} núcleos lógicos y {v1} GiB de RAM y admite los idiomas seleccionados."
+  },
+  "setup_recommend_granite": {
+    "pt": "Usa menos memória e é compatível com o idioma selecionado.",
+    "en": "Uses less memory and supports your selected language.",
+    "es": "Usa menos memoria y admite el idioma seleccionado."
+  },
+  "setup_recommend_base": {
+    "pt": "Modelo de download pequeno, adequado quando há poucos recursos disponíveis.",
+    "en": "A smaller download for computers with limited resources.",
+    "es": "Una descarga menor para equipos con recursos limitados."
+  },
+  "setup_recommend_low_memory": {
+    "pt": "Há {v0} MiB de RAM disponível. Feche alguns aplicativos antes de testar o ditado.",
+    "en": "{v0} MiB of RAM is free now. Close some apps before testing dictation.",
+    "es": "Quedan {v0} MiB de RAM libres. Cierra algunas aplicaciones antes de probar el dictado."
+  },
+  "setup_recommend_low_disk": {
+    "pt": "Libere espaço em disco antes de baixar um modelo de ditado.",
+    "en": "Free some disk space before downloading a dictation model.",
+    "es": "Libera espacio en disco antes de descargar un modelo de dictado."
+  },
+  "setup_cpu_device": {
+    "pt": "Executado no processador (CPU).",
+    "en": "Runs on the CPU.",
+    "es": "Se ejecuta en la CPU."
+  },
+  "setup_cuda_unavailable": {
+    "pt": "O Clarify não conseguiu iniciar o modelo na GPU NVIDIA. Volte e escolha outro modelo ou atualize o driver da NVIDIA e tente novamente.",
+    "en": "Clarify could not start the model on your NVIDIA GPU. Go back and choose another model, or update the NVIDIA driver and try again.",
+    "es": "Clarify no pudo iniciar el modelo en tu GPU NVIDIA. Vuelve atrás y elige otro modelo o actualiza el controlador de NVIDIA e inténtalo de nuevo."
+  },
+  "setup_cuda_license": {
+    "pt": "Termos da licença NVIDIA CUDA",
+    "en": "NVIDIA CUDA license terms",
+    "es": "Términos de licencia de NVIDIA CUDA"
+  },
+  "setup_speech_hint": {
+    "pt": "A recomendação considera os recursos disponíveis neste computador.",
+    "en": "The recommendation uses the resources available on this computer.",
+    "es": "La recomendación usa los recursos disponibles en este equipo."
+  },
+  "setup_text_hint": {
+    "pt": "Opcional. Você pode configurar depois.",
+    "en": "Optional. You can set this up later.",
+    "es": "Opcional. Puedes configurarlo después."
+  },
+  "setup_install_hint": {
+    "pt": "O Clarify verifica o modelo antes de concluir a configuração.",
+    "en": "Clarify verifies the model before setup can finish.",
+    "es": "Clarify verifica el modelo antes de terminar la configuración."
+  },
+  "setup_voice": {
+    "pt": "Dite onde você escreve.",
+    "en": "Dictate where you type.",
+    "es": "Dicta donde escribes."
+  },
+  "setup_private": {
+    "pt": "Reconhecimento de voz neste computador.",
+    "en": "Speech recognition on this computer.",
+    "es": "Reconocimiento de voz en este equipo."
+  },
+  "setup_phone": {
+    "pt": "Conecte seu iPhone depois, se quiser.",
+    "en": "Connect your iPhone later, if you want.",
+    "es": "Conecta tu iPhone después, si quieres."
+  },
+  "setup_auto_language": {
+    "pt": "Detectar automaticamente · vários idiomas",
+    "en": "Detect automatically · multiple languages",
+    "es": "Detectar automáticamente · varios idiomas"
+  },
+  "setup_recommended": {
+    "pt": "Recomendado",
+    "en": "Recommended",
+    "es": "Recomendado"
+  },
+  "setup_location": {
+    "pt": "O áudio é processado neste computador.",
+    "en": "Audio is processed on this computer.",
+    "es": "El audio se procesa en este equipo."
+  },
+  "setup_download": {
+    "pt": "Download: {v0} MiB. Requer internet para instalar.",
+    "en": "Download: {v0} MiB. Internet is required to install.",
+    "es": "Descarga: {v0} MiB. Se necesita internet para instalar."
+  },
+  "setup_alternatives": {
+    "pt": "Outros modelos de voz",
+    "en": "Other speech models",
+    "es": "Otros modelos de voz"
+  },
+  "setup_speech_model": {
+    "pt": "Modelo de voz",
+    "en": "Speech model",
+    "es": "Modelo de voz"
+  },
+  "setup_check_again": {
+    "pt": "Verificar computador novamente",
+    "en": "Check computer again",
+    "es": "Comprobar equipo de nuevo"
+  },
+  "setup_text_service": {
+    "pt": "Serviço de texto",
+    "en": "Text service",
+    "es": "Servicio de texto"
+  },
+  "setup_raw": {
+    "pt": "Manter a transcrição · sem edição por IA",
+    "en": "Keep the transcript · no AI editing",
+    "es": "Conservar la transcripción · sin edición por IA"
+  },
+  "setup_raw_hint": {
+    "pt": "O texto reconhecido fica como foi falado. Nenhum serviço de texto é conectado.",
+    "en": "Recognized text stays as spoken. No text service is connected.",
+    "es": "El texto reconocido queda como se habló. No se conecta ningún servicio de texto."
+  },
+  "setup_subscription": {
+    "pt": "Use os limites da sua assinatura. O texto é enviado à OpenAI.",
+    "en": "Use your subscription limits. Text is sent to OpenAI.",
+    "es": "Usa los límites de tu suscripción. El texto se envía a OpenAI."
+  },
+  "setup_free": {
+    "pt": "Modelos gratuitos, sujeitos a limites. O texto é enviado ao OpenCode.",
+    "en": "Free models, subject to usage limits. Text is sent to OpenCode.",
+    "es": "Modelos gratuitos, sujetos a límites. El texto se envía a OpenCode."
+  },
+  "setup_key_hint": {
+    "pt": "Use sua chave de API. O serviço pode cobrar pelo uso.",
+    "en": "Use your API key. The service may charge for usage.",
+    "es": "Usa tu clave de API. El servicio puede cobrar por el uso."
+  },
+  "setup_connect_free": {
+    "pt": "Consultar modelos gratuitos",
+    "en": "Check free models",
+    "es": "Consultar modelos gratuitos"
+  },
+  "setup_text_model": {
+    "pt": "Modelo de texto",
+    "en": "Text model",
+    "es": "Modelo de texto"
+  },
+  "setup_ready": {
+    "pt": "Modelo instalado. Pronto para verificar e continuar.",
+    "en": "Model installed. Ready to verify and continue.",
+    "es": "Modelo instalado. Listo para verificar y continuar."
+  },
+  "setup_needs_install": {
+    "pt": "Instale o modelo de voz para continuar.",
+    "en": "Install the speech model to continue.",
+    "es": "Instala el modelo de voz para continuar."
+  },
+  "setup_retry_install": {
+    "pt": "Tentar instalação novamente",
+    "en": "Retry installation",
+    "es": "Reintentar instalación"
+  },
+  "setup_download_install": {
+    "pt": "Baixar e instalar",
+    "en": "Download and install",
+    "es": "Descargar e instalar"
+  },
+  "setup_practice": {
+    "pt": "Verificar e experimentar",
+    "en": "Verify and try it",
+    "es": "Verificar y probar"
+  },
+  "setup_phone_title": {
+    "pt": "Use os modelos do PC no iPhone",
+    "en": "Use your PC models on iPhone",
+    "es": "Usa los modelos del PC en iPhone"
+  },
+  "setup_phone_hint": {
+    "pt": "Conecte o iPhone ao Clarify no seu computador. O PC processa o áudio e precisa ficar ligado. A conta só é necessária para autorizar acesso fora do Wi-Fi.",
+    "en": "Connect iPhone to Clarify on your computer. The PC processes audio and must stay on. An account is only needed to authorize access outside Wi-Fi.",
+    "es": "Conecta el iPhone a Clarify en tu equipo. El PC procesa el audio y debe estar encendido. Solo necesitas una cuenta para autorizar el acceso fuera del Wi-Fi."
+  },
+  "setup_pair_phone": {
+    "pt": "Conectar iPhone",
+    "en": "Connect iPhone",
+    "es": "Conectar iPhone"
+  },
+  "setup_mobile_privacy": {
+    "pt": "O áudio e o texto são processados no computador pareado. As chaves dos provedores ficam no PC.",
+    "en": "Audio and text are processed on your paired computer. Provider keys stay on the PC.",
+    "es": "El audio y el texto se procesan en tu equipo vinculado. Las claves de los proveedores quedan en el PC."
+  },
+  "setup_account_library": {
+    "pt": "A conta sincroniza seu dicionário, snippets e histórico. Os modelos e as chaves pessoais continuam sob seu controle.",
+    "en": "Your account syncs dictionary, snippets and history. You keep control of personal models and keys.",
+    "es": "Tu cuenta sincroniza el diccionario, los snippets y el historial. Tú controlas los modelos y las claves personales."
+  },
+  "setup_opencode_missing": {
+    "pt": "Instale o OpenCode neste computador para consultar os modelos gratuitos.",
+    "en": "Install OpenCode on this computer to check its free models.",
+    "es": "Instala OpenCode en este equipo para consultar sus modelos gratuitos."
+  },
+  "setup_openai_endpoint": {
+    "pt": "OpenAI · chave pessoal ou endpoint local",
+    "en": "OpenAI · personal key or local endpoint",
+    "es": "OpenAI · clave personal o endpoint local"
+  },
+  "setup_endpoint_hint": {
+    "pt": "Opcional. Use o endereço do seu servidor compatível com OpenAI. O texto é enviado a esse endereço.",
+    "en": "Optional. Use your OpenAI-compatible server address. Text is sent to this address.",
+    "es": "Opcional. Usa la dirección de tu servidor compatible con OpenAI. El texto se envía a esa dirección."
+  },
+  "setup_mobile_computer": {
+    "pt": "Seus modelos no computador",
+    "en": "Your models on your computer",
+    "es": "Tus modelos en tu equipo"
+  },
+  "setup_mobile_computer_hint": {
+    "pt": "O iPhone usa um PC pareado com o Clarify aberto.",
+    "en": "iPhone uses a paired PC with Clarify open.",
+    "es": "El iPhone usa un PC vinculado con Clarify abierto."
+  },
+  "Transcrição ao vivo": {
+    "pt": "Transcrição ao vivo",
+    "en": "Live transcription",
+    "es": "Transcripción en vivo"
+  },
+  "setup_opencode_install": {
+    "pt": "O Clarify instala o OpenCode neste computador quando você conecta. Os modelos gratuitos têm limites do provedor.",
+    "en": "Clarify installs OpenCode on this computer when you connect. Free models have provider limits.",
+    "es": "Clarify instala OpenCode en este equipo al conectar. Los modelos gratuitos tienen límites del proveedor."
+  },
+  "setup_skip_text": {
+    "pt": "Agora não",
+    "en": "Not now",
+    "es": "Ahora no"
+  },
+  "setup_install_opencode": {
+    "pt": "Instalar e conectar OpenCode",
+    "en": "Install and connect OpenCode",
+    "es": "Instalar y conectar OpenCode"
+  },
+  "setup_custom_endpoint": {
+    "pt": "Usar um servidor local ou outro endereço",
+    "en": "Use a local server or another address",
+    "es": "Usar un servidor local u otra dirección"
+  },
+  "setup_local_endpoint_hint": {
+    "pt": "Para um servidor local, informe o endereço e deixe a chave vazia se ela não for exigida.",
+    "en": "For a local server, enter its address and leave the key empty if it is not required.",
+    "es": "Para un servidor local, introduce la dirección y deja la clave vacía si no es necesaria."
+  },
+  "ChatGPT subscription": {
+    "pt": "Assinatura ChatGPT",
+    "en": "ChatGPT subscription",
+    "es": "Suscripción de ChatGPT"
+  },
+  "Could not load OpenCode's free models. Check your connection and try again.": {
+    "pt": "Não foi possível consultar os modelos do OpenCode. Verifique a conexão e tente novamente.",
+    "en": "Could not load OpenCode's free models. Check your connection and try again.",
+    "es": "No se pudieron consultar los modelos de OpenCode. Comprueba la conexión e inténtalo de nuevo."
+  },
+  "OpenCode refused or could not complete this free request. Retry later or select another free model explicitly.": {
+    "pt": "O OpenCode não concluiu a solicitação. Tente novamente ou escolha outro modelo.",
+    "en": "OpenCode could not complete the request. Try again or choose another model.",
+    "es": "OpenCode no completó la solicitud. Inténtalo de nuevo o elige otro modelo."
+  },
+  "OpenCode free usage limit reached. Retry later or explicitly select another service. No fallback was used.": {
+    "pt": "O limite gratuito do OpenCode foi atingido. Tente mais tarde ou escolha outro serviço.",
+    "en": "OpenCode free usage limit reached. Try later or choose another service.",
+    "es": "Se alcanzó el límite gratuito de OpenCode. Inténtalo más tarde o elige otro servicio."
+  },
+  "No anonymous free OpenCode text model is available.": {
+    "pt": "Nenhum modelo gratuito do OpenCode está disponível sem login.",
+    "en": "No free OpenCode model is available without sign-in.",
+    "es": "No hay modelos gratuitos de OpenCode disponibles sin iniciar sesión."
+  },
+  "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.": {
+    "pt": "Opção para pouca memória. A transcrição termina após parar a gravação; a precisão pode ser menor.",
+    "en": "Small-memory fallback. Recognition finishes after recording stops; accuracy can be lower.",
+    "es": "Opción para poca memoria. La transcripción termina después de detener la grabación; la precisión puede ser menor."
+  },
+  "Accuracy-focused CPU candidate. Transcribes after recording stops. Native acceptance is pending.": {
+    "pt": "Modelo candidato para CPU, com foco na precisão. Transcreve após parar a gravação. A validação nativa está pendente.",
+    "en": "Accuracy-focused CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+    "es": "Modelo candidato para CPU, centrado en la precisión. Transcribe después de detener la grabación. La validación nativa está pendiente."
+  },
+  "Lower-memory multilingual CPU candidate. Transcribes after recording stops. Native acceptance is pending.": {
+    "pt": "Modelo candidato multilíngue para CPU, com menor uso de memória. Transcreve após parar a gravação. A validação nativa está pendente.",
+    "en": "Lower-memory multilingual CPU candidate. Transcribes after recording stops. Native acceptance is pending.",
+    "es": "Modelo candidato multilingüe para CPU, con menor uso de memoria. Transcribe después de detener la grabación. La validación nativa está pendiente."
+  },
+  "Quantized Whisper candidate for NVIDIA GPUs. Native acceptance is pending. Processing during recording is a separate experiment.": {
+    "pt": "Modelo Whisper quantizado, candidato para GPUs NVIDIA. A validação nativa está pendente. O processamento durante a gravação é um experimento separado.",
+    "en": "Quantized Whisper candidate for NVIDIA GPUs. Native acceptance is pending. Processing during recording is a separate experiment.",
+    "es": "Modelo Whisper cuantizado, candidato para GPU NVIDIA. La validación nativa está pendiente. El procesamiento durante la grabación es un experimento separado."
+  },
+  "Provisional native streaming on CPU. Shows text during recording. Native acceptance is pending.": {
+    "pt": "Transcrição nativa em tempo real na CPU, provisória. Mostra texto durante a gravação. A validação nativa está pendente.",
+    "en": "Provisional native streaming on CPU. Shows text during recording. Native acceptance is pending.",
+    "es": "Transcripción nativa en tiempo real en CPU, provisional. Muestra texto durante la grabación. La validación nativa está pendiente."
+  },
+  "Compatibility model. Existing selections remain available; this is no longer a main recommendation.": {
+    "pt": "Modelo de compatibilidade. As seleções existentes continuam disponíveis; este modelo não é mais uma recomendação principal.",
+    "en": "Compatibility model. Existing selections remain available; this is no longer a main recommendation.",
+    "es": "Modelo de compatibilidad. Las selecciones existentes siguen disponibles; este modelo ya no es una recomendación principal."
+  },
+  "Whisper Base (small-memory fallback)": {
+    "pt": "Whisper Base (opção para pouca memória)",
+    "en": "Whisper Base (small-memory fallback)",
+    "es": "Whisper Base (opción para poca memoria)"
+  },
+  "Parakeet v3 INT8 (CPU, provisional)": {
+    "pt": "Parakeet v3 INT8 (CPU, provisório)",
+    "en": "Parakeet v3 INT8 (CPU, provisional)",
+    "es": "Parakeet v3 INT8 (CPU, provisional)"
+  },
+  "Granite TurboCTC multilingual (CPU, provisional)": {
+    "pt": "Granite TurboCTC multilíngue (CPU, provisório)",
+    "en": "Granite TurboCTC multilingual (CPU, provisional)",
+    "es": "Granite TurboCTC multilingüe (CPU, provisional)"
+  },
+  "Whisper Turbo q5 (NVIDIA GPU candidate)": {
+    "pt": "Whisper Turbo q5 (candidato para GPU NVIDIA)",
+    "en": "Whisper Turbo q5 (NVIDIA GPU candidate)",
+    "es": "Whisper Turbo q5 (candidato para GPU NVIDIA)"
+  },
+  "Whisper Small (compatibility)": {
+    "pt": "Whisper Small (compatibilidade)",
+    "en": "Whisper Small (compatibility)",
+    "es": "Whisper Small (compatibilidad)"
+  },
+  "Whisper Medium (compatibility)": {
+    "pt": "Whisper Medium (compatibilidade)",
+    "en": "Whisper Medium (compatibility)",
+    "es": "Whisper Medium (compatibilidad)"
+  },
+  "setup_choose_purpose": {
+    "pt": "Como você quer usar o Clarify?",
+    "en": "How will you use Clarify?",
+    "es": "¿Cómo quieres usar Clarify?"
+  },
+  "setup_purpose_hint": {
+    "pt": "Marque os recursos que você quer usar.",
+    "en": "Select the features you want to use.",
+    "es": "Marca las funciones que quieres usar."
+  },
+  "setup_purpose_dictation": {
+    "pt": "Ditado",
+    "en": "Dictation",
+    "es": "Dictado"
+  },
+  "setup_purpose_dictation_hint": {
+    "pt": "Use sua voz para escrever em outros apps.",
+    "en": "Use your voice to write in other apps.",
+    "es": "Usa tu voz para escribir en otras aplicaciones."
+  },
+  "setup_purpose_meetings": {
+    "pt": "Reuniões",
+    "en": "Meetings",
+    "es": "Reuniones"
+  },
+  "setup_purpose_meetings_hint": {
+    "pt": "Transcreva reuniões e faça anotações.",
+    "en": "Transcribe meetings and take notes.",
+    "es": "Transcribe reuniones y toma notas."
+  },
+  "setup_choose_language": {
+    "pt": "Escolha seu idioma",
+    "en": "Choose your language",
+    "es": "Elige tu idioma"
+  },
+  "setup_interface_language": {
+    "pt": "Idioma da interface",
+    "en": "Interface language",
+    "es": "Idioma de la interfaz"
+  },
+  "setup_interface_hint": {
+    "pt": "Você pode escolher os idiomas da fala e do texto depois.",
+    "en": "You can choose spoken and output languages later.",
+    "es": "Puedes elegir los idiomas del habla y del texto después."
+  },
+  "setup_previous_language": {
+    "pt": "Idioma anterior",
+    "en": "Previous language",
+    "es": "Idioma anterior"
+  },
+  "setup_next_language": {
+    "pt": "Próximo idioma",
+    "en": "Next language",
+    "es": "Siguiente idioma"
+  },
+  "setup_choose_rewriting": {
+    "pt": "Como você quer reescrever?",
+    "en": "How would you like to rewrite?",
+    "es": "¿Cómo quieres reescribir?"
+  },
+  "setup_rewriting_hint": {
+    "pt": "Escolha um serviço para revisar seu ditado ou mantenha a transcrição.",
+    "en": "Choose a service to clean up your dictation, or keep the transcript.",
+    "es": "Elige un servicio para revisar tu dictado o conserva la transcripción."
+  },
+  "setup_free_choice": {
+    "en": "Use free models",
+    "pt": "Usar modelos gratuitos",
+    "es": "Usar modelos gratuitos"
+  },
+  "setup_personal_choice": {
+    "pt": "Usar chave de API ou servidor local",
+    "en": "Use an API key or local server",
+    "es": "Usar clave de API o servidor local"
+  },
+  "setup_connect_plan": {
+    "pt": "Conecte seu serviço de reescrita",
+    "en": "Connect your rewriting service",
+    "es": "Conecta tu servicio de reescritura"
+  },
+  "setup_connect_hint": {
+    "pt": "Conecte um provedor e escolha um modelo de reescrita.",
+    "en": "Connect a provider, then choose a rewriting model.",
+    "es": "Conecta un proveedor y elige un modelo de reescritura."
+  },
+  "setup_connected": {
+    "pt": "Conectado",
+    "en": "Connected",
+    "es": "Conectado"
+  },
+  "setup_not_connected": {
+    "pt": "Não conectado",
+    "en": "Not connected",
+    "es": "Sin conectar"
+  },
+  "setup_runtime_needed": {
+    "pt": "Download necessário",
+    "en": "Download required",
+    "es": "Descarga necesaria"
+  },
+  "setup_manage_connection": {
+    "pt": "Gerenciar",
+    "en": "Manage",
+    "es": "Gestionar"
+  },
+  "setup_connect": {
+    "pt": "Conectar",
+    "en": "Connect",
+    "es": "Conectar"
+  },
+  "setup_more_providers": {
+    "pt": "Mais provedores",
+    "en": "More providers",
+    "es": "Más proveedores"
+  },
+  "setup_search_providers": {
+    "pt": "Buscar provedores",
+    "en": "Search providers",
+    "es": "Buscar proveedores"
+  },
+  "setup_connecting": {
+    "pt": "Preparando o provedor e carregando modelos…",
+    "en": "Preparing the provider and loading models…",
+    "es": "Preparando el proveedor y cargando modelos…"
+  },
+  "setup_browser_connection": {
+    "pt": "Continue no navegador para conectar seu plano ChatGPT. Você pode cancelar e tentar novamente aqui.",
+    "en": "Continue in your browser to connect your ChatGPT plan. You can cancel and retry here.",
+    "es": "Continúa en el navegador para conectar tu plan ChatGPT. Puedes cancelar y volver a intentarlo aquí."
+  },
+  "setup_rewriting_model": {
+    "pt": "Modelo de reescrita",
+    "en": "Rewriting model",
+    "es": "Modelo de reescritura"
+  },
+  "setup_provider_download": {
+    "pt": "Baixar",
+    "en": "Download",
+    "es": "Descargar"
+  },
+  "setup_subscription_choice": {
+    "en": "Use my AI subscription",
+    "pt": "Usar minha assinatura de IA",
+    "es": "Usar mi suscripción de IA"
+  },
+  "setup_free_models_title": {
+    "en": "Choose a free rewriting model",
+    "pt": "Escolha um modelo de reescrita gratuito",
+    "es": "Elige un modelo de reescritura gratuito"
+  },
+  "setup_free_models_hint": {
+    "en": "Connect OpenCode to load its free models.",
+    "pt": "Conecte o OpenCode para carregar os modelos gratuitos.",
+    "es": "Conecta OpenCode para cargar los modelos gratuitos."
+  },
+  "setup_subscription_title": {
+    "en": "Connect your AI subscription",
+    "pt": "Conecte sua assinatura de IA",
+    "es": "Conecta tu suscripción de IA"
+  },
+  "setup_subscription_hint": {
+    "en": "Sign in to ChatGPT and choose a rewriting model.",
+    "pt": "Entre no ChatGPT e escolha um modelo de reescrita.",
+    "es": "Inicia sesión en ChatGPT y elige un modelo de reescritura."
+  },
+  "setup_clarify_account": {
+    "en": "Sign in or create a Clarify account",
+    "pt": "Entre ou crie uma conta Clarify",
+    "es": "Inicia sesión o crea una cuenta de Clarify"
+  },
+  "setup_clarify_account_hint": {
+    "en": "Sign in to sync your dictionary and snippets, or continue without an account.",
+    "pt": "Entre para sincronizar seu dicionário e seus snippets ou continue sem conta.",
+    "es": "Inicia sesión para sincronizar tu diccionario y tus fragmentos, o continúa sin cuenta."
   }
 }

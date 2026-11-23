@@ -3,6 +3,57 @@ require 'fileutils'
 
 root, fixture, endpoint = ARGV
 raise 'Expected an isolated simulator fixture' unless File.basename(fixture).start_with?('.app-ui-') && File.dirname(fixture) == root
+raise 'Pods project must be a private copy' if File.symlink?(File.join(fixture, 'Pods')) || File.symlink?(File.join(fixture, 'Pods/Pods.xcodeproj'))
+# Replace only fixture-owned Pod file references. Never mutate the shared Pods project.
+core = File.join(root, 'modules/clarify-core/ios')
+fixture_core = File.join(fixture, 'ComputerFixture')
+FileUtils.cp_r(core, fixture_core)
+connection_file = File.join(fixture_core, 'ComputerConnection.swift')
+connection = File.read(connection_file)
+needle = 'static let shared = ComputerConnection()'
+raise 'ComputerConnection injection point changed' unless connection.scan(needle).length == 1
+connection.sub!(needle, <<~SWIFT.strip)
+  static let shared = ComputerConnection(transport: { request, route in
+    // The real connection validates the HTTPS identity and protocol. Only I/O is fake.
+    guard route.url == "https://192.168.1.33:9443",
+      route.certificateSHA256 == String(repeating: "a", count: 64),
+      let original = request.url else { throw ComputerFailure.invalidResponse }
+    var local = request
+    local.url = URL(string: "#{endpoint}" + original.path)
+    let (data, response) = try await URLSession.shared.data(for: local)
+    guard let response = response as? HTTPURLResponse else { throw ComputerFailure.invalidResponse }
+    return (data, HTTPURLResponse(url: original, statusCode: response.statusCode,
+      httpVersion: nil, headerFields: nil)!)
+  })
+SWIFT
+File.write(connection_file, connection)
+scanner_file = File.join(fixture_core, 'ComputerScanner.swift')
+scanner = File.read(scanner_file)
+start = scanner.index('    let allowed = await withCheckedContinuation')
+finish = scanner.index('  override func viewDidLoad()')
+raise 'Scanner injection point changed' unless start && finish
+scanner[start...finish] = <<~SWIFT
+    let (data, response) = try await URLSession.shared.data(from: URL(string: "#{endpoint}/__fixture/invitation")!)
+    guard (response as? HTTPURLResponse)?.statusCode == 200,
+      let value = try JSONSerialization.jsonObject(with: data) as? [String: String],
+      let invitation = value["invitation"] else { throw ComputerFailure.invalidQR }
+    return invitation
+  }
+SWIFT
+File.write(scanner_file, scanner)
+pods_path = File.join(fixture, 'Pods/Pods.xcodeproj')
+pods = Xcodeproj::Project.open(pods_path)
+replaced = []
+pods.files.each do |file|
+  resolved = file.real_path.to_s
+  next unless resolved.start_with?(core + '/')
+  file.path = resolved.sub(core, fixture_core)
+  file.source_tree = '<absolute>'
+  replaced << File.basename(resolved)
+end
+raise 'ClarifyCore fixture sources were not found' unless ['ComputerConnection.swift', 'ComputerScanner.swift'].all? { |name| replaced.include?(name) }
+pods.save
+
 project_path = File.join(fixture, 'Clarify.xcodeproj')
 project = Xcodeproj::Project.open(project_path)
 app = project.targets.find { |target| target.name == 'Clarify' }

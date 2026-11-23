@@ -1,16 +1,10 @@
 """Dictation lists verified local installations and saves the chosen model."""
 
 import time
-import shutil
 import unittest
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QPointF, Qt, QUrl
-from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtQuick import QQuickItem, QQuickWindow
-from PySide6.QtTest import QTest
 from tests.support.settings import _repositories
 from clarify.desktop.qml_settings import QmlSettingsController
 from local_asr_product import LocalASRProductState
@@ -59,51 +53,7 @@ class LocalPickerTests(unittest.TestCase):
                         ["ggml-base", "ggml-medium"],
                     )
                     self.assertIn("Medium", controller.routeModelOptions[1]["label"])
-                    engine = QQmlApplicationEngine()
-                    engine.rootContext().setContextProperty("testSettings", controller)
-                    qml_dir = Path(directory) / "qml"
-                    shutil.copytree(
-                        Path(__file__).resolve().parents[2] / "clarify/desktop/qml",
-                        qml_dir,
-                    )
-                    source = """import QtQuick
-import QtQuick.Controls
-import "DIRECTORY"
-ApplicationWindow {
-    visible: true; width: 600; height: 480
-    Theme { id: theme }
-    WorkflowModelForm {
-        anchors.fill: parent; anchors.margins: 16
-        visualTheme: theme; settingsController: testSettings
-    }
-}""".replace("DIRECTORY", qml_dir.as_uri())
-                    engine.loadData(
-                        source.encode(),
-                        QUrl.fromLocalFile(str(qml_dir / "picker-test.qml")),
-                    )
-                    self.assertTrue(engine.rootObjects())
-                    window = engine.rootObjects()[0]
-                    QTest.qWait(350)
-                    self.assertIsInstance(window, QQuickWindow)
-                    self.assertIsNone(
-                        window.findChild(QQuickItem, "manageLocalModelsButton")
-                    )
-                    picker = window.findChild(QQuickItem, "workflowModelPicker")
-                    self.assertTrue(picker.property("visible"))
-                    point = picker.mapToScene(
-                        QPointF(picker.width() / 2, picker.height() / 2)
-                    ).toPoint()
-                    QTest.mouseClick(window, Qt.LeftButton, Qt.NoModifier, point)
-                    QTest.qWait(250)
-                    self.assertTrue(picker.property("popupVisible"))
-                    QTest.keyClick(window, Qt.Key_Home)
-                    QTest.keyClick(window, Qt.Key_Down)
-                    QTest.keyClick(window, Qt.Key_Return)
-                    QTest.qWait(250)
-                    self.assertEqual(controller.routeModelId, "ggml-medium")
-                    window.close()
-                    engine.deleteLater()
-                    self.app.processEvents()
+                    self.assertTrue(controller.setRouteModelId("ggml-medium"))
                     self.assertTrue(controller.save())
                     self.assertEqual(
                         controller.repositories.config.load().local_asr.audio_model,

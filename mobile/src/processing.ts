@@ -7,7 +7,7 @@ export interface ProcessingStatus {
 }
 export function processingAvailable(account: ProcessingStatus | undefined): boolean {
   if (!account) return false;
-  return account.mode === 'computer' ? account.computer?.paired === true : account.signedIn;
+  return account.mode === 'computer' && account.computer?.paired === true;
 }
 export function computerStatus(status: string | undefined): string {
   switch (status) {
@@ -20,5 +20,5 @@ export function computerStatus(status: string | undefined): string {
 }
 
 export function destinationLabel(account: ProcessingStatus | undefined): string {
-  return account?.mode === 'computer' ? account.computer?.computerName || 'Meu computador' : 'Conta Clarify';
+  return account?.computer?.computerName || 'Meu computador';
 }

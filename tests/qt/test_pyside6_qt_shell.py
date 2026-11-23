@@ -18,9 +18,8 @@ from hotkey_config import HotkeyAction, HotkeySettings
 from windows_hotkeys import ESCAPE_HOTKEY_ID, HotkeyRegistrationError
 
 try:
-    from PySide6.QtCore import QEvent, QObject, Signal
+    from PySide6.QtCore import QObject, Signal
     from PySide6.QtWidgets import QApplication
-    from PySide6.QtWidgets import QSystemTrayIcon
 except (ImportError, ModuleNotFoundError):
     PYSIDE6_AVAILABLE = False
     QObject = object
@@ -31,6 +30,7 @@ else:
     PYSIDE6_AVAILABLE = True
 
 if PYSIDE6_AVAILABLE:
+    from clarify.desktop.macos_hotkeys import MacGlobalHotkeyBackend, default_hotkeys
     from clarify.desktop.qt_shell import (
         ACTIVATION_EVENT_NAME,
         QtShell,
@@ -113,69 +113,6 @@ class TimeoutActivationApi(FakeActivationApi):
         super().close(handle)
 
 
-class FakeAction:
-    def __init__(self):
-        self.triggered = SignalSpy()
-
-
-class FakeMenu:
-    def __init__(self, *, fail_on_add_action: bool = False):
-        self.actions = []
-        self.fail_on_add_action = fail_on_add_action
-        self.delete_later_calls = 0
-
-    def addAction(self, text: str) -> FakeAction:
-        if self.fail_on_add_action:
-            raise RuntimeError("menu configuration failed")
-        action = FakeAction()
-        self.actions.append((text, action))
-        return action
-
-    def deleteLater(self) -> None:
-        self.delete_later_calls += 1
-
-
-class FakeTray:
-    def __init__(self, _icon, _parent):
-        self.activated = SignalSpy()
-        self.context_menu = None
-        self.tooltip = None
-        self.visible = False
-        self.hide_calls = 0
-        self.delete_later_calls = 0
-        self.fail_on_tooltip = False
-
-    def setToolTip(self, value: str) -> None:
-        if self.fail_on_tooltip:
-            raise RuntimeError("tray configuration failed")
-        self.tooltip = value
-
-    def setContextMenu(self, menu) -> None:
-        self.context_menu = menu
-
-    def show(self) -> None:
-        self.visible = True
-
-    def hide(self) -> None:
-        self.visible = False
-        self.hide_calls += 1
-
-    def deleteLater(self) -> None:
-        self.delete_later_calls += 1
-
-
-class SignalSpy:
-    def __init__(self):
-        self.callbacks = []
-
-    def connect(self, callback) -> None:
-        self.callbacks.append(callback)
-
-    def emit(self, *args) -> None:
-        for callback in tuple(self.callbacks):
-            callback(*args)
-
-
 class FakeHotkeys(QObject):
     triggered = Signal(str)
 
@@ -201,14 +138,6 @@ class FailingHotkeys(FakeHotkeys):
     def start(self, window) -> set[int]:
         super().start(window)
         raise RuntimeError("hotkey setup failed")
-
-
-class FakeApplication:
-    def __init__(self):
-        self.quit_calls = 0
-
-    def quit(self) -> None:
-        self.quit_calls += 1
 
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
@@ -330,6 +259,54 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
         self.assertFalse(worker.is_alive())
         self.assertEqual(activation_api.set_calls, [])
         self.assertTrue(activation_api.assert_wait_finished)
+
+
+@unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
+class MacGlobalHotkeyBackendTests(unittest.TestCase):
+    def test_failed_reconfigure_keeps_the_previous_actions(self):
+        app = QApplication.instance() or QApplication([])
+        settings = default_hotkeys().with_hotkey(
+            HotkeyAction.VOICE_TRANSLATION, "XBUTTON1"
+        )
+        candidate = settings.with_hotkey(HotkeyAction.RECORDING, "Ctrl+Shift+M")
+        candidate = candidate.with_hotkey(HotkeyAction.VISIBILITY, "Ctrl+Shift+N")
+        registrations = {}
+        fail = False
+
+        def register(combo, number):
+            if fail and combo[0] == 45:  # N
+                raise OSError("claimed by another app")
+            registrations[combo] = number
+            return combo
+
+        def unregister(combo):
+            registrations.pop(combo)
+
+        native = SimpleNamespace(register=register, unregister=unregister, close=Mock())
+        backend = MacGlobalHotkeyBackend(
+            settings, native_factory=lambda _receive: native
+        )
+        actions = []
+        backend.triggered.connect(actions.append)
+        unavailable = []
+        backend.availabilityChanged.connect(unavailable.extend)
+        try:
+            backend.start(FakeWindow())
+            old = registrations.copy()
+            self.assertEqual(len(old), 4)
+            self.assertEqual(unavailable, ["Mouse 4"])
+            old_recording = next(
+                number for (code, _), number in old.items() if code == 37
+            )
+            fail = True
+            with self.assertRaisesRegex(OSError, "claimed by another app"):
+                backend.reconfigure(candidate)
+            self.assertEqual(registrations, old)
+            backend._receive(old_recording, True)
+            app.processEvents()
+            self.assertEqual(actions, [HotkeyAction.RECORDING.value])
+        finally:
+            backend.stop()
 
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
@@ -813,9 +790,6 @@ class QtShellTests(unittest.TestCase):
         *,
         guard=None,
         hotkeys=None,
-        application=None,
-        tray_icon_factory=FakeTray,
-        menu_factory=FakeMenu,
         visibility_hotkey_allowed=None,
     ):
         return QtShell(
@@ -827,13 +801,10 @@ class QtShellTests(unittest.TestCase):
                 activation_api=FakeActivationApi(),
             ),
             hotkeys=hotkeys,
-            application=application,
-            tray_icon_factory=tray_icon_factory,
-            menu_factory=menu_factory,
             visibility_hotkey_allowed=visibility_hotkey_allowed,
         )
 
-    def test_secondary_process_does_not_create_tray_or_hotkeys(self):
+    def test_secondary_process_does_not_acquire_hotkeys(self):
         guard = QtSingleInstanceGuard(
             lock_path=Path(tempfile.gettempdir()) / "clarify-shell.lock",
             lock_factory=FakeLock,
@@ -847,7 +818,6 @@ class QtShellTests(unittest.TestCase):
 
         self.assertFalse(shell.start())
         self.assertFalse(shell.is_running)
-        self.assertIsNone(shell.tray)
 
         owner.release()
 
@@ -855,10 +825,9 @@ class QtShellTests(unittest.TestCase):
         hotkeys = FakeHotkeys()
         shell = self._shell(hotkeys=hotkeys)
 
-        self.assertTrue(shell.start(tray_available=False))
+        self.assertTrue(shell.start())
         self.assertTrue(shell.is_running)
         self.assertTrue(shell._instance_guard.is_primary)
-        self.assertIsNone(shell.tray)
         self.assertTrue(hotkeys.is_running)
 
         shell.stop()
@@ -897,33 +866,16 @@ class QtShellTests(unittest.TestCase):
         shell.stop()
         self.assertTrue(guard.released)
 
-    def test_primary_shell_owns_tray_hotkeys_and_window_actions(self):
+    def test_primary_shell_owns_input_and_window_actions(self):
         hotkeys = FakeHotkeys()
-        application = FakeApplication()
-        shell = self._shell(hotkeys=hotkeys, application=application)
-        visibility_events = []
-        shell.hotkeyTriggered.connect(visibility_events.append)
-
+        shell = self._shell(hotkeys=hotkeys)
         self.assertTrue(shell.start())
-        self.assertTrue(shell.is_running)
-        self.assertTrue(shell.tray.visible)
         self.assertEqual(hotkeys.started_with, shell._window)
-
         hotkeys.triggered.emit("toggle_visibility")
-        self.assertEqual(visibility_events, ["toggle_visibility"])
-        self.assertEqual(shell._window.calls, ["show", "raise", "activate"])
-
-        shell.tray.activated.emit(QSystemTrayIcon.ActivationReason.Trigger)
-        self.assertEqual(shell._window.calls[-1], "hide")
-
+        self.assertTrue(shell._window.visible)
+        shell.hide_window()
+        self.assertFalse(shell._window.visible)
         shell.stop()
-        self.assertTrue(shell.start())
-        hotkeys.triggered.emit("toggle_visibility")
-        self.assertEqual(visibility_events, ["toggle_visibility", "toggle_visibility"])
-
-        shell.quit()
-        self.assertTrue(hotkeys.stopped)
-        self.assertEqual(application.quit_calls, 1)
         self.assertFalse(shell.is_running)
 
     def test_visibility_hotkey_is_ignored_while_recording(self):
@@ -949,85 +901,12 @@ class QtShellTests(unittest.TestCase):
         self.assertEqual(shell._window.calls, ["show", "raise", "activate"])
         shell.stop()
 
-    def test_tray_close_event_hides_window_and_preserves_native_handle(self):
-        shell = self._shell()
-        self.assertTrue(shell.start())
-        shell.show_window()
-        close_event = QEvent(QEvent.Type.Close)
-
-        self.assertTrue(shell.eventFilter(shell._window, close_event))
-        self.assertFalse(close_event.isAccepted())
-        self.assertFalse(shell._window.visible)
-        self.assertEqual(shell._window.handle, 123)
-        self.assertEqual(shell._window.event_filters, [shell])
-
-        shell.stop()
-        self.assertEqual(shell._window.removed_event_filters, [shell])
-
-    def test_explicit_quit_removes_close_filter_before_quitting(self):
-        application = FakeApplication()
-        shell = self._shell(application=application)
-        self.assertTrue(shell.start())
-
-        shell.quit()
-
-        self.assertEqual(application.quit_calls, 1)
-        self.assertEqual(shell._window.removed_event_filters, [shell])
-        self.assertFalse(shell.is_running)
-
-    def test_tray_configuration_failure_hides_and_releases_partial_tray(self):
-        tray = FakeTray(None, None)
-        tray.fail_on_tooltip = True
-        hotkeys = FakeHotkeys()
-
-        shell = self._shell(
-            hotkeys=hotkeys,
-            tray_icon_factory=lambda _icon, _parent: tray,
-        )
-
-        with self.assertRaisesRegex(RuntimeError, "tray configuration"):
-            shell.start()
-
-        self.assertFalse(shell.is_running)
-        self.assertTrue(shell._instance_guard.is_primary)
-        self.assertIsNone(shell.tray)
-        self.assertFalse(tray.visible)
-        self.assertEqual(tray.hide_calls, 1)
-        self.assertEqual(tray.delete_later_calls, 1)
-        self.assertFalse(hotkeys.stopped)
-
-        shell.stop()
-        self.assertFalse(shell._instance_guard.is_primary)
-
-    def test_partial_menu_failure_cleans_both_tray_objects(self):
-        tray = FakeTray(None, None)
-        menu = FakeMenu(fail_on_add_action=True)
-
-        shell = self._shell(
-            tray_icon_factory=lambda _icon, _parent: tray,
-            menu_factory=lambda: menu,
-        )
-
-        with self.assertRaisesRegex(RuntimeError, "menu configuration"):
-            shell.start()
-
-        self.assertFalse(shell.is_running)
-        self.assertTrue(shell._instance_guard.is_primary)
-        self.assertIsNone(shell.tray)
-        self.assertFalse(tray.visible)
-        self.assertEqual(tray.hide_calls, 1)
-        self.assertEqual(tray.delete_later_calls, 1)
-        self.assertEqual(menu.delete_later_calls, 1)
-
-        shell.stop()
-        self.assertFalse(shell._instance_guard.is_primary)
-
     def test_hotkey_setup_failure_cleans_backend_but_retains_guard(self):
         hotkeys = FailingHotkeys()
         shell = self._shell(hotkeys=hotkeys)
 
         with self.assertRaisesRegex(RuntimeError, "hotkey setup failed"):
-            shell.start(tray_available=False)
+            shell.start()
 
         self.assertFalse(shell.is_running)
         self.assertTrue(shell._instance_guard.is_primary)
@@ -1037,7 +916,7 @@ class QtShellTests(unittest.TestCase):
         shell.stop()
         self.assertFalse(shell._instance_guard.is_primary)
 
-    def test_shell_restores_tray_after_corrected_hotkey_reconfigure(self):
+    def test_shell_recovers_after_corrected_hotkey_reconfigure(self):
         target = FakeNativeEventTarget()
         registrations = []
 
@@ -1061,7 +940,6 @@ class QtShellTests(unittest.TestCase):
 
         self.assertFalse(shell.is_running)
         self.assertTrue(shell._instance_guard.is_primary)
-        self.assertIsNone(shell.tray)
 
         corrected = HotkeySettings.defaults().with_hotkey(
             HotkeyAction.RECORDING,
@@ -1070,10 +948,6 @@ class QtShellTests(unittest.TestCase):
         backend.reconfigure(corrected)
 
         self.assertTrue(shell.is_running)
-        self.assertIsNotNone(shell.tray)
-        self.assertTrue(shell.tray.visible)
-        self.assertEqual(shell._window.removed_event_filters, [shell])
-        self.assertIs(shell._window.event_filters[-1], shell)
 
         shell.stop()
         self.assertFalse(shell._instance_guard.is_primary)
@@ -1081,11 +955,8 @@ class QtShellTests(unittest.TestCase):
     def test_stop_is_idempotent_after_started_shell(self):
         hotkeys = FakeHotkeys()
         shell = self._shell(hotkeys=hotkeys)
-        tray = None
 
         self.assertTrue(shell.start())
-        tray = shell.tray
-        self.assertIsNotNone(tray)
 
         shell.stop()
         shell.stop()
@@ -1093,8 +964,6 @@ class QtShellTests(unittest.TestCase):
         self.assertFalse(shell.is_running)
         self.assertFalse(shell._instance_guard.is_primary)
         self.assertEqual(hotkeys.stop_calls, 1)
-        self.assertEqual(tray.hide_calls, 1)
-        self.assertEqual(tray.delete_later_calls, 1)
 
 
 class QtShellSourceTests(unittest.TestCase):
