@@ -2,7 +2,7 @@
   "schema": 2,
   "component": "mobile",
   "version": "0.17.3",
-  "base_sha": "819c0eed65e4cb71067640deee32a3d6813d59b1",
+  "base_sha": "1e7f5f77e80600cc17bf98670ad8bb2e21878992",
   "notes": "Internal TestFlight build from main for iPhone dictation through a paired desktop. Same-network pairing uses the default configuration. Cellular tests require a matching WebRTC signaling endpoint on the iPhone and desktop.",
   "evidence": {
     "build": "93",

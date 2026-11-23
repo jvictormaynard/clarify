@@ -2448,10 +2448,19 @@ class RewriteWorkflowTests(unittest.TestCase):
         _sleep,
     ):
         harness = self.Harness()
-        app.App._rewrite_selection_worker(harness, 77)
+        _clipboard.side_effect = lambda: (
+            "Texto revisado." if set_clipboard.called else "clipboard anterior"
+        )
+        with patch.object(app, "_clipboard_sequence_number", return_value=11):
+            app.App._rewrite_selection_worker(harness, 77)
 
         set_clipboard.assert_called_once_with("Texto revisado.")
-        send_key.assert_called_once_with("ctrl+v", expected_text="Texto revisado.")
+        send_key.assert_called_once_with(
+            "ctrl+v",
+            expected_text="Texto revisado.",
+            expected_sequence=11,
+            paste_predicate=None,
+        )
         record_usage.assert_called_once()
         self.assertEqual(harness.finished, [("Texto revisado.", None)])
 
@@ -2529,13 +2538,22 @@ class RewriteWorkflowTests(unittest.TestCase):
     ):
         harness = self.Harness()
 
-        app.App._translation_selection_worker(
-            harness, 77, "Hello world", "previous clipboard", "de"
-        )
+        with (
+            patch.object(app, "_get_windows_clipboard_text", return_value="Hallo Welt"),
+            patch.object(app, "_clipboard_sequence_number", return_value=11),
+        ):
+            app.App._translation_selection_worker(
+                harness, 77, "Hello world", "previous clipboard", "de"
+            )
 
         translate.assert_called_once_with("Hello world", "de")
         set_clipboard.assert_called_once_with("Hallo Welt")
-        send_key.assert_called_once_with("ctrl+v", expected_text="Hallo Welt")
+        send_key.assert_called_once_with(
+            "ctrl+v",
+            expected_text="Hallo Welt",
+            expected_sequence=11,
+            paste_predicate=None,
+        )
         record_usage.assert_called_once()
         event = record_usage.call_args.args[0]
         self.assertEqual(event["type"], "translation")

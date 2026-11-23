@@ -215,11 +215,7 @@ class QmlClipboardGateway(ClipboardGateway):
         self._send_ctrl_c = (
             (lambda: send_ctrl_key("c")) if send_ctrl_c is None else send_ctrl_c
         )
-        self._send_ctrl_v = (
-            (lambda expected_text: paste_focused_control(expected_text=expected_text))
-            if send_ctrl_v is None
-            else send_ctrl_v
-        )
+        self._send_ctrl_v = send_ctrl_v
         self._alt_pressed = alt_pressed or (
             self._macos.modifiers_pressed if self._macos else native_alt_pressed
         )
@@ -518,7 +514,16 @@ class QmlClipboardGateway(ClipboardGateway):
             try:
                 if paste_predicate is not None and not paste_predicate():
                     return False
-                pasted = self._send_ctrl_v(value)
+                if self._send_ctrl_v is None:
+                    if self.adapter.text() != value:
+                        return False
+                    pasted = paste_focused_control(
+                        expected_text=value,
+                        expected_sequence=written_sequence,
+                        paste_predicate=paste_predicate,
+                    )
+                else:
+                    pasted = self._send_ctrl_v(value)
             except Exception:
                 return False
             if pasted is not True:

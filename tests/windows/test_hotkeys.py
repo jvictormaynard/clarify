@@ -1,4 +1,5 @@
 import ctypes
+from ctypes import wintypes
 import unittest
 from unittest.mock import patch
 
@@ -38,6 +39,9 @@ class _FakeUser32:
         self.query_after_delivered = query_after_delivered
         self.paste_attempted = False
         self.paste_calls = []
+        self.clipboard_sequence = 10
+        self.GetClipboardSequenceNumber = _FakeFunction(lambda: self.clipboard_sequence)
+        self.GetAsyncKeyState = _FakeFunction(lambda _key: 0)
         self.GetForegroundWindow = _FakeFunction(lambda: 10)
         self.GetWindowThreadProcessId = _FakeFunction(lambda _hwnd, _pid: 1)
         self.GetGUIThreadInfo = _FakeFunction(self._get_gui_thread_info)
@@ -46,6 +50,15 @@ class _FakeUser32:
         self.SendMessageTimeoutW = _FakeFunction(self._send_message_timeout)
 
     def _get_gui_thread_info(self, _thread_id, info_pointer):
+        # Win32 rejects cbSize unless the full GUITHREADINFO, including
+        # the caret rectangle, is supplied.
+        expected_size = (
+            2 * ctypes.sizeof(wintypes.DWORD)
+            + 6 * ctypes.sizeof(wintypes.HWND)
+            + ctypes.sizeof(wintypes.RECT)
+        )
+        if info_pointer._obj.cbSize != expected_size:
+            return False
         info_pointer._obj.hwndFocus = self.focused
         return True
 
@@ -96,6 +109,7 @@ class _FakeUser32:
 class PasteDispatchTests(unittest.TestCase):
     def test_compatible_control_confirms_synchronous_paste(self):
         user32 = _FakeUser32(paste_text="new")
+        user32.GetAsyncKeyState = _FakeFunction(lambda _key: 0x8000)
         with patch.object(windows_hotkeys, "send_ctrl_key") as fallback:
             self.assertTrue(
                 windows_hotkeys.paste_focused_control(
@@ -106,6 +120,90 @@ class PasteDispatchTests(unittest.TestCase):
         fallback.assert_not_called()
         self.assertEqual(len(user32.paste_calls), 1)
         self.assertEqual(user32.paste_calls[0][1], windows_hotkeys.WM_PASTE)
+
+    def test_control_query_change_never_pastes(self):
+        for change in ("focus", "clipboard"):
+            with self.subTest(change=change):
+                user32 = _FakeUser32()
+                send_message = user32._send_message_timeout
+
+                def query_and_switch(*args):
+                    delivered = send_message(*args)
+                    if args[1] == windows_hotkeys.EM_GETSEL:
+                        if change == "focus":
+                            user32.focused = 22
+                        else:
+                            user32.clipboard_sequence += 1
+                    return delivered
+
+                user32.SendMessageTimeoutW = _FakeFunction(query_and_switch)
+                with patch.object(windows_hotkeys, "send_ctrl_key") as fallback:
+                    self.assertIsNone(
+                        windows_hotkeys.paste_focused_control(
+                            expected_text="new", user32=user32
+                        )
+                    )
+
+                self.assertEqual(user32.text, "old")
+                self.assertEqual(user32.paste_calls, [])
+                fallback.assert_not_called()
+
+    def test_keyboard_fallback_waits_for_alt_and_rechecks_paste_context(self):
+        for outcome in ("release", "held", "focus", "clipboard", "target"):
+            with self.subTest(outcome=outcome):
+                user32 = _FakeUser32(class_name="CustomEditor")
+                now = 0.0
+                alt_down = True
+                target_current = True
+                user32.GetAsyncKeyState = _FakeFunction(
+                    lambda _key: 0x8000 if alt_down else 0
+                )
+
+                def sleep(seconds):
+                    nonlocal now, alt_down, target_current
+                    now += seconds
+                    alt_down = outcome == "held"
+                    if outcome == "focus":
+                        user32.focused = 22
+                    elif outcome == "clipboard":
+                        user32.clipboard_sequence += 1
+                    elif outcome == "target":
+                        target_current = False
+
+                with (
+                    patch.object(windows_hotkeys.time, "monotonic", lambda: now),
+                    patch.object(windows_hotkeys.time, "sleep", sleep),
+                    patch.object(
+                        windows_hotkeys, "send_ctrl_key", return_value=None
+                    ) as fallback,
+                ):
+                    self.assertIsNone(
+                        windows_hotkeys.paste_focused_control(
+                            expected_text="new",
+                            expected_sequence=10,
+                            paste_predicate=lambda: target_current,
+                            user32=user32,
+                        )
+                    )
+
+                self.assertGreater(now, 0)
+                self.assertLessEqual(now, 0.81)
+                self.assertEqual(user32.paste_calls, [])
+                if outcome == "release":
+                    fallback.assert_called_once_with("v")
+                else:
+                    fallback.assert_not_called()
+
+    def test_direct_paste_rejects_stale_clipboard_at_entry(self):
+        user32 = _FakeUser32()
+        with patch.object(windows_hotkeys, "send_ctrl_key") as fallback:
+            self.assertIsNone(
+                windows_hotkeys.paste_focused_control(
+                    expected_text="new", expected_sequence=9, user32=user32
+                )
+            )
+        self.assertEqual(user32.paste_calls, [])
+        fallback.assert_not_called()
 
     def test_timeout_stays_unconfirmed_without_second_injection(self):
         user32 = _FakeUser32(delivered=False)
