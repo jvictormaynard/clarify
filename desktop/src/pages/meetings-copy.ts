@@ -140,6 +140,7 @@ const copy = {
 };
 
 const errorCopy = {
+  meeting_playback_busy: ["Stop audio playback in History and try again.", "Pare a reprodução de áudio no Histórico e tente novamente.", "Detén la reproducción de audio en el historial e inténtalo de nuevo."],
   capture_busy: ["Finish the active recording or model task first.", "Termine a gravação ou a tarefa do modelo primeiro.", "Primero termina la grabación o la tarea del modelo."],
   capture_interrupted: ["Recording stopped. Open Transcript to read any saved text.", "A gravação foi interrompida. Abra Transcrição para ler o texto salvo.", "Se interrumpió la grabación. Abre Transcripción para leer el texto guardado."],
   capture_overload: ["The speech model could not keep up. Clarify saved the text it could recover.", "O modelo de voz não acompanhou o áudio. O Clarify salvou o texto que conseguiu recuperar.", "El modelo de voz no pudo seguir el audio. Clarify guardó el texto que pudo recuperar."],

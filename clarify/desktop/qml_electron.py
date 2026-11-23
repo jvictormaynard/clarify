@@ -600,6 +600,12 @@ class ElectronDesktopProcess(QObject):
                 self.bridge.openSettings()
             self._send({"window": "meetings-show"})
             return
+        if event == "meetings-interruption-opened" and self.meetings is not None:
+            meeting_id = request.get("meetingId")
+            if isinstance(meeting_id, str):
+                self.meetings.acknowledge_interruption(meeting_id)
+                self._publish_meetings()
+            return
         if event == "meetings-drafts" and self.meetings is not None:
             self._meeting_drafts = request.get("pending") is True
             return

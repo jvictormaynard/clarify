@@ -369,6 +369,49 @@ class MeetingsTests(unittest.TestCase):
             first.close.assert_called_once_with()
             second.close.assert_called_once_with()
 
+    def test_capture_waits_for_history_playback_to_stop(self):
+        requested, stopped = threading.Event(), threading.Event()
+
+        def stop_playback(_cancel):
+            requested.set()
+            if not stopped.wait(2):
+                raise RuntimeError("Audio playback did not stop")
+
+        controller = self.controller
+        controller.before_capture = stop_playback
+        controller.loopback = True
+        tap = Mock()
+        controller.system_audio = tap
+        meeting_id = controller.create()["id"]
+        admission = controller.start(meeting_id, "system")
+        try:
+            self.assertTrue(requested.wait(2))
+            controller.media_ready(meeting_id)
+            self.assertEqual(controller.state()["active"]["status"], "starting")
+            tap.assert_not_called()
+        finally:
+            stopped.set()
+        self.wait_for(lambda: controller.state()["active"]["status"] == "recording")
+        tap.assert_called_once_with()
+        controller.stop(meeting_id)
+        controller.release_media(admission["captureId"])
+        self.wait_for(lambda: controller.get(meeting_id)["status"] == "completed")
+
+    def test_interruption_notice_survives_background_reads(self):
+        controller = self.controller
+        meeting_id = controller.create()["id"]
+        admission = controller.start(meeting_id, "mic")
+        self.begin_audio(meeting_id)
+        controller.interrupt(meeting_id, "capture_overload")
+        controller.release_media(admission["captureId"])
+        self.wait_for(lambda: controller.state()["active"] is None)
+        self.assertEqual(controller.get(meeting_id)["error"], "capture_overload")
+        controller.acknowledge_interruption("different-meeting")
+        self.assertEqual(controller.state()["interruptedId"], meeting_id)
+        controller.acknowledge_interruption(meeting_id)
+        self.assertIsNone(controller.state()["interruptedId"])
+        self.assertEqual(controller.get(meeting_id)["status"], "interrupted")
+
     def test_native_source_label_revises_live_text_and_persists_without_audio(self):
         microphone = b"\x00\x08" * (MAX_CHUNK // 2)
         tap = Mock()

@@ -816,6 +816,7 @@ def main(argv: list[str] | None = None) -> int:
             and not updates.installing
         ),
         summary_provider=meeting_summary_provider,
+        before_capture=settings.stopPlaybackBeforeRecording,
         copy=runtime.copy_result,
     )
     web_settings = ElectronDesktopProcess(

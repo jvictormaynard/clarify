@@ -299,6 +299,15 @@ test('Windows puts a resizable meeting editor on the current monitor and restore
     command(settings, 'openMeeting', 'other-note');
     assert.equal(windows.meeting, editor);
     assert.equal(editor.messages.at(-1).target, 'active-note');
+    editor.close();
+    const interruption = {event: 'meetings-interruption-opened', meetingId: 'active-note'};
+    send({event: 'meetings', state: {active: null, interruptedId: 'active-note'}});
+    assert.equal(editor.isVisible(), false);
+    assert.equal(commands.some(({event}) => event === interruption.event), false);
+    send({window: 'meetings-show'});
+    assert.equal(editor.isVisible(), true);
+    assert.equal(editor.messages.at(-1).target, 'active-note');
+    assert.deepEqual(commands.at(-1), interruption);
   } finally { bridge.end(); }
 });
 

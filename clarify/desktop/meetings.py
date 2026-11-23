@@ -592,6 +592,7 @@ class Meetings:
         microphone: Callable[[], tuple[str | None, bool]] = lambda: (None, False),
         installer=None,
         loopback=None,
+        before_capture: Callable[[threading.Event], None] | None = None,
     ):
         self.path = path
         self.backend = backend
@@ -600,6 +601,7 @@ class Meetings:
         self.summary_provider = summary_provider
         self.copy = copy
         self.microphone = microphone
+        self.before_capture = before_capture
         self.installer = installer
         if installer is None and sys.platform in ("win32", "linux", "darwin"):
             self.installer = installer_for(MODEL_ID)
@@ -769,9 +771,12 @@ class Meetings:
             )
             if meeting is not None and candidates:
                 meeting["overlapRevision"] = candidates.revision
+            return meeting
+
+    def acknowledge_interruption(self, meeting_id):
+        with self.lock:
             if meeting_id == self.interrupted_id:
                 self.interrupted_id = None
-            return meeting
 
     def create(self):
         with self.lock:
@@ -984,6 +989,7 @@ class Meetings:
         language = self.language()
         self.error, self.partial, self.partial_turns = "", "", []
         self.active = self.store.capture_state(meeting["id"], "starting", source=source)
+        self.acknowledge_interruption(meeting["id"])
         capture = self.capture = Capture(
             meeting["id"], language, meeting["duration"], meeting["status"]
         )
@@ -1779,6 +1785,12 @@ class Meetings:
             speaker_audio.clear()
 
         try:
+            if self.before_capture is not None and not capture.end.is_set():
+                try:
+                    self.before_capture(capture.end)
+                except RuntimeError:
+                    if not capture.end.is_set():
+                        raise MeetingError("meeting_playback_busy") from None
             if not capture.end.is_set():
                 engine = self.backend()
                 if capture.light_threads is not None:

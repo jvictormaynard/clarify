@@ -124,6 +124,11 @@ async function startHost(
   const deliverMeetingTarget = () => {
     emit(windows.meeting, 'clarify:window-event', 'meeting-editor', meetingTarget);
   };
+  const acknowledgeMeetingInterruption = id => {
+    if (id && id === meetingState?.interruptedId) {
+      bridge.send({event: 'meetings-interruption-opened', meetingId: id});
+    }
+  };
   const showMeeting = (id, opener) => {
     meetingTarget = meetingState?.active?.id || meetingAdmission || id;
     const area = isWindows && (opener ? screen.getDisplayMatching(opener.getBounds())
@@ -131,6 +136,7 @@ async function startHost(
     if (!windows.meeting) createWindow('meeting', area);
     showUserWindow('meeting', area);
     deliverMeetingTarget();
+    acknowledgeMeetingInterruption(meetingTarget);
   };
   const applyWindow = (action) => {
     if (action === 'settings-show' || action === 'meetings-show') {
@@ -149,6 +155,7 @@ async function startHost(
         meetingOpenPending = false;
         const target = meetingState?.active?.id || meetingState?.interruptedId;
         emit(windows.settings, 'clarify:window-event', 'meetings', target);
+        acknowledgeMeetingInterruption(target);
       }
     } else if (action === 'settings-hide') {
       // Workflow transitions hide presentation and retain local form drafts.

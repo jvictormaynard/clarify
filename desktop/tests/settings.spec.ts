@@ -485,6 +485,7 @@ test.describe("OpenCode cloud service", () => {
 
   test("loads and saves an OpenCode model for a processing profile", async ({ page }) => {
     await navigate(page, "Modelos e serviços");
+    await page.getByRole("tab", { name: "Processamento de texto", exact: true }).click();
     await page.getByRole("button", { name: "Editar perfil de Reescrita", exact: true }).click();
     const profile = page.getByRole("dialog", { name: "Perfil de processamento", exact: true });
     await profile.getByRole("combobox", { name: "Serviço do perfil", exact: true }).click();
