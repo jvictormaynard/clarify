@@ -191,7 +191,7 @@ def register_global_hotkeys(user32, hwnd, settings=None, *, strict=False) -> set
             definition = configured.definition(action)
         except KeyError:
             continue
-        if definition.requires_hook:
+        if definition.requires_hook or definition.uses_fn:
             continue
         if user32.RegisterHotKey(
             hwnd,
@@ -303,7 +303,7 @@ class HookHotkeyState:
         self.bindings = {
             definition.combination: hotkey_id_for_action(action)
             for action, definition in settings.hotkeys.items()
-            if definition.requires_hook
+            if definition.requires_hook and not definition.uses_fn
         }
         self.ids = set(self.bindings.values())
         self.hold = settings.activation_mode.value == "push_to_talk"

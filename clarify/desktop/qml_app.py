@@ -545,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
             settings, practice_can_start, local_practice_model.ready
         ),
         refresh_readiness=local_practice_model.invalidate,
+        guided_shortcut_test=sys.platform == "darwin",
         can_open=lambda: capture_idle() and not settings.microphoneTestBusy,
         identity=runtime.account.history_identity,
         stop_microphone_test=lambda: settings.stopMicrophoneTest(),
@@ -572,9 +573,10 @@ def main(argv: list[str] | None = None) -> int:
         if hotkeys is not None:
             hotkeys.reconfigure(settings)
 
-    def capture_qml_hotkeys(active: bool) -> None:
+    def capture_qml_hotkeys(active: bool) -> bool | None:
         if hotkeys is not None:
-            hotkeys.set_capture_active(active)
+            return hotkeys.set_capture_active(active)
+        return None
 
     def reprocess_recording(path):
         # Recovery is an explicit new request using the current account/route.
@@ -714,6 +716,7 @@ def main(argv: list[str] | None = None) -> int:
         if sys.platform == "darwin":
             hotkeys = MacGlobalHotkeyBackend(bindings, parent=app)
             hotkeys.availabilityChanged.connect(settings.setUnavailableHotkeys)
+            hotkeys.shortcutCaptured.connect(settings.setNativeHotkeyCapture)
         else:
             hotkeys = WindowsGlobalHotkeyBackend(app, settings=bindings, parent=app)
     if hotkeys is not None:
@@ -867,14 +870,17 @@ def main(argv: list[str] | None = None) -> int:
     runtime.computer = create_computer_controller(runtime, parent=app)
     settings.bindComputer(runtime.computer)
     runtime.computer.initialize()
-    web_settings.start(visible=not start_hidden)
+    resume_practice = macos and settings.onboardingPracticePending
+    if resume_practice:
+        settings.practiceCommand("open")
+    web_settings.start(visible=not start_hidden or resume_practice)
     app.setQuitOnLastWindowClosed(False)
     from portable_update_windows import acknowledge_portable_update
     from version import __version__
 
     QTimer.singleShot(0, lambda: acknowledge_portable_update(__version__))
     updates.start()
-    if settings.onboardingRequired:
+    if settings.onboardingRequired or resume_practice:
         QTimer.singleShot(0, bridge.openSettings)
     return app.exec()
 

@@ -1,4 +1,6 @@
+import { InputMonitoringButton } from "../components/input-monitoring-button";
 import { t } from "../i18n";
+import { isMacDesktop } from "../platform";
 import { Button, Confirm, Input } from "../components/ui";
 import type { SettingsController } from "./use-settings";
 
@@ -65,23 +67,30 @@ export function SettingsDialogs({
       </Confirm>
       <Confirm
         open={!!c.capture}
+        finalFocus={c.captureOpener}
         onOpenChange={(open) => {
           if (!open) c.setCapture(undefined);
         }}
         title={t("Definir atalho")}
-        description={t("Clique no campo e pressione a combinação desejada.")}
+        description={isMacDesktop()
+          ? t(c.state?.inputMonitoringStatus === "request" || c.state?.inputMonitoringStatus === "settings"
+            ? "O macOS precisa da sua autorização para atalhos com Fn ou só modificadores."
+            : "Pressione e solte o atalho.")
+          : t("Clique no campo e pressione a combinação desejada.")}
       >
         <Input
           aria-label={t("Novo atalho")}
           placeholder={t("Pressione as teclas…")}
           autoFocus
           readOnly
+          data-native-hotkey-capture
           onKeyDown={(event) => void c.captureHotkey(event)}
           onKeyUp={(event) => void c.captureHotkey(event)}
           onMouseDown={(event) => { if ([3, 4].includes(event.button)) event.preventDefault(); }}
           onMouseUp={(event) => void c.captureMouseHotkey(event)}
           onAuxClick={(event) => event.preventDefault()}
         />
+        <InputMonitoringButton controller={c} />
       </Confirm>
     </>
   );

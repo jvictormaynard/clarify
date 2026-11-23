@@ -140,8 +140,11 @@ distributed. Each receipt retains its net processing basis and monthly release
 schedule. Public finance reads use a read-only snapshot and shared request limits;
 they do not acquire the financial write mutex.
 
-Desktop startup opens Settings for an unfinished setup;
-`AppConfig.onboarding_completed` is saved through the existing config transaction.
+Desktop startup opens Settings for an unfinished setup.
+The existing config transaction saves `AppConfig.onboarding_completed` when
+the configuration is ready. On macOS, `onboarding_practice_pending` keeps the
+guided practice open across a restart for permissions. An explicit finish or
+skip clears the pending state. Window closure and shutdown preserve it.
 Desktop practice uses the existing workflow with a safe text destination. Workflow
 and readiness changes publish Settings notifications, including asynchronous local
 model checks; the Electron renderer does not poll for practice state.

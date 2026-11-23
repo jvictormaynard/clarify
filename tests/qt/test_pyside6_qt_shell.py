@@ -14,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from hotkey_config import HotkeyAction, HotkeySettings
+from hotkey_config import ActivationMode, HotkeyAction, HotkeySettings
 from windows_hotkeys import ESCAPE_HOTKEY_ID, HotkeyRegistrationError
 
 try:
@@ -263,10 +263,163 @@ class QtSingleInstanceGuardTests(unittest.TestCase):
 
 @unittest.skipUnless(PYSIDE6_AVAILABLE, "PySide6 is an optional QML dependency")
 class MacGlobalHotkeyBackendTests(unittest.TestCase):
+    def test_accessibility_uses_appkit_monitors_for_fn_and_control_option(self):
+        from clarify.desktop import macos_clipboard, macos_keyboard
+
+        event_api = Mock()
+        receive = Mock()
+        with (
+            patch.object(macos_clipboard, "accessibility_allowed", return_value=True),
+            patch.object(
+                macos_clipboard,
+                "_appkit",
+                return_value=SimpleNamespace(NSEvent=event_api),
+            ),
+            patch.object(
+                macos_keyboard, "input_monitoring_allowed", return_value=False
+            ) as input_monitoring,
+        ):
+            listener = macos_keyboard.open_keyboard_listener(receive)
+            global_monitor = event_api.addGlobalMonitorForEventsMatchingMask_handler_
+            local_monitor = event_api.addLocalMonitorForEventsMatchingMask_handler_
+            global_handler = global_monitor.call_args.args[1]
+            local_handler = local_monitor.call_args.args[1]
+            globe = Mock(
+                type=Mock(return_value=12),
+                keyCode=Mock(return_value=63),
+                modifierFlags=Mock(return_value=1 << 23),
+            )
+            option = Mock(
+                type=Mock(return_value=12),
+                keyCode=Mock(return_value=58),
+                modifierFlags=Mock(return_value=(1 << 18) | (1 << 19)),
+            )
+            global_handler(globe)
+            receive.assert_called_with(12, 63, 1 << 23, False)
+            self.assertIs(local_handler(option), option)
+            receive.assert_called_with(12, 58, (1 << 18) | (1 << 19), False)
+            listener.close()
+            self.assertEqual(
+                [call.args[0] for call in event_api.removeMonitor_.call_args_list],
+                [
+                    global_monitor.return_value,
+                    local_monitor.return_value,
+                ],
+            )
+            input_monitoring.assert_not_called()
+
+    def test_modifier_shortcuts_capture_and_trigger_without_a_regular_key(self):
+        app = QApplication.instance() or QApplication([])
+        events = []
+        native = SimpleNamespace(
+            register=lambda combo, number: combo, unregister=Mock(), close=Mock()
+        )
+
+        permitted = False
+
+        def open_keyboard(receive):
+            if not permitted:
+                raise OSError("Input Monitoring is not allowed")
+            events.append(receive)
+            return SimpleNamespace(flags=lambda: 0, close=Mock())
+
+        defaults = default_hotkeys()
+        self.assertEqual(defaults.definition(HotkeyAction.RECORDING).key, "FN")
+        self.assertIs(defaults.activation_mode, ActivationMode.PUSH_TO_TALK)
+        backend = MacGlobalHotkeyBackend(
+            defaults,
+            native_factory=lambda _receive: native,
+            keyboard_factory=open_keyboard,
+        )
+        captured, triggered = [], []
+        backend.shortcutCaptured.connect(captured.append)
+        backend.triggered.connect(triggered.append)
+        fn, option, ctrl = 1 << 23, 1 << 19, 1 << 18
+        try:
+            backend.start(FakeWindow())
+            self.assertFalse(backend.set_capture_active(True))
+            permitted = True
+            self.assertTrue(backend.set_capture_active(True))
+            receive = events[-1]
+            receive(12, 63, fn, False)
+            receive(12, 58, fn | option, False)
+            receive(12, 63, option, False)
+            receive(12, 58, 0, False)
+            app.processEvents()
+            self.assertEqual([shortcut.display for shortcut in captured], ["Fn+Alt"])
+            self.assertEqual(triggered, [])
+            backend.set_capture_active(False)
+
+            for shortcut, flags in (
+                ("Fn", fn),
+                ("Fn+Alt", fn | option),
+                ("Ctrl+Alt", ctrl | option),
+            ):
+                settings = (
+                    default_hotkeys()
+                    .with_hotkey(HotkeyAction.RECORDING, shortcut)
+                    .with_activation_mode(ActivationMode.TOGGLE)
+                )
+                backend.reconfigure(settings)
+                receive = events[-1]
+                triggered.clear()
+                receive(12, 58, flags, False)
+                receive(10, 0, flags, False)  # The modifiers were used to type.
+                receive(11, 0, flags, False)
+                receive(12, 58, 0, False)
+                receive(12, 58, flags, False)
+                receive(12, 58, 0, False)
+                app.processEvents()
+                self.assertEqual(triggered, [HotkeyAction.RECORDING.value])
+
+            hold_settings = settings.with_activation_mode(
+                ActivationMode.PUSH_TO_TALK,
+                push_to_talk_supported=True,
+            )
+            backend.reconfigure(hold_settings)
+            triggered.clear()
+            receive(12, 58, ctrl | option, False)
+            backend._keyboard_timer.timeout.emit()
+            app.processEvents()
+            self.assertEqual(triggered, ["recording_hold_press"])
+            receive(12, 58, ctrl, False)
+            receive(12, 59, 0, False)
+            app.processEvents()
+            self.assertEqual(
+                triggered, ["recording_hold_press", "recording_hold_release"]
+            )
+            triggered.clear()
+            receive(12, 58, ctrl | option, False)
+            backend._keyboard_timer.timeout.emit()
+            app.processEvents()
+            backend.reconfigure(hold_settings)
+            receive(12, 58, 0, False)
+            receive(12, 58, ctrl | option, False)
+            backend._keyboard_timer.timeout.emit()
+            receive(10, 53, ctrl | option, False)  # Escape while still held.
+            receive(11, 53, ctrl | option, False)
+            receive(12, 58, 0, False)
+            app.processEvents()
+            self.assertEqual(
+                triggered,
+                [
+                    "recording_hold_press",
+                    "recording_hold_release",
+                    "recording_hold_press",
+                    "escape",
+                    "recording_hold_release",
+                ],
+            )
+        finally:
+            backend.stop()
+
     def test_failed_reconfigure_keeps_the_previous_actions(self):
         app = QApplication.instance() or QApplication([])
-        settings = default_hotkeys().with_hotkey(
-            HotkeyAction.VOICE_TRANSLATION, "XBUTTON1"
+        settings = (
+            default_hotkeys()
+            .with_hotkey(HotkeyAction.RECORDING, "Ctrl+Shift+L")
+            .with_hotkey(HotkeyAction.VOICE_TRANSLATION, "XBUTTON1")
+            .with_activation_mode(ActivationMode.TOGGLE)
         )
         candidate = settings.with_hotkey(HotkeyAction.RECORDING, "Ctrl+Shift+M")
         candidate = candidate.with_hotkey(HotkeyAction.VISIBILITY, "Ctrl+Shift+N")

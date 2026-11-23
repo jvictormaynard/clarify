@@ -59,7 +59,7 @@ def _accessibility():
         framework,
         functions,
         [
-            ("AXIsProcessTrusted", b"B"),
+            ("AXIsProcessTrustedWithOptions", b"B@"),
             ("AXUIElementGetTypeID", b"Q"),
             ("AXValueGetTypeID", b"Q"),
             (
@@ -86,6 +86,14 @@ def _accessibility():
         "AXValueRef", b"^{__AXValue=}", functions["AXValueGetTypeID"]()
     )
     return SimpleNamespace(**functions)
+
+
+def accessibility_allowed(*, request=False) -> bool:
+    return bool(
+        _accessibility().AXIsProcessTrustedWithOptions(
+            {"AXTrustedCheckOptionPrompt": request}
+        )
+    )
 
 
 @dataclass(frozen=True)

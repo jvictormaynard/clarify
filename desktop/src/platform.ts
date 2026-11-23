@@ -1,8 +1,10 @@
 export type DesktopMessage = {event: 'settings' | 'workflow' | 'meetings' | 'meeting-status'; state: Record<string, unknown>};
+type PermissionGuideRequest = {permission: 'accessibility' | 'shortcuts'; locale: string};
 export interface ElectronBridge {
   separateMeetingWindow?: boolean;
+  dragInstalledApp?(): void;
   call<T>(channel: 'settings' | 'workflow' | 'meetings', method: string, args: unknown[]): Promise<T>;
-  window(method: string, value?: boolean | string | {x: number; y: number; width: number; height: number}[]): Promise<boolean | void>;
+  window(method: string, value?: boolean | string | PermissionGuideRequest | {x: number; y: number; width: number; height: number}[]): Promise<boolean | void>;
   subscribe(listener: (message: DesktopMessage) => void): () => void;
   onWindow(listener: (event: string, value?: string) => void): () => void;
   ready(): Promise<void>;

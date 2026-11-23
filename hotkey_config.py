@@ -40,9 +40,9 @@ class ActivationMode(str, Enum):
     PUSH_TO_TALK = "push_to_talk"
 
 
-SUPPORTED_MODIFIERS = frozenset({"alt", "ctrl", "shift", "win"})
-_MODIFIER_ORDER = ("ctrl", "alt", "shift", "win")
-HOOK_KEYS = frozenset({"CTRL", "ALT", "SHIFT", "WIN", "XBUTTON1", "XBUTTON2"})
+_MODIFIER_ORDER = ("fn", "ctrl", "alt", "shift", "win")
+SUPPORTED_MODIFIERS = frozenset(_MODIFIER_ORDER)
+HOOK_KEYS = frozenset({"FN", "CTRL", "ALT", "SHIFT", "WIN", "XBUTTON1", "XBUTTON2"})
 _KEY_RE = re.compile(
     r"^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|SPACE|TAB|ENTER|ESCAPE|"
     r"UP|DOWN|LEFT|RIGHT)$"
@@ -171,11 +171,18 @@ class HotkeyDefinition:
 
     @property
     def display(self) -> str:
-        labels = {"ctrl": "Ctrl", "alt": "Alt", "shift": "Shift", "win": "Win"}
+        labels = {
+            "fn": "Fn",
+            "ctrl": "Ctrl",
+            "alt": "Alt",
+            "shift": "Shift",
+            "win": "Win",
+        }
         prefix = "+".join(
             labels[name] for name in _MODIFIER_ORDER if name in self.modifiers
         )
         key_label = {
+            "FN": "Fn",
             "CTRL": "Ctrl",
             "ALT": "Alt",
             "SHIFT": "Shift",
@@ -188,6 +195,10 @@ class HotkeyDefinition:
     @property
     def requires_hook(self) -> bool:
         return self.key in HOOK_KEYS
+
+    @property
+    def uses_fn(self) -> bool:
+        return self.key == "FN" or "fn" in self.modifiers
 
     def to_mapping(self) -> dict[str, Any]:
         return {

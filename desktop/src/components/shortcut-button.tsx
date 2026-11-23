@@ -1,4 +1,5 @@
 import { Pencil } from 'lucide-react';
+import type { MouseEventHandler } from "react";
 import { t } from '../i18n';
 import { shortcutKeyName } from "../settings/display-labels";
 import type { HotkeyDefinition } from '../settings/bridge';
@@ -6,7 +7,7 @@ import { Button } from './ui';
 import '../styles/shortcut-button.css';
 
 export function ShortcutButton({ shortcut, display, label, disabled, onClick }: {
-  shortcut?: HotkeyDefinition | null; display?: string; label?: string; disabled?: boolean; onClick: () => void;
+  shortcut?: HotkeyDefinition | null; display?: string; label?: string; disabled?: boolean; onClick: MouseEventHandler<HTMLButtonElement>;
 }) {
   const keys = (shortcut ? [...shortcut.modifiers, shortcut.key] : (display || '').split('+').filter(Boolean)).map(shortcutKeyName);
   return <Button className="shortcut shortcut-control" aria-label={label || (keys.length ? keys.join("+") : t("Definir atalho"))} aria-description={keys.length ? keys.join("+") : t("Definir atalho")} disabled={disabled} onClick={onClick}>

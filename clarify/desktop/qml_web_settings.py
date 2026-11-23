@@ -105,6 +105,9 @@ PROPERTIES = (
     "localAsrCloudRefinement",
     "hotkeyActions",
     "hotkeyCaptureAction",
+    "nativeHotkeyCapture",
+    "inputMonitoringStatus",
+    "dictationPermissions",
     "hotkeyUnavailable",
     "hotkeyActivationMode",
     "hotkeyPushToTalkSupported",
@@ -133,6 +136,8 @@ METHODS = frozenset(
         "personalSetupCommand",
         "practiceCommand",
         "beginHotkeyCapture",
+        "inputMonitoringCommand",
+        "dictationPermissionCommand",
         "cancelHotkeyCapture",
         "accountCommand",
         "chatgptCommand",
@@ -323,6 +328,8 @@ class SettingsProtocol:
                     "setDictationPostProcessing": (str, str, str, str, str),
                     "previewTextAction": (str, str, str, int),
                     "beginTextActionHotkeyCapture": (str,),
+                    "inputMonitoringCommand": (str,),
+                    "dictationPermissionCommand": (str,),
                     "endTextActionHotkeyCapture": (),
                     "cancelTextActionHotkeyCapture": (),
                     "refreshTextActions": (),
@@ -346,7 +353,18 @@ class SettingsProtocol:
                 if method == "practiceCommand" and (
                     len(args) != 1
                     or type(args[0]) is not str
-                    or args[0] not in {"open", "close", "start", "stop", "cancel"}
+                    or args[0]
+                    not in {
+                        "open",
+                        "close",
+                        "start",
+                        "stop",
+                        "cancel",
+                        "test-shortcut",
+                        "leave-shortcut",
+                        "finish-shortcut",
+                        "done",
+                    }
                 ):
                     raise ValueError()
                 if method in {

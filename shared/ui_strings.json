@@ -934,6 +934,11 @@
     "en": "Wait for the current operation or stop the microphone test before dictating.",
     "es": "Espera a que termine la operación actual o detén la prueba del micrófono antes de dictar."
   },
+  "practice_permissions": {
+    "pt": "Conceda as permissões de ditado antes de gravar.",
+    "en": "Grant dictation permissions before recording.",
+    "es": "Concede los permisos de dictado antes de grabar."
+  },
   "practice_configuration": {
     "pt": "Conclua e salve a configuração de transcrição antes de ditar.",
     "en": "Complete and save transcription settings before dictating.",
@@ -2088,6 +2093,136 @@
     "pt": "Pressione as teclas…",
     "en": "Press keys…",
     "es": "Pulsa las teclas…"
+  },
+  "Pressione e solte o atalho.": {
+    "pt": "Pressione e solte o atalho.",
+    "en": "Press and release the shortcut.",
+    "es": "Pulsa y suelta el atajo."
+  },
+  "O macOS precisa da sua autorização para atalhos com Fn ou só modificadores.": {
+    "pt": "O macOS precisa da sua autorização para atalhos com Fn ou só modificadores.",
+    "en": "macOS needs your permission for shortcuts that use Fn or only modifier keys.",
+    "es": "macOS necesita tu permiso para los atajos con Fn o solo teclas modificadoras."
+  },
+  "Permitir atalhos com Fn": {
+    "pt": "Permitir atalhos com Fn",
+    "en": "Allow Fn shortcuts",
+    "es": "Permitir atajos con Fn"
+  },
+  "Abrir Monitoramento de Entrada": {
+    "pt": "Abrir Monitoramento de Entrada",
+    "en": "Open Input Monitoring",
+    "es": "Abrir Monitorización de entrada"
+  },
+  "Permita o microfone para testar o ditado. Os outros acessos são opcionais.": {
+    "pt": "Permita o microfone para testar o ditado. Os outros acessos são opcionais.",
+    "en": "Allow microphone access to test dictation. Other permissions are optional.",
+    "es": "Permite el acceso al micrófono para probar el dictado. Los demás permisos son opcionales."
+  },
+  "Opcional. Com Acessibilidade, o Clarify insere o ditado no campo em que você escreve.": {
+    "pt": "Opcional. Com Acessibilidade, o Clarify insere o ditado no campo em que você escreve.",
+    "en": "Optional. With Accessibility access, Clarify inserts dictation into the field where you write.",
+    "es": "Opcional. Con accesibilidad, Clarify inserta el dictado en el campo donde escribes."
+  },
+  "Teste o microfone": {
+    "pt": "Teste o microfone",
+    "en": "Test your microphone",
+    "es": "Prueba el micrófono"
+  },
+  "Escolha o idioma": {
+    "pt": "Escolha o idioma",
+    "en": "Choose a language",
+    "es": "Elige el idioma"
+  },
+  "Teste o atalho": {
+    "pt": "Teste o atalho",
+    "en": "Test your shortcut",
+    "es": "Prueba el atajo"
+  },
+  "Fale e confira o nível de áudio.": {
+    "pt": "Fale e confira o nível de áudio.",
+    "en": "Speak and watch the audio level.",
+    "es": "Habla y comprueba el nivel de audio."
+  },
+  "O Clarify usa este ajuste para o texto ditado.": {
+    "pt": "O Clarify usa este ajuste para o texto ditado.",
+    "en": "Clarify uses this setting for dictated text.",
+    "es": "Clarify usa este ajuste para el texto dictado."
+  },
+  "Use o atalho abaixo para confirmar que o Clarify o reconhece.": {
+    "pt": "Use o atalho abaixo para confirmar que o Clarify o reconhece.",
+    "en": "Use the shortcut below to check that Clarify detects it.",
+    "es": "Usa el atajo de abajo para comprobar que Clarify lo detecta."
+  },
+  "Atalho reconhecido": {
+    "pt": "Atalho reconhecido",
+    "en": "Shortcut detected",
+    "es": "Atajo detectado"
+  },
+  "Permissões para ditar": {
+    "pt": "Permissões para ditar",
+    "en": "Dictation permissions",
+    "es": "Permisos para dictar"
+  },
+  "Autorize o Clarify a inserir texto e usar o microfone antes de testar o ditado.": {
+    "pt": "Autorize o Clarify a inserir texto e usar o microfone antes de testar o ditado.",
+    "en": "Allow Clarify to insert text and use your microphone before testing dictation.",
+    "es": "Permite que Clarify inserte texto y use el micrófono antes de probar el dictado."
+  },
+  "Acessibilidade": {
+    "pt": "Acessibilidade",
+    "en": "Accessibility",
+    "es": "Accesibilidad"
+  },
+  "Insere o texto ditado no campo em que você está escrevendo.": {
+    "pt": "Insere o texto ditado no campo em que você está escrevendo.",
+    "en": "Inserts dictated text in the field you are writing in.",
+    "es": "Inserta el texto dictado en el campo en el que escribes."
+  },
+  "Acesso permitido": {
+    "pt": "Acesso permitido",
+    "en": "Access allowed",
+    "es": "Acceso permitido"
+  },
+  "Permitir Acessibilidade": {
+    "pt": "Permitir Acessibilidade",
+    "en": "Allow Accessibility",
+    "es": "Permitir accesibilidad"
+  },
+  "Abrir Ajustes de Acessibilidade": {
+    "pt": "Abrir Ajustes de Acessibilidade",
+    "en": "Open Accessibility Settings",
+    "es": "Abrir ajustes de accesibilidad"
+  },
+  "Capta sua voz quando você inicia um ditado.": {
+    "pt": "Capta sua voz quando você inicia um ditado.",
+    "en": "Captures your voice when you start dictation.",
+    "es": "Capta tu voz cuando empiezas a dictar."
+  },
+  "Abrir Ajustes de Microfone": {
+    "pt": "Abrir Ajustes de Microfone",
+    "en": "Open Microphone Settings",
+    "es": "Abrir ajustes del micrófono"
+  },
+  "Permitir microfone": {
+    "pt": "Permitir microfone",
+    "en": "Allow microphone",
+    "es": "Permitir micrófono"
+  },
+  "Atalhos com Fn": {
+    "pt": "Atalhos com Fn",
+    "en": "Fn shortcuts",
+    "es": "Atajos con Fn"
+  },
+  "Opcional. Permite usar Fn ou apenas modificadores para iniciar o ditado.": {
+    "pt": "Opcional. Permite usar Fn ou apenas modificadores para iniciar o ditado.",
+    "en": "Optional. Use Fn or only modifier keys to start dictation.",
+    "es": "Opcional. Usa Fn o solo teclas modificadoras para iniciar el dictado."
+  },
+  "Não foi possível abrir os Ajustes do Sistema.": {
+    "pt": "Não foi possível abrir os Ajustes do Sistema.",
+    "en": "Could not open System Settings.",
+    "es": "No se pudieron abrir los Ajustes del Sistema."
   },
   "Privacidade": {
     "pt": "Privacidade",
@@ -9498,5 +9633,115 @@
     "en": "Sign in to sync your dictionary and snippets, or continue without an account.",
     "pt": "Entre para sincronizar seu dicionário e seus snippets ou continue sem conta.",
     "es": "Inicia sesión para sincronizar tu diccionario y tus fragmentos, o continúa sin cuenta."
+  },
+  "Colar o ditado em outros apps": {
+    "pt": "Colar o ditado em outros apps",
+    "en": "Paste dictation into other apps",
+    "es": "Pegar el dictado en otras apps"
+  },
+  "Insere o texto onde você está escrevendo.": {
+    "pt": "Insere o texto onde você está escrevendo.",
+    "en": "Inserts text where you're typing.",
+    "es": "Inserta el texto donde estás escribiendo."
+  },
+  "Captar sua voz": {
+    "pt": "Captar sua voz",
+    "en": "Capture your voice",
+    "es": "Captar tu voz"
+  },
+  "Usa o microfone quando você começa a ditar.": {
+    "pt": "Usa o microfone quando você começa a ditar.",
+    "en": "Uses the microphone when you start dictating.",
+    "es": "Usa el micrófono cuando empiezas a dictar."
+  },
+  "Ditar com atalhos em outros apps": {
+    "pt": "Ditar com atalhos em outros apps",
+    "en": "Dictate with shortcuts in other apps",
+    "es": "Dictar con atajos en otras apps"
+  },
+  "Reconhece seu atalho mesmo quando outro app está aberto.": {
+    "pt": "Reconhece seu atalho mesmo quando outro app está aberto.",
+    "en": "Recognizes your shortcut while you're using another app.",
+    "es": "Reconoce tu atajo mientras usas otra app."
+  },
+  "Ícone do Clarify para arrastar": {
+    "pt": "Ícone do Clarify para arrastar",
+    "en": "Draggable Clarify app icon",
+    "es": "Icono de Clarify para arrastrar"
+  },
+  "Ative o Clarify na lista dos Ajustes do Sistema.": {
+    "pt": "Ative o Clarify na lista dos Ajustes do Sistema.",
+    "en": "Turn on Clarify in the System Settings list.",
+    "es": "Activa Clarify en la lista de Ajustes del Sistema."
+  },
+  "Se o Clarify não estiver na lista, arraste o ícone para lá. Você também pode usar o botão +.": {
+    "pt": "Se o Clarify não estiver na lista, arraste o ícone para lá. Você também pode usar o botão +.",
+    "en": "If Clarify isn't listed, drag the icon into the list or use the + button.",
+    "es": "Si Clarify no aparece, arrastra el icono a la lista o usa el botón +."
+  },
+  "Abrir Ajustes do Monitoramento de Entrada": {
+    "pt": "Abrir Ajustes do Monitoramento de Entrada",
+    "en": "Open Input Monitoring settings",
+    "es": "Abrir ajustes de Monitorización de entrada"
+  },
+  "Permitir atalhos globais": {
+    "pt": "Permitir atalhos globais",
+    "en": "Allow global shortcuts",
+    "es": "Permitir atajos globales"
+  },
+  "Se o Clarify não estiver na lista, use o botão + para adicionar o app.": {
+    "pt": "Se o Clarify não estiver na lista, use o botão + para adicionar o app.",
+    "en": "If Clarify isn't listed, use the + button to add it.",
+    "es": "Si Clarify no aparece, usa el botón + para añadirlo."
+  },
+  "Se o macOS pedir para encerrar e reabrir, a configuração será retomada.": {
+    "pt": "Se o macOS pedir para encerrar e reabrir, a configuração será retomada.",
+    "en": "If macOS asks you to quit and reopen, setup will resume.",
+    "es": "Si macOS te pide cerrar y volver a abrir, continuarás con la configuración."
+  },
+  "Verificar acesso": {
+    "pt": "Verificar acesso",
+    "en": "Check access",
+    "es": "Comprobar acceso"
+  },
+  "O macOS ainda não confirmou o acesso. Se o Clarify já estiver ativado nos Ajustes, encerre e reabra o app.": {
+    "pt": "O macOS ainda não confirmou o acesso. Se o Clarify já estiver ativado nos Ajustes, encerre e reabra o app.",
+    "en": "macOS hasn't confirmed access yet. If Clarify is enabled in System Settings, quit and reopen it.",
+    "es": "macOS aún no ha confirmado el acceso. Si Clarify ya está activado en Ajustes, cierra y vuelve a abrir la app."
+  },
+  "Este atalho está indisponível. Confira as permissões ou escolha outro atalho.": {
+    "pt": "Este atalho está indisponível. Confira as permissões ou escolha outro atalho.",
+    "en": "This shortcut is unavailable. Check permissions or choose another shortcut.",
+    "es": "Este atajo no está disponible. Comprueba los permisos o elige otro atajo."
+  },
+  "Ative o Clarify nos Ajustes": {
+    "pt": "Ative o Clarify nos Ajustes",
+    "en": "Turn on Clarify in System Settings",
+    "es": "Activa Clarify en Ajustes"
+  },
+  "Se o Clarify não aparecer na lista, arraste o item abaixo para lá.": {
+    "pt": "Se o Clarify não aparecer na lista, arraste o item abaixo para lá.",
+    "en": "If Clarify isn’t listed, drag the item below into the list.",
+    "es": "Si Clarify no aparece, arrastra el elemento de abajo a la lista."
+  },
+  "Reabrir Ajustes": {
+    "pt": "Reabrir Ajustes",
+    "en": "Reopen System Settings",
+    "es": "Volver a abrir Ajustes"
+  },
+  "Aguardando seu atalho": {
+    "pt": "Aguardando seu atalho",
+    "en": "Waiting for your shortcut",
+    "es": "Esperando tu atajo"
+  },
+  "O macOS liberou o acesso ao teclado, mas o atalho ainda está indisponível.": {
+    "pt": "O macOS liberou o acesso ao teclado, mas o atalho ainda está indisponível.",
+    "en": "macOS granted keyboard access, but the shortcut is still unavailable.",
+    "es": "macOS permitió el acceso al teclado, pero el atajo sigue sin estar disponible."
+  },
+  "Acessibilidade também permite usar atalhos.": {
+    "pt": "Acessibilidade também permite usar atalhos.",
+    "en": "Accessibility also allows shortcuts.",
+    "es": "Accesibilidad también permite usar atajos."
   }
 }

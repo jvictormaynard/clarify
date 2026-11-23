@@ -1,4 +1,5 @@
 'use strict';
+const {existsSync} = require('node:fs');
 const path = require('node:path');
 const {pathToFileURL, fileURLToPath} = require('node:url');
 const {Bridge, validateRequest} = require('./bridge.cjs');
@@ -26,6 +27,7 @@ async function startHost(
   passiveWindow = process.platform === 'win32' ? require('./passive_window.node') : null,
   platform = process.platform,
   macWorkArea = process.platform === 'darwin' && platform === 'darwin' ? require('./mac_work_area.node').getWorkArea : null,
+  systemSettingsBounds = process.platform === 'darwin' && platform === 'darwin' ? require('./mac_work_area.node').getSystemSettingsBounds : null,
 ) {
   const isMac = platform === 'darwin';
   const isWindows = platform === 'win32';
@@ -44,12 +46,97 @@ async function startHost(
   let placementTimer;
   const index = path.resolve(__dirname, '../dist/index.html');
   const icon = path.resolve(__dirname, '../icon.png');
+  let draggableApp;
+  if (isMac && app.isPackaged) {
+    const executable = app.getPath('exe');
+    const bundle = path.resolve(path.dirname(executable), '../../../../..');
+    const helper = 'Contents/Helpers/Clarify Desktop.app/Contents/MacOS/Clarify Desktop';
+    if (bundle.endsWith('.app') && path.relative(bundle, executable) === helper
+        && existsSync(path.join(bundle, 'Contents/MacOS/Clarify'))) {
+      const image = nativeImage.createFromPath(icon).resize({width: 64, height: 64});
+      if (!image.isEmpty()) draggableApp = {file: bundle, icon: image};
+    }
+  }
   const pageUrl = pathToFileURL(index).href;
   const urls = {settings: pageUrl, pill: pageUrl + '?surface=pill', meeting: pageUrl + '?surface=meeting'};
+  let permissionGuide, permissionGuideTimer, permissionGuideUrl, guidedPermission;
+  const closePermissionGuide = () => {
+    clearInterval(permissionGuideTimer);
+    permissionGuideTimer = undefined;
+    const panel = permissionGuide;
+    permissionGuide = permissionGuideUrl = guidedPermission = undefined;
+    if (panel && !panel.isDestroyed()) panel.destroy();
+  };
+  const showPermissionGuide = (permission, locale) => {
+    const access = permission === 'accessibility' ? settingsPatch.dictationPermissions?.accessibility
+      : settingsPatch.inputMonitoringStatus;
+    if (!draggableApp || !systemSettingsBounds || access === 'allowed') return;
+    closePermissionGuide();
+    const width = 352, height = 164, gap = 16;
+    const panel = new BrowserWindow({
+      width, height, show: false, type: 'panel', acceptFirstMouse: true,
+      frame: false, transparent: true, focusable: false, resizable: false,
+      skipTaskbar: true, hasShadow: true, title: 'Clarify',
+      webPreferences: {preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true, devTools: false},
+    });
+    permissionGuide = panel;
+    guidedPermission = permission;
+    const params = new URLSearchParams({surface: 'permission-guide', locale});
+    permissionGuideUrl = pageUrl + '?' + params;
+    panel.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
+    panel.webContents.on('will-navigate', event => event.preventDefault());
+    panel.webContents.on('will-attach-webview', event => event.preventDefault());
+    panel.webContents.once('render-process-gone', () => {
+      if (permissionGuide === panel) closePermissionGuide();
+    });
+    panel.once('closed', () => {
+      if (permissionGuide === panel) closePermissionGuide();
+    });
+    panel.setAlwaysOnTop(true, 'floating');
+    panel.setVisibleOnAllWorkspaces(true, {visibleOnFullScreen: true, skipTransformProcessType: true});
+    const expires = Date.now() + 120000;
+    const place = () => {
+      if (permissionGuide !== panel) return;
+      // A covered Settings window still owns the guide.
+      if (Date.now() >= expires || !wantsVisible.settings || windows.settings.isMinimized()) {
+        closePermissionGuide();
+        return;
+      }
+      const bounds = systemSettingsBounds();
+      if (!bounds) {
+        if (panel.isVisible()) panel.hide();
+        return;
+      }
+      const area = screen.getDisplayMatching(bounds).workArea;
+      const maxX = area.x + area.width - width;
+      const maxY = area.y + area.height - height;
+      const right = bounds.x + bounds.width + gap, left = bounds.x - width - gap;
+      const anchor = right <= maxX ? right : left >= area.x ? left : bounds.x + (bounds.width - width) / 2;
+      const x = Math.round(Math.min(maxX, Math.max(area.x, anchor)));
+      const y = Math.round(Math.min(maxY, Math.max(area.y, bounds.y + bounds.height - height - gap)));
+      const current = panel.getBounds();
+      if (x !== current.x || y !== current.y) panel.setPosition(x, y);
+      if (!panel.isVisible()) {
+        panel.showInactive();
+        panel.webContents.send('clarify:permission-guide-presented');
+      }
+    };
+    panel.once('ready-to-show', () => {
+      if (permissionGuide !== panel) return;
+      permissionGuideTimer = setInterval(place, 200).unref();
+      place();
+    });
+    void panel.loadURL(permissionGuideUrl).catch(() => {
+      if (permissionGuide === panel) closePermissionGuide();
+    });
+  };
+  const guideSender = event => permissionGuide && event.sender === permissionGuide.webContents
+    && event.senderFrame === event.sender.mainFrame && event.senderFrame?.url === permissionGuideUrl;
   const rtc = require('./webrtc-main.cjs').computerWebRTCPipe({BrowserWindow, ipcMain, session}, message => bridge.send(message));
   const stop = () => {
     if (stopping) return;
     stopping = true;
+    closePermissionGuide();
     rtc.stop();
     app.quit();
   };
@@ -118,6 +205,7 @@ async function startHost(
   };
   const hideUserWindow = surface => {
     wantsVisible[surface] = false;
+    if (surface === 'settings') closePermissionGuide();
     windows[surface].hide();
     syncActivationPolicy();
   };
@@ -221,6 +309,13 @@ async function startHost(
     }
     else return;
     if (message.event === 'settings') {
+      const confirmed = guidedPermission === 'accessibility' ? message.state.dictationPermissions?.accessibility === 'allowed'
+        : guidedPermission === 'shortcuts' && message.state.inputMonitoringStatus === 'allowed';
+      if (confirmed) {
+        const returnToSettings = permissionGuide?.isVisible() && systemSettingsBounds();
+        closePermissionGuide();
+        if (returnToSettings) showUserWindow('settings');
+      } else if (message.state.practiceState?.open === false) closePermissionGuide();
       if (message.state.audioPlaybackStopRequest) emit(windows.settings, 'clarify:stop-audio', message.state.audioPlaybackStopRequest);
       emit(windows.settings, 'clarify:state', message);
     }
@@ -453,7 +548,22 @@ async function startHost(
     if (loaded.has(windows.settings) && loaded.has(windows.pill) && !ready) { ready = true; bridge.send({event: 'ready'}); }
   });
   ipcMain.handle('clarify:window', (event, method, value) => {
+    if (method === 'dismissPermissionGuide' && guideSender(event)) {
+      closePermissionGuide();
+      return;
+    }
     const surface = sender(event), win = windows[surface];
+    if (surface === 'settings' && method === 'canDragInstalledApp') return !!draggableApp;
+    if (surface === 'settings' && method === 'showPermissionGuide' && ['accessibility', 'shortcuts'].includes(value?.permission)
+        && ['pt', 'en', 'es', 'de', 'ru'].includes(value.locale)
+        && wantsVisible.settings) {
+      showPermissionGuide(value.permission, value.locale);
+      return;
+    }
+    if (surface === 'settings' && method === 'dismissPermissionGuide') {
+      closePermissionGuide();
+      return;
+    }
     if (surface === 'pill') {
       if (method === 'stopMeeting' && typeof value === 'string' && value === meetingState?.active?.id
           && ['recording', 'paused'].includes(meetingState.active.status) && loaded.has(captureWindow())) {
@@ -512,6 +622,18 @@ async function startHost(
       bridge.send({event: 'settings-hidden'});
     }
     else throw new Error('Invalid window control');
+  });
+  ipcMain.on('clarify:drag-installed-app', event => {
+    if (!draggableApp) return;
+    const win = windows.settings;
+    const fromSettings = event.sender === win?.webContents && event.senderFrame === event.sender.mainFrame
+        && event.senderFrame?.url === urls.settings;
+    if (!fromSettings && !guideSender(event)) return;
+    try {
+      event.sender.startDrag(draggableApp);
+    } catch {
+      process.stderr.write('Could not start the Clarify app drag.\n');
+    }
   });
   if (isMac) app.on('activate', () => {
     if (stopping || bridge.closed) return;

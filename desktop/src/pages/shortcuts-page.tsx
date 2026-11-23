@@ -16,7 +16,7 @@ export function ShortcutsPage({ controller }: SettingsPageProps) {
         <Row key={item.id} title={t(item.id === "toggle_visibility" && electron() ? "Expandir / recolher dock" : item.label)}>
           <div className="inline-actions">
             <ShortcutButton label={t(item.label)} display={item.display || item.definition?.display}
-              onClick={() => setCapture(item.id)} />
+              onClick={event => setCapture(item.id, event.currentTarget)} />
             <Button
               variant="ghost"
               aria-label={t("Restaurar {name}", { name: item.label })}

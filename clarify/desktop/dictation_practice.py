@@ -38,6 +38,7 @@ class PracticeController:
         identity: Callable[[], object] = lambda: None,
         stop_microphone_test: Callable[[], None] = lambda: None,
         refresh_readiness: Callable[[], None] = lambda: None,
+        guided_shortcut_test: bool = False,
     ):
         self.workflow = workflow
         self.language = language
@@ -54,6 +55,8 @@ class PracticeController:
         self._listeners = []
         self._held = False
         self._pending_start = None
+        self._guided_shortcut_test = guided_shortcut_test
+        self._shortcut_test = "idle"
         workflow.subscribe(self._on_state)
 
     def _on_state(self, _state):
@@ -146,6 +149,7 @@ class PracticeController:
             "source": (state.source_text or "") if visible else "",
             "status": (state.status_key or "") if visible else "",
             "blocked": self._blocked() if self.open else "",
+            "shortcutTest": self._shortcut_test,
         }
 
     def command(self, action):
@@ -161,6 +165,7 @@ class PracticeController:
             self._identity_invalidated = False
             self._operation_id = None
             self.open = True
+            self._shortcut_test = "idle"
         elif action == "close":
             self.stop_microphone_test()
             self.refresh_readiness()
@@ -175,13 +180,27 @@ class PracticeController:
         elif self.identity() != self._identity:
             self._invalidate_identity()
             return True
+        elif action in {"test-shortcut", "leave-shortcut", "finish-shortcut"}:
+            if not self._guided_shortcut_test or self.busy:
+                return False
+            if action == "finish-shortcut" and self._shortcut_test != "passed":
+                return False
+            self._shortcut_test = {
+                "test-shortcut": "listening",
+                "leave-shortcut": "idle",
+                "finish-shortcut": "complete",
+            }[action]
         elif action == "cancel":
             self._pending_start = None
             self._generation += 1
             self._held = False
             self._release_workflow()
         elif action == "start":
-            if self.busy or self._blocked():
+            if (
+                self.busy
+                or self._blocked()
+                or (self._guided_shortcut_test and self._shortcut_test != "complete")
+            ):
                 return True
             state = self.workflow.state
             if state.phase is WorkflowPhase.READY:
@@ -210,6 +229,14 @@ class PracticeController:
     def handle_hotkey(self, action):
         if not self.open:
             return False
+        if self._guided_shortcut_test and self._shortcut_test != "complete":
+            if self._shortcut_test == "listening" and action in {
+                "recording_hotkey",
+                "recording_hold_press",
+            }:
+                self._shortcut_test = "passed"
+                self._notify()
+            return True
         if action == "recording_hotkey":
             self.command(
                 "stop"
@@ -241,6 +268,8 @@ def practice_readiness(
         return "practice_busy"
     if settings.dirty or settings.providerDirty or settings.onboardingRequired:
         return "practice_configuration"
+    if settings.dictationPermissions.get("microphone", "allowed") != "allowed":
+        return "practice_permissions"
     account = settings.accountState
     if account.get("busy") or account.get("pending") or settings.hotkeyCaptureAction:
         return "practice_busy"

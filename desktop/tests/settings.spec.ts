@@ -583,6 +583,143 @@ test("practice preserves drafts and permits the window close confirmation", asyn
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through practice.");
 });
 
+test("Mac dictation setup reacts to a grant without window focus and offers a native drag guide", async ({ page }, testInfo) => {
+  await page.evaluate(() => {
+    const desktop = window.clarifyDesktop!;
+    const call = desktop.call.bind(desktop);
+    const windowAction = desktop.window.bind(desktop);
+    const testWindow = window as any;
+    const actions: unknown[] = [];
+    testWindow.__permissionActions = actions;
+    const permissions = { accessibility: "settings", microphone: "request" };
+    desktop.dragInstalledApp = () => { actions.push("drag"); };
+    desktop.window = (method, value) => {
+      if (method === "canDragInstalledApp") return Promise.resolve(true);
+      if (method === "showPermissionGuide" || method === "dismissPermissionGuide") {
+        actions.push([method, value ?? null]);
+        return Promise.resolve();
+      }
+      return windowAction(method, value);
+    };
+    testWindow.__grantAccessibility = () => {
+      permissions.accessibility = "allowed";
+      testWindow.__testDesktop.state({ event: "settings", state: { dictationPermissions: { ...permissions }, inputMonitoringStatus: "allowed" } });
+    };
+    let shortcutTest = "idle";
+    testWindow.__shortcutTest = () => shortcutTest;
+    testWindow.__simulateShortcut = () => {
+      shortcutTest = "passed";
+      testWindow.__testDesktop.state({
+        event: "settings", state: { practiceState: { open: true, phase: "ready", shortcutTest } },
+      });
+    };
+    desktop.call = async (channel, method, args) => {
+      if (channel !== "settings") return call(channel, method, args);
+      let forwardedMethod = method, forwardedArgs = args;
+      if (method === "dictationPermissionCommand") {
+        if (args[0] === "microphone") permissions.microphone = "allowed";
+        forwardedMethod = "snapshot";
+        forwardedArgs = [];
+      }
+      if (method === "practiceCommand" && ["test-shortcut", "leave-shortcut", "finish-shortcut"].includes(String(args[0]))) {
+        shortcutTest = args[0] === "test-shortcut" ? "listening" : args[0] === "finish-shortcut" ? "complete" : "idle";
+        forwardedMethod = "snapshot";
+        forwardedArgs = [];
+      }
+      const result = await call<Record<string, any>>("settings", forwardedMethod, forwardedArgs);
+      if (!result || !("dictationPermissions" in result)) return result as any;
+      return {
+        ...result,
+        practiceState: { ...result.practiceState, shortcutTest },
+        dictationPermissions: { ...permissions },
+        inputMonitoringStatus: permissions.accessibility === "allowed" ? "allowed" : "request",
+      } as any;
+    };
+  });
+  await navigate(page, "Geral");
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Permissões para ditar" })).toBeFocused();
+  const next = page.getByRole("button", { name: "Continuar", exact: true });
+  await expect(next).toBeDisabled();
+  await page.keyboard.press("Tab");
+  const accessibility = page.getByRole("button", { name: "Abrir Ajustes de Acessibilidade", exact: true });
+  await expect(accessibility).toBeFocused();
+  await page.keyboard.press("Enter");
+  const icon = page.getByRole("img", { name: "Ícone do Clarify para arrastar" });
+  await expect(icon).toBeVisible();
+  await icon.dispatchEvent("dragstart");
+  await expect.poll(() => page.evaluate(() => (window as any).__permissionActions)).toEqual([
+    ["showPermissionGuide", { permission: "accessibility", locale: "pt" }], "drag",
+  ]);
+  await page.setViewportSize({ width: 640, height: 480 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(page.locator(".permission-help")).toHaveCSS("animation-name", "none");
+  await page.getByRole("button", { name: "Verificar acesso" }).click();
+  await expect(page.getByText(/O macOS ainda não confirmou o acesso/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("permissions-help.png") });
+  await page.evaluate(() => (window as any).__grantAccessibility());
+  await expect(icon).toHaveCount(0);
+  await expect(page.getByText("Acesso permitido", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Acessibilidade também permite usar atalhos.")).toBeVisible();
+  const microphone = page.getByRole("button", { name: "Permitir microfone", exact: true });
+  await expect(microphone).toBeFocused();
+  await microphone.click();
+  await next.click();
+  await expect(page.getByRole("heading", { name: "Teste o microfone" })).toBeFocused();
+  await next.click();
+  await expect(page.getByRole("heading", { name: "Escolha o idioma" })).toBeFocused();
+  await next.click();
+  await expect(page.getByRole("heading", { name: "Teste o atalho" })).toBeFocused();
+  await expect(next).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => (window as any).__shortcutTest())).toBe("listening");
+  await expect(page.getByText("Aguardando seu atalho")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Revisar permissões" })).toHaveCount(0);
+  await page.evaluate(() => (window as any).__simulateShortcut());
+  await expect(page.getByText("Atalho reconhecido")).toBeVisible();
+  await next.click();
+  await expect(page.getByRole("heading", { name: "Fale em vez de digitar" })).toBeFocused();
+  await page.setViewportSize({ width: 352, height: 164 });
+  await page.goto("/?surface=permission-guide&locale=pt");
+  await expect(page.getByRole("heading", { name: "Ative o Clarify nos Ajustes" })).toBeVisible();
+  await expect(page.locator(".permission-guide-drag")).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("button", { name: "Fechar" })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("permissions-floating-guide.png") });
+});
+
+test("dictation setup requests Input Monitoring and offers its System Settings pane", async ({ page }) => {
+  await page.evaluate(() => {
+    const desktop = window.clarifyDesktop!;
+    const call = desktop.call.bind(desktop);
+    let status = "request";
+    const testWindow = window as any;
+    testWindow.__inputMonitoringRequests = [];
+    desktop.call = async (channel, method, args) => {
+      if (channel !== "settings") return call(channel, method, args);
+      if (method !== "inputMonitoringCommand") {
+        const result = await call<object>(channel, method, args);
+        return result && "inputMonitoringStatus" in result ? { ...result, inputMonitoringStatus: status } as any : result as any;
+      }
+      const [action] = args;
+      testWindow.__inputMonitoringRequests.push(action);
+      if (action === "request") status = "settings";
+      if (action === "check") status = "allowed";
+      return { ...await call<object>("settings", "snapshot", []), inputMonitoringStatus: status } as any;
+    };
+    testWindow.__testDesktop.state({ event: "settings", state: { inputMonitoringStatus: status } });
+  });
+  await navigate(page, "Geral");
+  await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  const request = page.getByRole("button", { name: "Permitir atalhos globais" });
+  await expect(request).toBeVisible();
+  await request.click();
+  const open = page.getByRole("button", { name: "Abrir Monitoramento de Entrada" });
+  await open.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__inputMonitoringRequests)).toEqual(["request", "open"]);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(open).toBeHidden();
+  await expect(page.getByRole("button", { name: "Alterar atalho" })).toBeVisible();
+});
+
 test("modifier and side mouse shortcuts can be captured and saved", async ({ page }) => {
   await navigate(page, "Atalhos");
   const recording = page.locator(".shortcut").first();
@@ -612,6 +749,40 @@ test("modifier and side mouse shortcuts can be captured and saved", async ({ pag
   await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
   await navigate(page, "Atalhos");
   await expect(page.locator(".shortcut").first()).toHaveText("Mouse 4");
+});
+
+test("macOS accepts a native Fn shortcut from the focused capture field", async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Macintosh)" });
+  });
+  await navigate(page, "Atalhos");
+  const recording = page.locator(".shortcut").first();
+  await recording.click();
+  const field = page.getByRole("textbox", { name: "Novo atalho" });
+  await expect(field).toBeFocused();
+  await page.evaluate(() => (window as any).__testDesktop.state({
+    event: "settings", state: { inputMonitoringStatus: "request" },
+  }));
+  const permission = page.getByRole("button", { name: "Permitir atalhos globais" });
+  await expect(permission).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(permission).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(field).toBeFocused();
+  await page.evaluate(() => (window as any).__testDesktop.state({
+    event: "settings", state: { inputMonitoringStatus: "allowed", nativeHotkeyCapture: { active: true } },
+  }));
+  await expect(page.getByText("Pressione e solte o atalho.")).toBeVisible();
+  await page.keyboard.press("Control");
+  await expect(field).toBeFocused();
+  await page.evaluate(() => (window as any).__testDesktop.state({
+    event: "settings", state: {
+      nativeHotkeyCapture: { active: true, serial: 1, shortcut: { modifiers: ["fn"], key: "ALT" } },
+    },
+  }));
+  await expect(recording).toHaveText("FnOption");
+  await expect(field).toBeHidden();
+  await expect(recording).toBeFocused();
 });
 
 test("cancelled shortcut capture rejects retained keyboard and mouse events", async ({ page }) => {

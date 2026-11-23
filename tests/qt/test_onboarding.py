@@ -2,6 +2,7 @@
 
 import unittest
 from pathlib import Path
+import sys
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
@@ -26,6 +27,29 @@ class OnboardingControllerTests(unittest.TestCase):
         from PySide6.QtWidgets import QApplication
 
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_macos_onboarding_resumes_practice_until_explicitly_finished(self):
+        with TemporaryDirectory() as directory:
+            repositories = _repositories(directory)
+            controller = QmlSettingsController(repositories)
+            try:
+                with patch.object(sys, "platform", "darwin"):
+                    self.assertTrue(controller.completeOnboarding("local"))
+                self.assertTrue(controller.onboardingPracticePending)
+            finally:
+                controller.shutdown()
+            reopened = QmlSettingsController(_repositories(directory))
+            try:
+                practice = Mock(command=Mock(return_value=True))
+                reopened.bindPractice(practice)
+                self.assertTrue(reopened.onboardingPracticePending)
+                self.assertTrue(reopened.practiceCommand("close"))
+                self.assertTrue(reopened.onboardingPracticePending)
+                self.assertTrue(reopened.practiceCommand("done"))
+                self.assertFalse(reopened.onboardingPracticePending)
+                self.assertFalse(repositories.config.load().onboarding_practice_pending)
+            finally:
+                reopened.shutdown()
 
     def test_byok_is_saved_securely_and_routes_both_stages_to_groq(self):
         with TemporaryDirectory() as directory:

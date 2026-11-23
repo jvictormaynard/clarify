@@ -184,3 +184,187 @@
   color: var(--background);
   border-color: var(--foreground);
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .onboarding-practice[data-guided="true"] .onboarding-content {
+    --practice-slide: 18px;
+    animation: practice-slide-in 220ms ease-out;
+  }
+
+  .onboarding-practice[data-backward="true"] .onboarding-content { --practice-slide: -18px; }
+
+  @keyframes practice-slide-in {
+    from { opacity: 0; transform: translateX(var(--practice-slide)); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+}
+
+.permission-brand {
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+}
+
+.permission-list { display: grid; gap: 8px; }
+
+.permission-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.permission-card[data-next="true"] {
+  border-color: var(--input);
+  background: var(--muted);
+}
+
+.permission-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--secondary);
+}
+
+.permission-card[data-allowed="true"] .permission-icon {
+  background: color-mix(in srgb, var(--success) 14%, var(--card));
+  color: var(--success);
+}
+
+.permission-copy h2,
+.permission-copy p,
+.permission-help p { margin: 0; }
+
+.permission-copy h2 { font-size: 14px; font-weight: 550; }
+
+.permission-copy p,
+.permission-help p,
+.permission-allowed { font-size: var(--font-size-description); }
+
+.permission-action .button {
+  min-height: 32px;
+  height: auto;
+  white-space: normal;
+  text-align: center;
+}
+
+.permission-allowed { color: var(--success); }
+
+.permission-help {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.permission-drag-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  cursor: grab;
+  user-select: none;
+}
+
+.permission-drag-icon:active { cursor: grabbing; }
+
+.permission-drag-hint {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.permission-drag-hint svg { flex-shrink: 0; align-self: center; }
+
+.permission-recheck { display: grid; justify-items: start; margin-top: 8px; }
+.permission-recheck p { margin: 4px 0 0; font-size: var(--font-size-description); }
+
+.permission-guide-surface { background: transparent; }
+
+.permission-guide {
+  position: relative;
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--input);
+  border-radius: 16px;
+  background: var(--popover);
+}
+
+.permission-guide .permission-guide-close { position: absolute; top: 8px; right: 8px; }
+
+.permission-guide-drag {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  border: 1px solid var(--input);
+  border-radius: 12px;
+  background: var(--muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.permission-guide-drag:hover { background: var(--accent); }
+.permission-guide-drag:active { cursor: grabbing; }
+.permission-guide-drag .permission-drag-icon { width: 36px; height: 36px; pointer-events: none; }
+.permission-guide-drag span { flex: 1; font-weight: 600; }
+
+.permission-guide-drag svg {
+  color: var(--muted-foreground);
+}
+
+.permission-guide h1 { margin: 0 32px 0 0; font-size: 16px; font-weight: 600; }
+.permission-guide p { margin: 0 32px 0 0; font-size: var(--font-size-description); }
+.practice-shortcut-passed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--success);
+  font-size: var(--font-size-description);
+}
+
+@media (max-height: 540px) {
+  .onboarding-practice.onboarding-flow[data-phase="permissions"] .onboarding-heading {
+    margin-bottom: 16px;
+  }
+  .onboarding-practice[data-phase="permissions"] .onboarding-practice-progress {
+    margin-bottom: 12px;
+  }
+  .permission-brand { width: 36px; height: 36px; margin-bottom: 8px; }
+}
+
+@media (max-width: 460px) {
+  .permission-card { grid-template-columns: 36px minmax(0, 1fr); }
+  .permission-action { grid-column: 2; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .permission-card { transition: background var(--motion-control), border-color var(--motion-control); }
+  .permission-guide-native:not(.permission-guide-presented) .permission-guide { visibility: hidden; }
+  .permission-help,
+  .permission-guide-presented .permission-guide { animation: permission-enter 180ms var(--interaction-spring-ease) both; }
+  .permission-card[data-allowed="true"] .permission-icon svg {
+    animation: permission-enter 220ms var(--interaction-spring-ease) both;
+  }
+  @keyframes permission-enter {
+    from { opacity: 0; transform: translateY(5px) scale(.94); }
+    to { opacity: 1; transform: none; }
+  }
+}

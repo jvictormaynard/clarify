@@ -738,14 +738,17 @@ export function useSettings() {
     } finally { setConfirming(false); }
   };
   const captureModifier = useRef<string | null>(null);
+  const captureOpener = useRef<HTMLElement | null>(null);
   const captureEpoch = useRef(0);
   const captureCancelled = useRef(false);
   const renderedCaptureEpoch = captureEpoch.current;
-  const setCapture = (action?: string) => {
+  const setCapture = (action?: string, opener?: HTMLElement) => {
     captureEpoch.current += 1;
     captureCancelled.current = !action;
-    if (action) void run("beginHotkeyCapture", action);
-    else void run("cancelHotkeyCapture");
+    if (action) {
+      captureOpener.current = opener ?? null;
+      void run("beginHotkeyCapture", action);
+    } else void run("cancelHotkeyCapture");
   };
   useEffect(() => {
     captureModifier.current = null;
@@ -754,9 +757,39 @@ export function useSettings() {
   const activeCapture = () => !captureCancelled.current &&
     renderedCaptureEpoch === captureEpoch.current &&
     current.current?.hotkeyCaptureAction === capture ? capture : undefined;
+  const nativeCapture = state?.nativeHotkeyCapture;
+  useEffect(() => {
+    const action = activeCapture();
+    if (action && nativeCapture?.shortcut && document.hasFocus() &&
+      document.activeElement?.hasAttribute("data-native-hotkey-capture")) {
+      void run("setHotkey", action, nativeCapture.shortcut);
+    }
+  }, [nativeCapture, capture]);
+  useEffect(() => {
+    if (!capture || !isMacDesktop()) return;
+    const cancel = () => setCapture(undefined);
+    window.addEventListener("blur", cancel);
+    return () => window.removeEventListener("blur", cancel);
+  }, [capture, run]);
+  useEffect(() => {
+    const status = state?.inputMonitoringStatus;
+    if (status !== "request" && status !== "settings") return;
+    let live = true;
+    const check = () => {
+      void call("inputMonitoringCommand", "check").then(snapshot => {
+        if (live) acceptState({ inputMonitoringStatus: snapshot.inputMonitoringStatus });
+      }).catch(() => {});
+    };
+    window.addEventListener("focus", check);
+    return () => {
+      live = false;
+      window.removeEventListener("focus", check);
+    };
+  }, [state?.inputMonitoringStatus, acceptState]);
   const captureHotkey = async (event: KeyboardEvent<HTMLInputElement>) => {
     const action = activeCapture();
     if (event.key === "Escape" || !action) return;
+    if (isMacDesktop() && event.key === "Tab" && !event.ctrlKey && !event.altKey && !event.metaKey) return;
     event.preventDefault();
     if (event.repeat) return;
     const modifierKey = ({ Control: "CTRL", Alt: "ALT", Shift: "SHIFT", Meta: "WIN" } as Record<string, string>)[event.key];
@@ -908,7 +941,7 @@ export function useSettings() {
     closing, setClosing, discarding, setDiscarding, capture: textActions.capturing ? undefined : capture, setCapture,
     confirmAction, setConfirmAction, setError, run, runHistoryCorrection, save, navigate,
     cancelDiscard, discardAndClose, saveAndClose, confirmMutation,
-    captureHotkey, captureMouseHotkey, selectProvider, validateProvider,
+    captureHotkey, captureMouseHotkey, captureOpener, selectProvider, validateProvider,
     selectRouteProvider, setTextRouteEnabled, useLocalModel,
     textActions, textProfileEditor,
   };

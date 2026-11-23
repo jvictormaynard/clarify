@@ -1,6 +1,8 @@
+import { InputMonitoringButton } from "./input-monitoring-button";
 import { ShortcutButton } from "./shortcut-button";
 import { useId } from "react";
 import { t } from "../i18n";
+import { isMacDesktop } from "../platform";
 import type { SettingsPageProps } from "../settings/use-settings";
 import type { TextActionKind } from "../settings/bridge";
 import { Button, Confirm, Field, Input, Picker, Row, Section, SettingsDisclosure, TextArea, Toggle } from "./ui";
@@ -39,12 +41,18 @@ export function TextActionEditor({ controller: c }: SettingsPageProps) {
               <Field title={t("Nome da ação")} value={actionDisplayName(editor.action)} maxLength={80} autoFocus
                 onChange={event => a.change({ name: event.target.value })} placeholder={t("Ex.: Resumir em tópicos")} />
               <Toggle title={t("Ativar ação")} checked={editor.action.enabled} onChange={enabled => a.change({ enabled })} />
-              <Row title={t("Atalho")} hint={t("O atalho só será aplicado quando você salvar.")}>
+              <Row title={t("Atalho")} hint={a.capturing && isMacDesktop()
+                ? t(c.state.inputMonitoringStatus === "request" || c.state.inputMonitoringStatus === "settings"
+                  ? "O macOS precisa da sua autorização para atalhos com Fn ou só modificadores."
+                  : "Pressione e solte o atalho.")
+                : t("O atalho só será aplicado quando você salvar.")}>
                 {a.capturing ? <Input aria-label={t("Novo atalho da ação")} placeholder={t("Pressione as teclas…")} readOnly autoFocus
+                  data-native-hotkey-capture
                   onKeyDownCapture={a.captureKey} onKeyUp={a.captureKey}
                   onMouseDown={event => { if ([3, 4].includes(event.button)) event.preventDefault(); }}
                   onMouseUp={a.captureMouse} onAuxClick={event => event.preventDefault()} />
                   : <ShortcutButton shortcut={editor.action.shortcut} disabled={a.captureStarting || a.refreshing} onClick={() => void a.beginCapture()} />}
+                {a.capturing && <InputMonitoringButton controller={c} />}
                 {a.capturing ? <Button variant="ghost" onClick={() => void a.cancelCapture()}>{t("Cancelar captura")}</Button>
                   : editor.action.shortcut && <Button variant="ghost" onClick={() => a.change({ shortcut: null })}>{t("Remover atalho")}</Button>}
               </Row>

@@ -10,7 +10,7 @@ export const actionDisplayName = (action: Pick<TextAction, "id" | "name">) =>
 export function shortcutKeyName(key: string) {
   const names: Record<string, string> = {
     ctrl: "Ctrl", alt: isMacDesktop() ? "Option" : "Alt",
-    shift: "Shift", win: isMacDesktop() ? "Command" : "Win",
+    fn: "Fn", shift: "Shift", win: isMacDesktop() ? "Command" : "Win",
   };
   return names[key.toLowerCase()] || key;
 }

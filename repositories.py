@@ -209,6 +209,7 @@ class AppConfig:
     experimental_audio_history: bool = False
     automatic_updates: bool = False
     onboarding_completed: bool = False
+    onboarding_practice_pending: bool = False
     history_retention_days: int | None = 30
     hotkeys: HotkeySettings = field(default_factory=HotkeySettings.defaults)
     workflows: WorkflowConfig = field(default_factory=WorkflowConfig)
@@ -582,6 +583,8 @@ class AppConfig:
             automatic_updates=source.get("automatic_updates") is True,
             onboarding_completed=source.get("onboarding_completed", bool(values))
             is True,
+            onboarding_practice_pending=source.get("onboarding_practice_pending")
+            is True,
             history_retention_days=history_retention_days,
             hotkeys=hotkeys,
             workflows=workflows,
@@ -633,6 +636,7 @@ class AppConfig:
             "experimental_audio_history": self.experimental_audio_history,
             "automatic_updates": self.automatic_updates,
             "onboarding_completed": self.onboarding_completed,
+            "onboarding_practice_pending": self.onboarding_practice_pending,
             "history_retention_days": self.history_retention_days,
             "hotkeys": self.hotkeys.to_mapping(),
             "workflows": self.workflows.to_mapping(),
