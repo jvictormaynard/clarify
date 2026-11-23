@@ -89,6 +89,23 @@ maintainer harness copies them beside an isolated installation. The upstream
 warning not to run the example HTTP server with administrative privileges
 applies; Clarify binds it only to loopback.
 
+Meetings can download the [Sortformer 2.1 Q8_0 GGUF weights](https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf/tree/60ebab3ef7cae9869be0abcde13360347e96ba03).
+Handy Computer converted and quantized NVIDIA's published model for
+transcribe.cpp. The publisher's NVIDIA Open Model License accompanies the
+download reference in `local_asr_manifests/sortformer21-LICENSE.txt`.
+
+Mac overlap recovery can download the [ipsilondev MossFormer2 INT8 ONNX conversion](https://huggingface.co/ipsilondev/MossFormer2-SS-16K-ONNX/tree/abd8b1268dfded6b0e972ddae4c2dd6a3faf4f8a)
+of [Alibaba Speech Lab's MossFormer2_SS_16K weights](https://huggingface.co/alibabasglab/MossFormer2_SS_16K/tree/407cb030cd66340918ebb6c8cc63b18f8592cdbe).
+The original and the conversion use Apache-2.0. The bundle includes
+`local_asr_manifests/mossformer2-LICENSE.txt`, the MIT license and third-party
+notices from the ONNX Runtime CPU wheel, and the NumPy BSD license.
+
+Optional speaker matching uses the [WeSpeaker VoxCeleb ResNet34 ONNX weights](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34/tree/ff1ac5bca8ef11e90662b879aa923979e0bd277b)
+from the WeSpeaker project. The model card lists Apache-2.0. The project's
+[pretrained model terms](https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md#model-license)
+specify [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/)
+for the VoxCeleb weights. Clarify downloads the publisher's ONNX file unchanged.
+
 ## Flag assets
 
 The extracted flag-icons SVGs are covered by the upstream MIT notice retained

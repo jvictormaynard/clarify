@@ -8,13 +8,17 @@ import tempfile
 import threading
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from local_asr_live import (
     CaptureStream,
     LiveResult,
     LiveSession,
+    LocalASRBacklogError,
+    LocalASRBusyError,
     MAX_CHUNK,
     MAX_PENDING,
+    NativeEngine,
 )
 from local_asr import LocalASRCancelledError, LocalASRSidecarError
 from local_asr_streaming import wav_bytes
@@ -22,6 +26,39 @@ from workflows import CancellationToken
 
 
 class LiveSafetyTests(unittest.TestCase):
+    def test_apple_silicon_uses_the_pinned_dylib_runtime(self):
+        from local_asr_live_assets import installer_for_native
+
+        with patch("local_asr_live_assets.platform.system", return_value="Darwin"):
+            installer = installer_for_native()
+            with patch("local_asr_live_assets.platform.machine", return_value="arm64"):
+                self.assertTrue(installer.platform_supported())
+            with patch("local_asr_live_assets.platform.machine", return_value="x86_64"):
+                self.assertFalse(installer.platform_supported())
+        self.assertEqual(installer.executable_path.name, "libtranscribe.dylib")
+        self.assertIn(
+            "runtime/libtranscribe.dylib",
+            {file["path"] for file in installer.manifest["extracted_files"]},
+        )
+
+    def test_optional_token_error_leaves_no_timing_data(self):
+        library = SimpleNamespace(
+            transcribe_n_tokens=lambda _: 1,
+            transcribe_token_init=lambda _: None,
+            transcribe_get_token=lambda *_: 1,
+        )
+        self.assertEqual(LiveSession._tokens(library, None), ())
+
+    def test_meeting_reservation_excludes_unrelated_sessions_between_segments(self):
+        engine = NativeEngine(None)
+        with engine.reserve_live():
+            with self.assertRaises(LocalASRBusyError):
+                engine.open_live_session()
+            with self.assertRaises(LocalASRBusyError), engine.reserve_live():
+                self.fail("A second owner reserved the engine")
+        with engine.reserve_live():
+            pass
+
     def test_native_archive_rejects_links_and_verifies_regular_members(self):
         from local_asr_live_assets import NativeInstaller
         from local_asr import LocalASRIntegrityError
@@ -62,9 +99,15 @@ class LiveSafetyTests(unittest.TestCase):
         live = LiveSession(None, "en", None)  # consumer deliberately stalled
         for _ in range(MAX_PENDING):
             live.feed(b"\0" * MAX_CHUNK)
-        with self.assertRaises(LocalASRSidecarError):
+        with self.assertRaises(LocalASRBacklogError):
             live.feed(b"\0" * MAX_CHUNK)
         self.assertEqual(live.queue.qsize(), MAX_PENDING)
+        self.assertTrue(live.abort.is_set())
+
+    def test_finalization_deadline_is_reported_as_backlog(self):
+        live = LiveSession(None, "en", None)
+        with self.assertRaises(LocalASRBacklogError):
+            live.finish(timeout=0)
         self.assertTrue(live.abort.is_set())
 
     def test_cancel_rejects_stale_partial_and_final_publication(self):

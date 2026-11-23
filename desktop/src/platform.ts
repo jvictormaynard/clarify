@@ -1,9 +1,10 @@
-export type DesktopMessage = {event: 'settings' | 'workflow'; state: Record<string, unknown>};
+export type DesktopMessage = {event: 'settings' | 'workflow' | 'meetings' | 'meeting-status'; state: Record<string, unknown>};
 export interface ElectronBridge {
-  call<T>(channel: 'settings' | 'workflow', method: string, args: unknown[]): Promise<T>;
-  window(method: string, value?: boolean | {x: number; y: number; width: number; height: number}[]): Promise<boolean | void>;
+  separateMeetingWindow?: boolean;
+  call<T>(channel: 'settings' | 'workflow' | 'meetings', method: string, args: unknown[]): Promise<T>;
+  window(method: string, value?: boolean | string | {x: number; y: number; width: number; height: number}[]): Promise<boolean | void>;
   subscribe(listener: (message: DesktopMessage) => void): () => void;
-  onWindow(listener: (event: string) => void): () => void;
+  onWindow(listener: (event: string, value?: string) => void): () => void;
   ready(): Promise<void>;
 }
 declare global { interface Window { clarifyDesktop?: ElectronBridge } }

@@ -127,7 +127,7 @@ class DeliveryPolicyTests(unittest.TestCase):
             ):
                 checks = commands("desktop_shell")
             for check in checks:
-                self.assertEqual(check["argv"][:3], [node, str(cli), "run"])
+                self.assertEqual(check["argv"][:3], [node, str(cli.resolve()), "run"])
         self.assertEqual(
             [check["argv"][-1] for check in checks],
             ["test:electron", "build:electron", "test:electron:smoke"],

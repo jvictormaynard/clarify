@@ -182,6 +182,35 @@
       }
     },
     {
+      "files": ["src/pages/meetings-page.tsx"],
+      "rules": {
+        "shadcn/no-restyle": [
+          "error",
+          {
+            "allow": ["layout"],
+            "contracts": [
+              {
+                "pattern": "^Button$",
+                "allow": [
+                  "layout",
+                  "meeting-active-link",
+                  "meeting-back",
+                  "meeting-destructive",
+                  "meeting-find",
+                  "meeting-list-row",
+                  "meeting-new",
+                  "meeting-search-clear",
+                  "meeting-speaker-name"
+                ]
+              },
+              { "pattern": "^Input$", "allow": ["layout", "meeting-title-field"] },
+              { "pattern": "^TextArea$", "allow": ["layout", "meeting-markdown", "meeting-notes"] }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["src/pages/onboarding-page.tsx"],
       "rules": {
         "shadcn/no-restyle": [

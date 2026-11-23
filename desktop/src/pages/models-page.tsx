@@ -36,11 +36,16 @@ export function ModelsPage({ controller }: SettingsPageProps) {
   const requirements = [
     ...new Set(state.localAsrRequirementsList.filter(Boolean)),
   ];
+  const openCode = state.selectedProviderId === "opencode";
+  const openCodeOption = state.personalSetupState?.textOptions.find(
+    (option) => option.id === "opencode",
+  );
+  const openCodeInstalled = openCodeOption?.runtimeInstalled;
   const cloudSection = (
       <Section
         key="cloud-services" id="cloud-services"
         title={
-          <>{t("Serviços na nuvem")}<span className="badge">{t(state.selectedProviderId === "chatgpt" ? "Seu plano ChatGPT" : "Sua chave de API")}</span>
+          <>{t("Serviços na nuvem")}{!openCode && <span className="badge">{t(state.selectedProviderId === "chatgpt" ? "Seu plano ChatGPT" : "Sua chave de API")}</span>}
           </>
         }
       >
@@ -53,7 +58,38 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             onChange={(value) => void selectProvider(value)}
           />
         </Row>
-        {state.selectedProviderId === "chatgpt" ? <ChatGPTPlan controller={controller} /> : state.selectedProviderId !== "local_asr" && (
+        {state.selectedProviderId === "chatgpt" ? <ChatGPTPlan controller={controller} /> : openCode ? (
+          <>
+            <p className="hint">{t("setup_free")}</p>
+            <div className="service-actions">
+              <span className="hint" role="status">
+                {state.providerError ? t(state.providerError)
+                  : state.providerStatus === "active" ? t("setup_connected")
+                  : openCodeInstalled === false ? t("setup_runtime_needed")
+                  : t("setup_not_connected")}
+              </span>
+              <Button
+                disabled={state.providerBusy || validatingProvider || selectingProvider}
+                onClick={() => void validateProvider()}
+              >
+                {state.providerBusy ? t("setup_connecting")
+                  : openCodeInstalled === false ? t("setup_install_opencode")
+                  : t("setup_connect_free")}
+              </Button>
+            </div>
+            {!!openCodeOption?.models?.length && (
+              <Row title={t("setup_rewriting_model")}>
+                <Picker
+                  label={t("setup_rewriting_model")}
+                  value={openCodeOption.rewriteModelId ?? ""}
+                  options={openCodeOption.models}
+                  disabled={state.providerBusy || validatingProvider || selectingProvider}
+                  onChange={(model) => void run("savePreference", "setOpenCodeRouteModel", ["rewrite", model])}
+                />
+              </Row>
+            )}
+          </>
+        ) : state.selectedProviderId !== "local_asr" && (
           <>
             <Field
               title={t("Chave de API")}

@@ -5,6 +5,7 @@ import { LanguageMark } from './components/language-mark';
 import { electron } from './platform';
 import { setUiLanguage } from './i18n';
 import { pillText as t } from './pill-labels';
+import { meetingsLabel, type MeetingActivity } from './meetings/labels';
 import './styles/pill.css';
 import type { WritingStyle } from './settings/bridge';
 
@@ -66,6 +67,8 @@ function languageName(code: string, locale: string) {
 }
 export function Pill() {
   const [state, setState] = useState<Partial<WorkflowState>>({surface: 'idle'});
+  const [meetingActivity, setMeetingActivity] = useState<MeetingActivity>();
+  const [meetingId, setMeetingId] = useState<string>();
   const [error, setError] = useState('');
   const moreOptions = useRef<HTMLButtonElement>(null);
   const [menu, setMenu] = useState(false);
@@ -164,6 +167,10 @@ export function Pill() {
     document.title = 'Clarify';
     const off = electron()?.subscribe(message => {
       if (message.event === 'workflow') { const next = message.state as unknown as WorkflowState; setUiLanguage(next.uiLanguage); setState(next); }
+      if (message.event === 'meeting-status') {
+        setMeetingActivity(message.state.status as MeetingActivity | undefined);
+        setMeetingId(message.state.id as string | undefined);
+      }
     });
     void electron()?.ready();
     return () => {
@@ -210,7 +217,7 @@ export function Pill() {
     // Menu entrance motion translates the bounds without changing their size.
     if (menu || languageMenu) frame = requestAnimationFrame(animateRegions);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', update); };
-  }, [state.surface, menu, languageMenu, submenu, submenuPosition, completion, error, dock.expanded, state.feedbackVisible]);
+  }, [state.surface, menu, languageMenu, submenu, submenuPosition, completion, error, dock.expanded, state.feedbackVisible, meetingActivity, meetingId]);
   const button = (label: string, icon: React.ReactNode, method: Method, disabled = false) => <button type="button" aria-label={t(label)} disabled={disabled} onClick={() => run(method)}>{icon}<span className="pill-tooltip">{method === 'startRecordingFromButton' ? <>{t('Ditar')}{state.recordingShortcut && <kbd>{state.recordingShortcut}</kbd>}</> : t(label)}</span></button>;
   const processing = state.busy || state.transitionPending || state.surface === 'processing' || state.surface === 'voice_processing';
   const result = ['result', 'voice_result', 'voice_error'].includes(state.surface || '');
@@ -272,7 +279,7 @@ export function Pill() {
           </div>
         </div>
       </> : <>
-          {button('Iniciar gravação', <Mic />, 'startRecordingFromButton')}
+          {button('Iniciar gravação', <Mic />, 'startRecordingFromButton', !!meetingActivity && meetingActivity !== "interrupted")}
           <button className="pill-language" aria-label={t('Idioma de saída')} aria-expanded={languageMenu} onClick={() => {clearSubmenuTimer(); setSubmenu(null); setLanguageMenu(!languageMenu); setMenu(false);}}><LanguageMark code={state.language} /><span className="pill-tooltip">{t("Idioma de saída")}</span></button>
           <button ref={moreOptions} aria-label={t('Mais opções')} aria-expanded={menu} onClick={() => {
             setMenu(!menu); setLanguageMenu(false); setSubmenu(null);
@@ -281,6 +288,18 @@ export function Pill() {
       </>}
       </div>
     </section>
+    {meetingActivity && !result && !translation && <div className="pill-meeting" data-active={meetingActivity === "recording"}>
+      <button type="button" data-pill-interactive
+        onClick={() => void electron()?.call("meetings", "open", []).catch(error => setError(String(error)))}>
+        <span aria-hidden="true" />{meetingsLabel(meetingActivity)}
+      </button>
+      {meetingId && (meetingActivity === "recording" || meetingActivity === "paused") &&
+        <button type="button" data-pill-interactive className="pill-meeting-stop"
+          aria-label={meetingsLabel("stop")} title={meetingsLabel("stop")}
+          onClick={() => void electron()?.window("stopMeeting", meetingId).catch(error => setError(String(error)))}>
+          <Square aria-hidden="true" />
+        </button>}
+    </div>}
     {state.recording && state.liveTranscript && <div className="pill-live-transcript" role="status" aria-live="polite" aria-atomic="true" aria-label={t('Transcrição ao vivo')}>{state.liveTranscript}</div>}
     {languageMenu && <nav data-pill-interactive className="pill-menu pill-language-menu" onPointerEnter={dock.pointerEnter} onPointerLeave={dock.pointerLeave} aria-label={t('Idioma de saída')}>
       {['auto', 'en', 'pt', 'es', 'de', 'ru'].map(code => <button key={code} aria-pressed={state.language === code} onClick={() => {

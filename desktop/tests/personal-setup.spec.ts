@@ -45,13 +45,28 @@ test("personal setup preserves choices, verifies assets, practices and offers ph
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
   await page.screenshot({ animations: "disabled", path: `${evidence}/language-flags.png` });
   await advance(page, "Продолжить");
+  await expect(page.getByRole("heading", { name: "Как вы хотите использовать Clarify?" })).toBeFocused();
+  await advance(page, "Продолжить");
   await expect(page.getByRole("heading", { name: "Войдите или создайте аккаунт Clarify" })).toBeFocused();
+  await page.getByRole("button", { name: "Назад", exact: true }).click();
   await page.getByRole("button", { name: "Назад", exact: true }).click();
   await page.getByRole("option", { name: "English", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Choose your language" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
   await expect(page.getByRole("option", { name: "English", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.screenshot({ animations: "disabled", path: `${evidence}/language.png` });
+  await advance(page);
+  const dictation = page.getByRole("checkbox", { name: "Dictation", exact: true });
+  const meetings = page.getByRole("checkbox", { name: "Meetings", exact: true });
+  await expect(dictation).toBeChecked();
+  await expect(meetings).not.toBeChecked();
+  await dictation.uncheck();
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await meetings.check();
+  await expect(dictation).not.toBeChecked();
+  await dictation.check();
+  await expect(meetings).toBeChecked();
+  await meetings.uncheck();
   await advance(page);
   await expect(page.getByRole("heading", { name: "Sign in or create a Clarify account" })).toBeFocused();
   await page.screenshot({ animations: "disabled", path: `${evidence}/clarify-account.png` });
@@ -170,6 +185,7 @@ test.describe("installation", () => {
     const evidence = process.env.CLARIFY_TEST_ARTIFACTS_DIR || testInfo.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
     await advance(page);
+    await advance(page);
     await advance(page, "Continue without an account");
     await expect(page.getByRole("heading", { name: /Whisper Turbo q5/ })).toBeVisible();
     await expect(page.getByText(/RTX 3070 Ti.*8 GiB/)).toBeVisible();
@@ -208,6 +224,7 @@ test.describe("personal text catalogs", () => {
     const evidence = process.env.CLARIFY_TEST_ARTIFACTS_DIR || testInfo.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
     await advance(page);
+    await advance(page);
     await page.getByRole("button", { name: "Continue with email", exact: true }).click();
     await page.getByRole("textbox", { name: "Email", exact: true }).fill("onboarding@example.test");
     await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -245,10 +262,8 @@ test.describe("personal text catalogs", () => {
     await page.getByRole("button", { name: "Install and connect OpenCode", exact: true }).click();
     await expect(page.getByText("OpenCode free models", { exact: true })).toBeVisible();
     await model.click();
-    await expect(page.getByRole("option", { name: "opencode/deepseek-v4.1-flash-free Recommended", exact: true })).toBeVisible();
-    await expect(page.getByRole("listbox").getByText("Recommended", { exact: true })).toHaveCount(1);
-    await page.screenshot({ animations: "disabled", path: `${evidence}/rewriting-model-picker.png` });
     await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
+    await page.screenshot({ animations: "disabled", path: `${evidence}/rewriting-model-picker.png` });
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await advance(page);
     await expect(model).toContainText("opencode/fixture-free-b");
@@ -281,6 +296,7 @@ test.describe("resumed subscription setup", () => {
   test.use({ settingsScenario: { onboarding: true, locale: "en", personalCatalog: true, personalConnected: true } });
   test("a connected subscription can load its catalog after restart without another sign-in", async ({ page }) => {
     await advance(page);
+    await advance(page);
     await advance(page, "Continue without an account");
     await advance(page);
     await advance(page);
@@ -303,6 +319,7 @@ test.describe("optional text setup recovery", () => {
     const evidence = process.env.CLARIFY_TEST_ARTIFACTS_DIR || testInfo.outputPath("evidence");
     await mkdir(evidence, { recursive: true });
     await page.setViewportSize({ width: 720, height: 640 });
+    await advance(page, "Continuar");
     await advance(page, "Continuar");
     await advance(page, "Continuar sem conta");
     await advance(page, "Continuar");

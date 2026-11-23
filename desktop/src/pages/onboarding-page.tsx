@@ -1,7 +1,7 @@
 import "../styles/onboarding.css";
 import { t } from "../i18n";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowLeft, Check, HardDrive, KeyRound, Mic, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, CalendarDays, Check, HardDrive, KeyRound, Mic, MoreHorizontal } from "lucide-react";
 import { ClarifyLogo } from "../components/clarify-logo";
 import { Button, Field, Input, Picker, SettingsDisclosure } from "../components/ui";
 import { LanguageWheel } from "../components/language-wheel";
@@ -11,8 +11,14 @@ import { AccountSignIn, type SignInStep } from "../components/account-sign-in";
 import { ChatGPTPlan } from "../components/chatgpt-plan";
 import type { SettingsPageProps } from "../settings/use-settings";
 
-const steps = ["language", "account", "speech", "welcome", "text", "install"] as const;
-type Step = typeof steps[number];
+const dictationSteps = ["language", "purpose", "account", "speech", "welcome", "text", "install"] as const;
+const meetingSteps = ["language", "purpose"] as const;
+type Step = typeof dictationSteps[number];
+export type SetupPurpose = "dictation" | "meetings" | "both";
+const setupFeatures = [
+  { id: "dictation", title: "setup_purpose_dictation", hint: "setup_purpose_dictation_hint", Icon: Mic },
+  { id: "meetings", title: "setup_purpose_meetings", hint: "setup_purpose_meetings_hint", Icon: CalendarDays },
+] as const;
 function chooseRadio(event: KeyboardEvent<HTMLDivElement>) {
   if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
   const radios = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="radio"]:not(:disabled)')];
@@ -23,7 +29,9 @@ function chooseRadio(event: KeyboardEvent<HTMLDivElement>) {
   radios[next]?.focus(); radios[next]?.click();
 }
 
-export function OnboardingPage({ controller }: SettingsPageProps) {
+export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProps & {
+  onChoosePurpose: (purpose: SetupPurpose) => void;
+}) {
   const { state, busy, error, run } = controller;
   const setup = state.personalSetupState;
   const speechIds = state.localModelIds || [];
@@ -35,6 +43,10 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
       void run("accountCommand", action, value);
   };
   const [step, setStep] = useState<Step>("language");
+  const [features, setFeatures] = useState({ dictation: true, meetings: false });
+  const meetingsOnly = features.meetings && !features.dictation;
+  const hasFeature = features.dictation || features.meetings;
+  const steps: readonly Step[] = meetingsOnly ? meetingSteps : dictationSteps;
   const [language, setLanguage] = useState(setup?.language || "auto");
   const [speech, setSpeech] = useState("");
   const [provider, setProvider] = useState("chatgpt");
@@ -81,6 +93,14 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   };
   const next = async () => {
     if (pending) return;
+    if (step === "purpose") {
+      if (!hasFeature) return;
+      onChoosePurpose(meetingsOnly ? "meetings" : features.meetings ? "both" : "dictation");
+      if (meetingsOnly) {
+        await run("completeOnboarding", "meetings", "");
+        return;
+      }
+    }
     if (step === "account") {
       await enterSpeech();
       return;
@@ -120,7 +140,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
   const skipText = async () => {
     if (!pending && await selectText("none")) setStep("install");
   };
-  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", account: "setup_clarify_account", speech: "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
+  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", purpose: "setup_choose_purpose", account: "setup_clarify_account", speech: "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
   return <main className="onboarding onboarding-page onboarding-flow personal-setup" data-step={step}>
     <div className="onboarding-content">
       <div className="setup-progress" role="progressbar" aria-label={t("setup_progress")}
@@ -130,11 +150,23 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
       <div className="onboarding-heading">
         {step === "language" && <div className="setup-brand"><ClarifyLogo size={36} /><span>Clarify</span></div>}
         <h1 ref={heading} tabIndex={-1}>{t(titles[step])}</h1>
-        {step !== "speech" && <p className="hint">{t({ welcome: "setup_rewriting_hint", language: "setup_interface_hint", account: "setup_clarify_account_hint", text: provider === "opencode" ? "setup_free_models_hint" : provider === "chatgpt" ? "setup_subscription_hint" : "setup_connect_hint", install: "setup_install_hint" }[step])}</p>}
+        {step !== "speech" && <p className="hint">{t({ welcome: "setup_rewriting_hint", language: "setup_interface_hint", purpose: "setup_purpose_hint", account: "setup_clarify_account_hint", text: provider === "opencode" ? "setup_free_models_hint" : provider === "chatgpt" ? "setup_subscription_hint" : "setup_connect_hint", install: "setup_install_hint" }[step])}</p>}
       </div>
       <div className="setup-body">
         {step !== "text" && (error || setup?.error) && <p className="error setup-error" role="alert">{t(error || setup?.error || "")}</p>}
         {step === "language" && <LanguageWheel value={state.uiLanguage || "en"} disabled={pending} onChange={value => void run("personalSetupCommand", "interface_language", JSON.stringify({ interfaceLanguage: value }))} />}
+        {step === "purpose" && <div className="setup-choice-list" role="group" aria-label={t("setup_choose_purpose")}>
+          {setupFeatures.map(({ id, title, hint, Icon }) => <label key={id} className="setup-choice">
+            <span className="setup-provider-brand"><Icon size={20} aria-hidden="true" /></span>
+            <span><strong>{t(title)}</strong><small id={`setup-feature-${id}-hint`}>{t(hint)}</small></span>
+            <input className="setup-feature-checkbox" type="checkbox" checked={features[id]} disabled={pending}
+              aria-label={t(title)} aria-describedby={`setup-feature-${id}-hint`}
+              onChange={event => {
+                const checked = event.currentTarget.checked;
+                setFeatures(previous => ({ ...previous, [id]: checked }));
+              }} />
+          </label>)}
+        </div>}
         {step === "account" && <div className="setup-account-form">
           {account?.error && <p className="error setup-error" role="alert">{t(account.error)}</p>}
           {account?.signedIn ? <p className="hint" role="status">{account.email}</p> : account ? <>
@@ -241,7 +273,7 @@ export function OnboardingPage({ controller }: SettingsPageProps) {
           ? <Button variant="primary" disabled={pending} onClick={() => void connectText()}>{t(provider === "opencode" && !selected.runtimeInstalled ? "setup_connect" : connectionAction)}</Button>
           : step === "speech" && !speech && !usesRecommendation
           ? <Button variant="primary" disabled={pending} onClick={() => void command("recommend")}>{t("setup_check_again")}</Button>
-          : (step !== "account" || account?.signedIn) && (step !== "install" || installed) && (step !== "text" || textReady) && <Button variant="primary" disabled={pending || !setup} onClick={() => void next()}>{t(step === "install" ? "setup_practice" : "Continuar")}</Button>}
+          : (step !== "account" || account?.signedIn) && (step !== "install" || installed) && (step !== "text" || textReady) && <Button variant="primary" disabled={pending || !setup || (step === "purpose" && !hasFeature)} onClick={() => void next()}>{t(step === "install" ? "setup_practice" : "Continuar")}</Button>}
         {step !== "language" && (step !== "account" || account?.signedIn || accountStep === "methods") && <Button variant={step === "text" ? "default" : "text"} disabled={pending} onClick={() => setStep(step === "install" && provider === "none" ? "welcome" : steps[steps.indexOf(step) - 1])}>{step !== "text" && <ArrowLeft size={16} />}{t("Voltar")}</Button>}
         {step === "text" && provider !== "none" && !setup?.busy && <Button variant="text" disabled={pending} onClick={() => void skipText()}>{t("setup_skip_text")}</Button>}
       </div>

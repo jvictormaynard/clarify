@@ -20,6 +20,29 @@ html.pill-surface, .pill-surface body, .pill-surface #root { background: transpa
 .pill-stage button:disabled { opacity: .4; cursor: default; }
 .pill-stage button:focus-visible { outline: 2px solid var(--ring); }
 .pill-stage svg { width: 18px; height: 18px; flex-shrink: 0; }
+.pill-stage .pill-meeting {
+  position: absolute;
+  display: flex;
+  bottom: 48px;
+  left: 50%;
+  translate: -50% 0;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pill-stage .pill-meeting button { padding: 0 11px; }
+.pill-stage .pill-meeting-stop {
+  padding: 0;
+  border-inline-start: 1px solid var(--border);
+  border-radius: 0 13px 13px 0;
+  color: var(--destructive);
+}
+.pill-meeting-stop svg { width: 12px; height: 12px; }
+.pill-meeting span { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-foreground); }
+.pill-meeting[data-active="true"] span { background: var(--destructive); }
 .pill-live-layer, .pill-feedback-layer, .pill-motion-layer { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 180ms cubic-bezier(.215,.61,.355,1), translate 180ms cubic-bezier(.215,.61,.355,1); }
 .pill-live-layer[data-visible="true"], .pill-feedback-layer[data-visible="true"], .pill-motion-layer[data-visible="true"] { opacity: 1; pointer-events: auto; }
 .pill-feedback-layer { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 40px; translate: 6px 0; }

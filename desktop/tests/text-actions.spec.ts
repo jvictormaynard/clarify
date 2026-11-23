@@ -13,10 +13,14 @@ test("workspace: navigation presents tasks and keeps keyboard focus at every wid
     await page.setViewportSize({ width, height: 760 });
     const navigation = page.locator("aside nav");
     expect(await navigation.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual([
-      "Início", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
+      "Início", "Reuniões", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
     ]);
     await expect(navigation.getByRole("combobox")).toHaveCount(0);
-    await navigation.getByRole("button", { name: "Dicionário", exact: true }).focus();
+    await navigation.getByRole("button", { name: "Início", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    await expect(navigation.getByRole("button", { name: "Reuniões", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(navigation.getByRole("button", { name: "Dicionário", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(navigation.getByRole("button", { name: "Snippets", exact: true })).toBeFocused();
     await page.keyboard.press("Enter");

@@ -78,6 +78,11 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
       });
       await page.addInitScript(() => {
         const listeners = new Set<(message: any) => void>();
+        const windowListeners = new Set<(event: string, target?: string) => void>();
+        (window as any).__testDesktop = {
+          state: (message: unknown) => listeners.forEach(listener => listener(message)),
+          window: (event: string, target?: string) => windowListeners.forEach(listener => listener(event, target)),
+        };
         (window as any).__testSettings = async (request: unknown) => {
           const response = await fetch("/__test_rpc", { method: "POST", body: JSON.stringify(request) });
           const result = await response.json(); if (result.error) throw result.error; return result.result;
@@ -85,7 +90,8 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
         (window as any).clarifyDesktop = {
           call: async (_channel: string, method: string, args: unknown[]) => (window as any).__testSettings({ method, args }),
           subscribe: (listener: (message: any) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
-          onWindow: () => () => {}, ready: async () => {}, window: async () => {},
+          onWindow: (listener: (event: string, target?: string) => void) => { windowListeners.add(listener); return () => windowListeners.delete(listener); },
+          ready: async () => {}, window: async () => {},
         };
         setInterval(() => {
           if (listeners.size) void (window as any).__testSettings({method:'poll',args:[]})

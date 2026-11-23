@@ -26,7 +26,10 @@ try {
     out: resolve(root, 'electron-dist'), overwrite: true, asar: false, prune: false, icon,
     ...(mac ? {
       appBundleId: 'com.clarify.desktop.presentation',
-      extendInfo: {LSUIElement: true},
+      extendInfo: {
+        LSUIElement: true,
+        NSMicrophoneUsageDescription: 'Clarify uses your microphone to transcribe meetings.',
+      },
       ignore: /^\/icon\.icns$/,
       // Ad hoc signatures for the local build have no Apple Team ID.
       osxSign: {

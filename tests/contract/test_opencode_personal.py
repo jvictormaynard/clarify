@@ -694,6 +694,34 @@ for line in sys.stdin:
 
 
 class ManagedRuntimeTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX account lookup")
+    def test_macos_refuses_only_the_managed_sources_open_code_reads(self):
+        from pathlib import Path
+        import pwd
+        from opencode_provider import _reject_managed_configuration
+
+        root = Path("/Library/Managed Preferences")
+        user = pwd.getpwuid(os.geteuid()).pw_name
+        domain = "ai.opencode.managed.plist"
+        existing = {root, root / "unrelated.plist"}
+        with (
+            patch("opencode_provider.sys.platform", "darwin"),
+            patch.object(Path, "exists", lambda path: path in existing),
+        ):
+            _reject_managed_configuration()
+            for managed in (
+                root / user / domain,
+                root / domain,
+                Path("/Library/Application Support/opencode"),
+            ):
+                with self.subTest(managed=managed):
+                    existing.add(managed)
+                    try:
+                        with self.assertRaises(ProviderConfigurationError):
+                            _reject_managed_configuration()
+                    finally:
+                        existing.remove(managed)
+
     def test_reuses_verified_windows_install_outside_scoped_runtime_without_download(
         self,
     ):

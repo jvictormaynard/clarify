@@ -3,9 +3,11 @@ const MAX_FRAME = 64 * 1024 * 1024;
 const workflowMethods = new Set(['startRecordingFromButton', 'stopRecording', 'cancelRecording', 'chooseTranslation', 'cancelTranslation', 'openSettings', 'openFiles', 'showResult', 'copyResult', 'finish', 'reset', 'undoCancellation', 'dismissFeedback', 'retryTranscription', 'pasteLastTranscription', 'toggleWindow', 'quit', 'runTextAction', 'selectQuickMicrophone', 'refreshMicrophones', 'installUpdate']);
 // Explicit settings API, shared with the existing Settings client. Python owns validation.
 const settingsMethods = new Set(require('./settings-methods.json'));
+const meetingMethods = new Set(['state', 'list', 'get', 'create', 'save', 'delete', 'install', 'installSpeakers', 'installOverlap', 'nameSpeaker', 'cancelInstall', 'start', 'startWithOverlap', 'mediaReady', 'feed', 'feedChannels', 'pause', 'resume', 'stop', 'stopAndGenerate', 'interrupt', 'summarize', 'copy']);
 function validateRequest(channel, method, args) {
+  const methods = channel === 'settings' ? settingsMethods : channel === 'workflow' ? workflowMethods : channel === 'meetings' ? meetingMethods : null;
   if (!Array.isArray(args) || args.length > 8 || typeof method !== 'string' ||
-      !(channel === 'settings' ? settingsMethods : channel === 'workflow' ? workflowMethods : new Set()).has(method)) throw new Error('Invalid bridge request');
+      !methods?.has(method)) throw new Error('Invalid bridge request');
   if (channel === 'workflow') {
     if (['chooseTranslation', 'runTextAction', 'selectQuickMicrophone'].includes(method) ? args.length !== 1 || typeof args[0] !== 'string' || args[0].length > 1000 :
       method === 'dismissFeedback' ? args.length !== 1 || !Number.isSafeInteger(args[0]) : args.length !== 0) throw new Error('Invalid workflow arguments');

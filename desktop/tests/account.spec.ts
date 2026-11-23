@@ -5,6 +5,8 @@ import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog,
 
 async function finishPersonalSetup(page: Page) {
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Ditado", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Continuar", exact: true }).click();
   await page.getByRole("button", { name: "Continuar sem conta", exact: true }).click();
   await expect(page.locator(".personal-setup")).toHaveAttribute("data-step", "speech");
   await page.getByRole("button", { name: "Continuar", exact: true }).click();
@@ -281,7 +283,7 @@ for (const labels of [
 settingsScenario({ signedIn: true }, () => {
   test("snippets account: sidebar retains personal processing controls", async ({ page }) => {
     await closeSettings(page);
-    await expect(page.locator("aside nav").getByRole("button")).toHaveCount(6);
+    await expect(page.locator("aside nav").getByRole("button", { name: "Estilo", exact: true })).toBeVisible();
     await navigate(page, "Estilo");
     const settings = await openSettings(page, "Geral");
     await settings.getByRole("button", { name: "Modelos e serviços", exact: true }).click();

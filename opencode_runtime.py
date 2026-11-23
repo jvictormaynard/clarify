@@ -33,6 +33,11 @@ MANIFEST = {
         "integrity": "sha512-hzYhXe+NOs7xctyjiOBuwBqJLvtkh2AHJflb+2p5XMzdmLFNqlIcwtE/byzD8LsTpgmrnb6m1m7k15muOFvReQ==",
         "member": "package/bin/opencode.exe",
     },
+    "darwin": {
+        "url": "https://registry.npmjs.org/@opencode/cli-darwin-arm64/-/cli-darwin-arm64-2.3.0.tgz",
+        "integrity": "sha512-ey2HOWX2DK2YJrKta5a+pcvIlkiCyJJsN7NjkJZPsVg9TDXpQWE1OJLWVFqjxZcWNtaMjvKYlrlCY6g8Z2Lb+A==",
+        "member": "package/bin/opencode",
+    },
 }
 # Verified against npm's sha512 archive integrity before extracting the hash.
 # https://registry.npmjs.org/@opencode/cli-windows-x64/-/cli-windows-x64-2.3.2.tgz
@@ -54,10 +59,10 @@ def runtime_root():
 
 
 def supported():
-    return sys.platform in MANIFEST and platform.machine().lower() in {
-        "x86_64",
-        "amd64",
-    }
+    machine = platform.machine().lower()
+    if sys.platform == "darwin":
+        return machine == "arm64"
+    return sys.platform in MANIFEST and machine in {"x86_64", "amd64"}
 
 
 def _windows_install_candidates():
@@ -176,7 +181,8 @@ def install(cancel_token=None):
 
     if not supported():
         raise ProviderConfigurationError(
-            "opencode", "OpenCode installation supports Windows and Linux x64 only."
+            "opencode",
+            "OpenCode installation supports Windows and Linux x64 and Apple Silicon Macs.",
         )
     with _installation_lock(check):
         check()
