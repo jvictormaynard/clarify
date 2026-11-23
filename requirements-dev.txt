@@ -11,5 +11,5 @@ filelock>=4.2.1,<5
 msgpack>=1.2.3,<2
 pip-tools>=7.6.1,<8
 # Keep the bootstrap toolchain compatible with the pinned pip-tools release.
-pip>=26.2,<26.3
+pip>=26.2,<26.4
 setuptools>=84.1,<85
