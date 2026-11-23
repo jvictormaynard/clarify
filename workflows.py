@@ -1146,13 +1146,7 @@ class WorkflowService:
     def _write_dictation_if_current(
         self, session: _Session, result: str, elapsed: float | None = None
     ) -> None:
-        target = session.target
         try:
-            # A fast result can arrive while the stop hotkey's Alt is held.
-            # Wait before accepting publication so cancellation still wins;
-            # on timeout, retain the text for manual paste without a chord.
-            if target is not None and not self._wait_for_alt_release(session):
-                target = None
             if not self._claim_publication(session):
                 return
         except Exception:
@@ -1160,6 +1154,7 @@ class WorkflowService:
                 session.publication_finished = True
             self._transition(session, WorkflowPhase.FAILED, status_key="error")
             return
+        target = session.target
         usage_context = dict(session.usage_context)
 
         # Never hold the service lock across statistics or clipboard adapters.

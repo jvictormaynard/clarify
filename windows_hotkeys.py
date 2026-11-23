@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import time
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from ctypes import wintypes
 
@@ -695,64 +696,70 @@ def _paste_result_matches(before, after, expected_text: str) -> bool:
 
 
 def paste_focused_control(
-    expected_text: str | None = None, timeout_ms: int = 250, *, user32=None
+    expected_text: str | None = None,
+    timeout_ms: int = 250,
+    *,
+    expected_sequence: int | None = None,
+    paste_predicate: Callable[[], bool] | None = None,
+    user32=None,
 ) -> bool | None:
-    """Paste synchronously into a compatible focused control when possible.
-
-    ``SendMessageTimeoutW`` only proves that a standard text control returned
-    from its window procedure. When the expected text is supplied, confirmation
-    additionally requires the control's text and caret to match the predicted
-    insertion. Custom, read-only, limited, and otherwise unobservable controls
-    fall back to key injection without claiming consumption.
-    """
+    """Paste into the focused Windows control while the paste context holds."""
     if user32 is None:
         user32 = getattr(ctypes, "windll").user32
+
     try:
+        user32.GetForegroundWindow.restype = wintypes.HWND
+        user32.GetClipboardSequenceNumber.restype = wintypes.DWORD
+        foreground = user32.GetForegroundWindow()
+        sequence = (
+            user32.GetClipboardSequenceNumber()
+            if expected_sequence is None
+            else expected_sequence
+        )
+        if not foreground or not sequence:
+            return None
         focused = _focused_control_for_foreground(user32)
-        class_name = _window_class_name(user32, focused) if focused else None
+
+        def context_is_current() -> bool:
+            return (
+                (paste_predicate is None or paste_predicate())
+                and _focused_control_for_foreground(user32) == focused
+                and user32.GetForegroundWindow() == foreground
+                and user32.GetClipboardSequenceNumber() == sequence
+            )
+
+        if not context_is_current():
+            return None
         if (
             expected_text is not None
             and focused is not None
-            and class_name in _CONFIRMABLE_PASTE_CLASSES
+            and _window_class_name(user32, focused) in _CONFIRMABLE_PASTE_CLASSES
         ):
-            # Bounded control queries can outlast a focus or clipboard change.
-            # Neither WM_PASTE nor key injection may follow either change.
-            try:
-                user32.GetClipboardSequenceNumber.restype = wintypes.DWORD
-                sequence = user32.GetClipboardSequenceNumber()
-                before = _control_state(user32, focused, timeout_ms)
-                if (
-                    not sequence
-                    or _focused_control_for_foreground(user32) != focused
-                    or user32.GetClipboardSequenceNumber() != sequence
-                ):
+            before = _control_state(user32, focused, timeout_ms)
+            if before is not None:
+                if not context_is_current():
                     return None
-            except (AttributeError, OSError, TypeError):
-                return None
-            if before is None:
-                return send_ctrl_key("v")
-            try:
                 delivered = _send_message_timeout(
                     user32, focused, WM_PASTE, 0, 0, timeout_ms
                 )
-            except (AttributeError, OSError, TypeError):
-                # The message may have crossed the process boundary before
-                # the API reported an error; never inject a second paste.
-                return None
-            if delivered is not None:
-                try:
+                # Once WM_PASTE is attempted, never send a second paste.
+                if delivered is not None:
                     after = _control_state(user32, focused, timeout_ms)
-                except (AttributeError, OSError, TypeError):
-                    return None
-                if _paste_result_matches(before, after, expected_text):
-                    return True
-            # WM_PASTE was attempted. A timeout or an unverifiable/malformed
-            # state must not be followed by Ctrl+V, which could double-paste
-            # if the original message was delivered late.
-            return None
+                    if _paste_result_matches(before, after, expected_text):
+                        return True
+                return None
+
+        # Only the synthetic shortcut is affected by a held Alt key.
+        deadline = time.monotonic() + 0.8
+        while user32.GetAsyncKeyState(VK_MENU) & 0x8000:
+            if time.monotonic() >= deadline or not context_is_current():
+                return None
+            time.sleep(0.01)
+        if context_is_current() and not (user32.GetAsyncKeyState(VK_MENU) & 0x8000):
+            return send_ctrl_key("v")
     except (AttributeError, OSError, TypeError):
-        pass
-    return send_ctrl_key("v")
+        return None
+    return None
 
 
 def send_ctrl_key(letter: str) -> bool | None:
