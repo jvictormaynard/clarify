@@ -1,14 +1,14 @@
 {
   "schema": 2,
   "component": "mobile",
-  "version": "0.17.2",
-  "base_sha": "82ae469c33d9d340a25ff9c7e5b211035d2e07e4",
-  "notes": "Internal TestFlight 0.17.2 (92) for physical verification of the accent-menu correction merged in PR346. The iOS26 picker uses measured padding, panel dimensions, glyph size and corners; short rows use 40-point cells while extended rows retain their 37-point cap so the existing acute-accent drag column stays aligned. The opaque reference grey avoids toolbar bleed and approximates the supplied native screenshot; it does not reproduce Apple's varying material exactly. Original installed methods, actions, assertions, waits and time budgets are unchanged. Current canonical main CI43828507935 passed Swift227 with one expected live-service skip, UIKit78, all five installed tests once, both app profiles and the unsigned build; actual receipts confirm acute accent insertion at caret13 and the next character at14. Expected internal manual-return and single-profile acceptance flags remain documented. The containing-app fixture retains its acceptance gates while handling a system keyboard introduction that closes between accessibility queries. Require metadata review, exact release-source canonical CI with authenticated audit/mobile/iOS coverage, immutable tag, signed app and both extensions, confirmed upload, Apple VALID and IN_BETA_TESTING, Clarify Interno availability and sealed candidate proof. Physical host comparison and full keyboard parity remain open; this delivery is for user testing. Standing keyboard release authorization applies. No App Store submission.",
+  "version": "0.17.3",
+  "base_sha": "819c0eed65e4cb71067640deee32a3d6813d59b1",
+  "notes": "Internal TestFlight build from main for iPhone dictation through a paired desktop. Same-network pairing uses the default configuration. Cellular tests require a matching WebRTC signaling endpoint on the iPhone and desktop.",
   "evidence": {
-    "build": "92",
-    "highest_build": "91",
+    "build": "93",
+    "highest_build": "92",
     "pending_builds_checked": true,
-    "checked_at": "2026-11-16T09:01:58Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/43836074884"
+    "checked_at": "2026-11-23T06:44:14Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/45126091281"
   }
 }
