@@ -174,6 +174,26 @@ class QmlClipboardGatewayTests(unittest.TestCase):
 
         paste.assert_called_once_with("generated")
 
+    def test_dictation_passes_clipboard_sequence_and_live_target_to_native_paste(self):
+        self.gateway._send_ctrl_v = None
+
+        def native_paste(*, expected_text, expected_sequence, paste_predicate):
+            self.assertEqual(expected_text, "generated")
+            self.assertEqual(expected_sequence, 11)
+            self.assertTrue(paste_predicate())
+            self.foreground["window"] = 88
+            self.assertFalse(paste_predicate())
+
+        with patch(
+            "clarify.desktop.qml_clipboard.paste_focused_control",
+            side_effect=native_paste,
+        ) as paste:
+            disposition = self.gateway.write_dictation_result(self.target, "generated")
+
+        paste.assert_called_once()
+        self.assertEqual(disposition, SelectionDisposition.COPIED)
+        self.assertEqual(self.clipboard.text(), "generated")
+
     def test_focus_change_downgrades_without_sending_ctrl_v(self):
         paste = Mock(return_value=True)
         self.gateway._send_ctrl_v = paste

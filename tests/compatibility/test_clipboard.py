@@ -171,7 +171,12 @@ class ClipboardPasteTests(unittest.TestCase):
                     self.assertFalse(app._paste_generated_text("result"))
 
                 self.assertEqual(clipboard.text(), "result")
-                send_key.assert_called_once_with("ctrl+v", expected_text="result")
+                send_key.assert_called_once_with(
+                    "ctrl+v",
+                    expected_text="result",
+                    expected_sequence=11,
+                    paste_predicate=None,
+                )
 
     def test_new_clipboard_write_wins_during_atomic_compare_and_restore(self):
         clipboard = _AtomicRaceClipboard()

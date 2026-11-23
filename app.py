@@ -5623,7 +5623,16 @@ def _paste_generated_text(
             except Exception:
                 return False
         try:
-            paste_result = _send_key_chord("ctrl+v", expected_text=str(text))
+            if IS_WIN and (
+                not written_sequence or _get_windows_clipboard_text() != str(text)
+            ):
+                return False
+            paste_result = _send_key_chord(
+                "ctrl+v",
+                expected_text=str(text),
+                expected_sequence=written_sequence,
+                paste_predicate=paste_predicate,
+            )
         except Exception:
             return False
         # A native key-dispatch helper can report that it injected events,
@@ -5647,10 +5656,16 @@ def _paste_generated_text(
         return bool(restored)
 
 
-def _send_key_chord(chord, *, expected_text=None):
+def _send_key_chord(
+    chord, *, expected_text=None, expected_sequence=None, paste_predicate=None
+):
     if IS_WIN and chord in ("ctrl+c", "ctrl+v"):
         if chord == "ctrl+v":
-            return paste_focused_control(expected_text=expected_text)
+            return paste_focused_control(
+                expected_text=expected_text,
+                expected_sequence=expected_sequence,
+                paste_predicate=paste_predicate,
+            )
         return send_ctrl_key(chord[-1])
     else:
         return keyboard.send(chord)
