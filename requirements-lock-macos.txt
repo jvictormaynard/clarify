@@ -36,6 +36,8 @@ charset-normalizer==3.5.1
     # via requests
 click==8.5.0
     # via pip-tools
+coloredlogs==15.0.1
+    # via onnxruntime
 cryptography==50.0.2
     # via -r requirements.txt
 cyclonedx-bom==7.3.1
@@ -50,8 +52,12 @@ filelock==4.2.4
     # via
     #   -r requirements-dev.txt
     #   cachecontrol
+flatbuffers==25.12.19
+    # via onnxruntime
 fqdn==1.5.1
     # via jsonschema
+humanfriendly==10.0
+    # via coloredlogs
 idna==3.18
     # via
     #   jsonschema
@@ -78,6 +84,8 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
+mpmath==1.3.0
+    # via sympy
 msgpack==1.2.3
     # via
     #   -r requirements-dev.txt
@@ -86,6 +94,12 @@ mypy==2.3.0
     # via -r requirements-dev.txt
 mypy-extensions==1.1.0
     # via mypy
+numpy==2.3.5
+    # via
+    #   -r requirements-runtime-macos.txt
+    #   onnxruntime
+onnxruntime==1.23.2
+    # via -r requirements-runtime-macos.txt
 packageurl-python==0.17.6
     # via
     #   cyclonedx-bom
@@ -94,6 +108,7 @@ packaging==26.3
     # via
     #   build
     #   cyclonedx-bom
+    #   onnxruntime
     #   pip-audit
     #   pip-requirements-parser
     #   pyinstaller
@@ -115,6 +130,8 @@ pip-tools==7.6.1
     # via -r requirements-dev.txt
 platformdirs==4.11.0
     # via pip-audit
+protobuf==7.36.2
+    # via onnxruntime
 py-serializable==2.1.0
     # via cyclonedx-python-lib
 pycparser==3.0
@@ -181,6 +198,8 @@ sortedcontainers==2.4.0
     # via cyclonedx-python-lib
 sounddevice==0.5.6
     # via -r requirements.txt
+sympy==1.14.0
+    # via onnxruntime
 tomli==2.4.1
     # via pip-audit
 tomli-w==1.2.0

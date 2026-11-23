@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from enum import Enum
-from functools import partial
+from functools import lru_cache, partial
 from pathlib import Path
 
 # Frozen batch recognition workers must exit before Qt or profile startup.
@@ -427,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
     audio_batch = None
     bridge = None
     updates = None
+    meetings = None
 
     def settings_work_busy() -> bool:
         return settings is not None and (
@@ -453,10 +454,15 @@ def main(argv: list[str] | None = None) -> int:
             (practice is None or not practice.blocks_processing)
             and not settings_work_busy()
             and not runtime.recording_audio.busy
+            and not (meetings and meetings.busy)
         )
 
     def settings_processing_allowed() -> bool:
-        return (practice is None or not practice.busy) and capture_idle()
+        return (
+            (practice is None or not practice.busy)
+            and not (meetings and meetings.busy)
+            and capture_idle()
+        )
 
     voice_translation = create_qml_voice_translation_controller(
         repositories.config.load,
@@ -522,7 +528,11 @@ def main(argv: list[str] | None = None) -> int:
         from practice_local_model import LocalModelReadiness
 
     def practice_can_start() -> bool:
-        return capture_idle() and not settings_work_busy()
+        return (
+            capture_idle()
+            and not settings_work_busy()
+            and not (meetings and meetings.busy)
+        )
 
     local_practice_model = LocalModelReadiness(
         scheduler, changed=lambda: settings.practiceStateChanged.emit()
@@ -634,6 +644,8 @@ def main(argv: list[str] | None = None) -> int:
             return "Aguarde a conexão com o provedor terminar para atualizar."
         if voice_translation.active or audio_batch.running:
             return "Conclua as tarefas em andamento para atualizar."
+        if meetings and meetings.busy:
+            return "Conclua a reunião ou a instalação do modelo para atualizar."
         if web_settings.blocks_update():
             return "Feche a janela do Clarify para aplicar a atualização."
         if (
@@ -755,8 +767,59 @@ def main(argv: list[str] | None = None) -> int:
         failure_dialog.finished.connect(respond)
         failure_dialog.open()
 
+    try:
+        from .meetings import Meetings, MODEL_ID, configured_summary
+    except ImportError:
+        from meetings import Meetings, MODEL_ID, configured_summary
+
+    config_path = Path(repositories.config.path)
+
+    @lru_cache(maxsize=1)
+    def meeting_summary_for_revision(_revision):
+        return configured_summary(
+            runtime.provider_registry.adapter("openai").metadata,
+            repositories.config.load(),
+        )
+
+    def meeting_summary_provider():
+        # The desktop polls meeting state while idle. Read settings on changes.
+        try:
+            revision = config_path.stat()
+            return meeting_summary_for_revision((revision.st_ino, revision.st_mtime_ns))
+        except (OSError, ValueError):
+            return None
+
+    def meeting_microphone():
+        selected = repositories.config.load().microphone.selected_id
+        if selected is None:
+            return None, False
+        return next(
+            (
+                (option["name"], sys.platform == "win32" and option["hostApi"] == "MME")
+                for option in settings.microphoneDevices
+                if option["id"] == selected
+            ),
+            ("", False),
+        )
+
+    meetings = Meetings(
+        config_path.parent / "meetings.sqlite3",
+        backend=lambda: runtime.provider_registry.adapter("local_asr").select_backend(
+            MODEL_ID, "cpu"
+        ),
+        language=lambda: repositories.config.load().recognition_language,
+        microphone=meeting_microphone,
+        allowed=lambda: (
+            capture_idle()
+            and not settings_work_busy()
+            and not practice.blocks_processing
+            and not updates.installing
+        ),
+        summary_provider=meeting_summary_provider,
+        copy=runtime.copy_result,
+    )
     web_settings = ElectronDesktopProcess(
-        settings, bridge, status_pill, desktop_unavailable, app, app
+        settings, bridge, status_pill, desktop_unavailable, app, app, meetings=meetings
     )
     quick_paste.excluded_executable = lambda: str(electron_path)
 
@@ -782,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
     files_visibility = _AudioFilesWindowVisibility(bridge, window)
     bridge.settingsRequested.connect(web_settings.show)
     app.aboutToQuit.connect(web_settings.shutdown)
+    app.aboutToQuit.connect(meetings.shutdown)
     _ = files_visibility
     macos = instance_guard is not None
     if macos:

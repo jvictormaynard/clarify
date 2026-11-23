@@ -425,28 +425,30 @@ def main():
 
             # Synthetic catalog only; never install or call a real text service.
             adapter = PROVIDER_REGISTRY.adapter("opencode")
-            fixtures.enter_context(
+            available = fixtures.enter_context(
                 patch.object(
                     adapter,
                     "available",
                     return_value="--opencode-runtime-missing" not in sys.argv,
                 )
             )
-            fixtures.enter_context(patch.object(adapter, "install", return_value=None))
+
+            def install_opencode(_token=None):
+                available.return_value = True
+
             fixtures.enter_context(
-                patch.object(
-                    adapter,
-                    "validate",
-                    return_value=ModelCatalog(
-                        (),
-                        (
-                            "opencode/fixture-free-a",
-                            "opencode/fixture-free-b",
-                            "opencode/deepseek-v4.1-flash-free",
-                        ),
-                    ),
-                )
+                patch.object(adapter, "install", side_effect=install_opencode)
             )
+            catalog = ModelCatalog(
+                (),
+                (
+                    "opencode/fixture-free-a",
+                    *(f"opencode/fixture-free-{number}" for number in range(12)),
+                    "opencode/fixture-free-b",
+                ),
+            )
+            fixtures.enter_context(patch.object(adapter, "validate", return_value=catalog))
+            fixtures.enter_context(patch.object(adapter, "discover_models", return_value=catalog))
             if "--personal-catalog-error" in sys.argv:
                 from provider_types import ProviderConfigurationError
 

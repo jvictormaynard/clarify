@@ -130,12 +130,28 @@ def desktop_executable() -> Path | None:
 class ElectronDesktopProcess(QObject):
     """Keep presentation alive; controllers retain operation and data ownership."""
 
-    def __init__(self, settings, bridge, status, unavailable, application, parent=None):
+    def __init__(
+        self,
+        settings,
+        bridge,
+        status,
+        unavailable,
+        application,
+        parent=None,
+        *,
+        meetings=None,
+    ):
         super().__init__(parent)
         self.settings = settings
         self.bridge = bridge
         self._unavailable = unavailable
         self.protocol = SettingsProtocol(settings)
+        self.meetings = meetings
+        self._last_meetings = None
+        self._meeting_drafts = False
+        self._meetings_timer = QTimer(self)
+        self._meetings_timer.setInterval(250)
+        self._meetings_timer.timeout.connect(self._publish_meetings)
         self._webrtc = getattr(getattr(settings, "_computer", None), "webrtc", None)
         self._webrtc_timer = QTimer(self)
         self._webrtc_timer.setInterval(20)
@@ -341,7 +357,7 @@ class ElectronDesktopProcess(QObject):
 
     def blocks_update(self):
         # A hidden, clean retained renderer is not an update operation.
-        return self._visible or not self._accepted_close
+        return self._visible or not self._accepted_close or self._meeting_drafts
 
     def _send(self, message):
         if self.process.state() != QProcess.ProcessState.Running:
@@ -435,16 +451,15 @@ class ElectronDesktopProcess(QObject):
                     state["surface"] == "translation_picker"
                     and previous_surface != "translation_picker"
                 ):
-                    self._allow_picker_activation()
+                    self._allow_electron_activation()
                 self._last_workflow = state
                 self._send({"event": "workflow", "state": state})
             self._workflow_dirty = False
         if self._visible and self._settings_dirty:
             self._publish_settings()
 
-    def _allow_picker_activation(self):
-        # The native hotkey belongs to this process. Pass its foreground
-        # permission to our presentation child after selection capture ends.
+    def _allow_electron_activation(self):
+        # Give the presentation child the engine's foreground permission.
         if sys.platform != "win32":
             return False
         pid = int(self.process.processId())
@@ -524,12 +539,29 @@ class ElectronDesktopProcess(QObject):
         if self._quit_requested or self._shutting_down:
             return
         self._quit_requested = True
+        self._finish_quit()
+
+    def _finish_quit(self):
+        if self._shutting_down:
+            return
+        if self.meetings is not None and self.meetings.drain_light_capture_for_quit():
+            self._publish_meetings()
+            QTimer.singleShot(250, self._finish_quit)
+            return
         if sys.platform == "darwin":
             # Leave the Qt loop without reentering Cocoa's application
             # termination while the child process is being drained.
             QTimer.singleShot(0, lambda: self.application.exit(0))
         else:
             QTimer.singleShot(0, self.application.quit)
+
+    def _publish_meetings(self):
+        if self.meetings is None or not self._ready or self._shutting_down:
+            return
+        state = self.meetings.state()
+        if state != self._last_meetings:
+            self._last_meetings = state
+            self._send({"event": "meetings", "state": state})
 
     def _receive(self, request):
         if self._shutting_down or not isinstance(request, dict):
@@ -553,6 +585,33 @@ class ElectronDesktopProcess(QObject):
             self._window_command("show" if self._visible else "hide")
             self._workflow_dirty = True
             self._flush()
+            if self.meetings is not None:
+                self._last_meetings = None
+                self._publish_meetings()
+                self._meetings_timer.start()
+            return
+        if event == "meetings-open" and self.meetings is not None:
+            self._publish_meetings()
+            meeting_state = self._last_meetings or {}
+            self._allow_electron_activation()
+            if sys.platform not in {"darwin", "win32"} or not (
+                meeting_state.get("active") or meeting_state.get("interruptedId")
+            ):
+                self.bridge.openSettings()
+            self._send({"window": "meetings-show"})
+            return
+        if event == "meetings-drafts" and self.meetings is not None:
+            self._meeting_drafts = request.get("pending") is True
+            return
+        if event == "meetings-media-released" and self.meetings is not None:
+            capture_id = request.get("captureId")
+            if isinstance(capture_id, str):
+                self.meetings.release_media(capture_id)
+                self._publish_meetings()
+            return
+        if event == "meetings-suspended" and self.meetings is not None:
+            self.meetings.interrupt()
+            self._publish_meetings()
             return
         if event == "settings-hidden":
             self._accepted_close = True
@@ -581,6 +640,10 @@ class ElectronDesktopProcess(QObject):
             self._send(reply)
         elif request.get("channel") == "workflow":
             self._send(self.dispatch_workflow(request))
+        elif request.get("channel") == "meetings" and self.meetings is not None:
+            reply = self.meetings.dispatch(request)
+            self._publish_meetings()
+            self._send(reply)
         else:
             self._send({"id": request["id"], "error": "Unsupported desktop channel"})
 
@@ -602,6 +665,10 @@ class ElectronDesktopProcess(QObject):
         if self._shutting_down or self._recovering or self.failed:
             return
         self._ready = False
+        self._meetings_timer.stop()
+        self._meeting_drafts = False
+        if self.meetings is not None:
+            self.meetings.interrupt()
         if self._webrtc is not None:
             self._webrtc.stop()
         self._recovering = True
@@ -627,12 +694,15 @@ class ElectronDesktopProcess(QObject):
 
     def _finished(self, code, status):
         self._ready = False
+        if self.meetings is not None:
+            self.meetings.release_media()
         # Unexpected clean exits require the same recovery as crashes.
         self._failed(None)
 
     def shutdown(self):
         self._shutting_down = True
         self._ready = False
+        self._meetings_timer.stop()
         for timer in (
             self.startup_timer,
             self.flush_timer,
@@ -643,10 +713,6 @@ class ElectronDesktopProcess(QObject):
             timer.stop()
         self._close_settings_activity()
         if self.process.state() != QProcess.ProcessState.NotRunning:
-            if sys.platform == "darwin":
-                self._send({"event": "shutdown"})
-                if self.process.waitForFinished(1000):
-                    return
             self.process.terminate()
             if not self.process.waitForFinished(1000):
                 self.process.kill()

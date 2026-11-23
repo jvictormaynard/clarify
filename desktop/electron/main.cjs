@@ -1,4 +1,7 @@
 'use strict';
+// The parent can close its diagnostic pipe before Chromium finishes shutting down.
+// Losing stderr must not make Electron show an uncaught exception dialog.
+process.stderr.on('error', () => {});
 // stdout belongs exclusively to the Python JSON-lines protocol.
 console.log = console.info = console.debug = (...args) => console.error(...args);
 const electron = require('electron');

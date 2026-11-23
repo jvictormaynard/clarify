@@ -15,25 +15,29 @@ from local_asr import (
 )
 
 
+NATIVE_TARGETS = {
+    "windows": ("windows", {"amd64", "x86_64"}, "transcribe.dll"),
+    "linux": ("linux", {"amd64", "x86_64"}, "libtranscribe.so"),
+    "darwin": ("macos", {"arm64", "aarch64"}, "libtranscribe.dylib"),
+}
+
+
 class NativeInstaller(LocalASRInstaller):
     @property
     def executable_path(self):
-        return (
-            self.install_dir
-            / "runtime"
-            / (
-                "transcribe.dll"
-                if "windows" in self.manifest_path.name
-                else "libtranscribe.so"
-            )
-        )
+        for target, _, library in NATIVE_TARGETS.values():
+            if self.manifest_path.name.endswith(f"-{target}-cpu.json"):
+                return self.install_dir / "runtime" / library
+        raise LocalASRIntegrityError("Unknown native streaming runtime")
 
     def platform_supported(self):
-        system = platform.system().lower()
+        target = NATIVE_TARGETS.get(platform.system().lower())
+        if target is None:
+            return False
+        name, architectures, _ = target
         return (
-            system in ("windows", "linux")
-            and system in self.manifest_path.name
-            and platform.machine().lower() in ("amd64", "x86_64")
+            self.manifest_path.name.endswith(f"-{name}-cpu.json")
+            and platform.machine().lower() in architectures
         )
 
     def _extract_runtime(
@@ -60,16 +64,16 @@ class NativeInstaller(LocalASRInstaller):
 
 
 def installer_for_native():
-    system = platform.system().lower()
-    if system not in ("windows", "linux"):
+    target = NATIVE_TARGETS.get(platform.system().lower())
+    if target is None:
         raise LocalASRIntegrityError(
             "Native streaming is not packaged for this platform"
         )
+    name, _, _ = target
+    profile = f"nemotron-3.5-streaming-{name}-cpu"
     return NativeInstaller(
-        root=default_install_root().parent
-        / "local-asr-profiles"
-        / f"nemotron-3.5-streaming-{system}-cpu",
+        root=default_install_root().parent / "local-asr-profiles" / profile,
         manifest_path=default_manifest_path().parent
         / "local_asr_manifests"
-        / f"nemotron-3.5-streaming-{system}-cpu.json",
+        / f"{profile}.json",
     )

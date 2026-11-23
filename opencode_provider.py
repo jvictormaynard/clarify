@@ -35,8 +35,6 @@ from provider_types import (
     TranslationResult,
 )
 
-RECOMMENDED_FREE_REWRITE_MODEL = "opencode/deepseek-v4.1-flash-free"
-
 _FREE_CATALOG_TTL = 60
 _ACP_IDLE_SECONDS = 25
 _ACP_MAX_TURNS = 6
@@ -87,9 +85,20 @@ def _reject_managed_configuration():
             else "/etc/opencode"
         )
     )
-    if managed.exists() or (
-        sys.platform == "darwin" and Path("/Library/Managed Preferences").exists()
-    ):
+    managed_paths = [managed]
+    if sys.platform == "darwin":
+        import pwd
+
+        # Match the pinned CLI's config/discovery.ts. Other macOS managed
+        # preferences do not change OpenCode's isolated session.
+        root = Path("/Library/Managed Preferences")
+        domain = "ai.opencode.managed.plist"
+        try:
+            user = pwd.getpwuid(os.geteuid()).pw_name
+        except KeyError:
+            user = "user"  # OpenCode's fallback when userInfo() fails
+        managed_paths.extend((root / user / domain, root / domain))
+    if any(path.exists() for path in managed_paths):
         raise ProviderConfigurationError(
             "opencode",
             "Managed OpenCode configuration prevents an isolated text session.",

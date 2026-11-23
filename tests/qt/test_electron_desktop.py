@@ -139,7 +139,7 @@ class ElectronDesktopTests(unittest.TestCase):
 
     def test_only_entering_picker_grants_foreground_permission_to_the_child(self):
         self.host._ready = True
-        with patch.object(self.host, "_allow_picker_activation") as allow:
+        with patch.object(self.host, "_allow_electron_activation") as allow:
             self.host._flush()
             self.bridge._on_workflow_state(WorkflowState(phase=WorkflowPhase.RECORDING))
             self.host._flush()
@@ -153,6 +153,38 @@ class ElectronDesktopTests(unittest.TestCase):
             self.host._flush()
             allow.assert_called_once()
 
+    def test_windows_dock_opens_active_meeting_without_showing_settings(self):
+        self.host._ready = True
+        self.host.meetings = Mock(state=Mock(return_value={"active": {"id": "note"}}))
+        with (
+            patch("clarify.desktop.qml_electron.sys.platform", "win32"),
+            patch.object(self.host, "_allow_electron_activation") as allow,
+            patch.object(self.bridge, "openSettings") as open_settings,
+        ):
+            self.host._receive({"event": "meetings-open"})
+            allow.assert_called_once()
+            open_settings.assert_not_called()
+            self.assertEqual(self.messages[-1], {"window": "meetings-show"})
+            self.host.meetings.state.return_value = {"active": None}
+            self.host._receive({"event": "meetings-open"})
+            open_settings.assert_called_once_with()
+
+    def test_quit_waits_for_light_meeting_to_save(self):
+        self.host.meetings = Mock(
+            drain_light_capture_for_quit=Mock(side_effect=[True, False])
+        )
+        with (
+            patch("clarify.desktop.qml_electron.sys.platform", "win32"),
+            patch("clarify.desktop.qml_electron.QTimer.singleShot") as schedule,
+        ):
+            self.host._receive({"event": "quit"})
+            wait, retry = schedule.call_args.args
+            self.assertEqual(wait, 250)
+            self.host._receive({"event": "quit"})
+            schedule.assert_called_once()
+            retry()
+            schedule.assert_called_with(0, self.host.application.quit)
+
     @unittest.skipUnless(sys.platform == "win32", "Windows foreground API")
     def test_native_activation_grant_is_limited_to_our_child(self):
         with (
@@ -160,7 +192,7 @@ class ElectronDesktopTests(unittest.TestCase):
             patch("clarify.desktop.qml_electron.ctypes.WinDLL") as library,
         ):
             library.return_value.AllowSetForegroundWindow.return_value = 1
-            self.assertTrue(self.host._allow_picker_activation())
+            self.assertTrue(self.host._allow_electron_activation())
             library.return_value.AllowSetForegroundWindow.assert_called_once_with(1234)
 
     def test_workflow_rpc_rejects_reflection_and_wrong_argument_types(self):

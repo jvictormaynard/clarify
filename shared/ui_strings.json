@@ -9319,6 +9319,36 @@
     "en": "Whisper Medium (compatibility)",
     "es": "Whisper Medium (compatibilidad)"
   },
+  "setup_choose_purpose": {
+    "pt": "Como você quer usar o Clarify?",
+    "en": "How will you use Clarify?",
+    "es": "¿Cómo quieres usar Clarify?"
+  },
+  "setup_purpose_hint": {
+    "pt": "Marque os recursos que você quer usar.",
+    "en": "Select the features you want to use.",
+    "es": "Marca las funciones que quieres usar."
+  },
+  "setup_purpose_dictation": {
+    "pt": "Ditado",
+    "en": "Dictation",
+    "es": "Dictado"
+  },
+  "setup_purpose_dictation_hint": {
+    "pt": "Use sua voz para escrever em outros apps.",
+    "en": "Use your voice to write in other apps.",
+    "es": "Usa tu voz para escribir en otras aplicaciones."
+  },
+  "setup_purpose_meetings": {
+    "pt": "Reuniões",
+    "en": "Meetings",
+    "es": "Reuniones"
+  },
+  "setup_purpose_meetings_hint": {
+    "pt": "Transcreva reuniões e faça anotações.",
+    "en": "Transcribe meetings and take notes.",
+    "es": "Transcribe reuniones y toma notas."
+  },
   "setup_choose_language": {
     "pt": "Escolha seu idioma",
     "en": "Choose your language",

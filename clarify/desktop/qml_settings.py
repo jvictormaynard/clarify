@@ -69,7 +69,6 @@ from microphone_controls import (
     SoundDeviceMicrophoneInventory,
 )
 from provider_http import CancellationToken
-from opencode_provider import RECOMMENDED_FREE_REWRITE_MODEL
 from provider_registry import PROVIDER_REGISTRY
 from provider_types import (
     ModelCatalog,
@@ -2003,7 +2002,7 @@ class QmlSettingsController(QObject):
 
     @Property(bool, notify=providerStateChanged)
     def providerHasApiKey(self) -> bool:
-        if self.selectedProviderId == "chatgpt":
+        if self.selectedProviderId in {"chatgpt", "opencode"}:
             return False
         return bool(
             self._provider_api_key_draft.strip()
@@ -3208,6 +3207,8 @@ class QmlSettingsController(QObject):
             return (provider, state["accountId"], str(state["generation"]))
         if provider == LOCAL_ASR_PROVIDER_ID:
             return (provider, self._config.local_asr_device, "")
+        if provider == "opencode":
+            return (provider, "", "")
         config = self._provider_config(provider)
         return (
             provider,
@@ -3658,7 +3659,7 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setProviderApiKey(self, value: str) -> bool:
-        if self.selectedProviderId == "chatgpt":
+        if self.selectedProviderId in {"chatgpt", "opencode"}:
             return False
         self._provider_api_key_draft = str(value or "")
         self._set_error(None)
@@ -3667,7 +3668,7 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setProviderBaseUrl(self, value: str) -> bool:
-        if self.selectedProviderId == "chatgpt":
+        if self.selectedProviderId in {"chatgpt", "opencode"}:
             return False
         self._provider_base_url_draft = str(value or "").strip()
         self._set_error(None)
@@ -3692,7 +3693,7 @@ class QmlSettingsController(QObject):
         provider_config = self._provider_config(provider_id)
         api_key = (
             ""
-            if provider_id == "chatgpt"
+            if provider_id in {"chatgpt", "opencode"}
             else self._provider_api_key_draft.strip() or provider_config.api_key.strip()
         )
         if provider_id == "chatgpt" and not self._chatgpt_ready():
@@ -3741,11 +3742,15 @@ class QmlSettingsController(QObject):
 
         def validate() -> None:
             try:
-                catalog = discovery_registry.discover_models(
-                    provider_id,
-                    ProviderConnection(api_key, base_url),
-                    token,
-                )
+                connection = ProviderConnection(api_key, base_url)
+                if provider_id == "opencode":
+                    adapter = discovery_registry.adapter(provider_id)
+                    adapter.install(token)
+                    catalog = adapter.validate(connection, token)
+                else:
+                    catalog = discovery_registry.discover_models(
+                        provider_id, connection, token
+                    )
             except Exception as error:
                 self._providerValidationFinished.emit(
                     provider_id,
@@ -3767,7 +3772,7 @@ class QmlSettingsController(QObject):
                     "base_url": base_url,
                     "models": list(catalog.audio_models),
                     "text_models": list(catalog.text_models),
-                    "catalog": catalog if provider_id == "chatgpt" else None,
+                    "catalog": catalog if provider_id in {"chatgpt", "opencode"} else None,
                 },
             )
 
@@ -3781,7 +3786,7 @@ class QmlSettingsController(QObject):
     @Slot(result=bool)
     def clearProvider(self) -> bool:
         """Remove the selected cloud credential from the secure store."""
-        if self.selectedProviderId == "chatgpt":
+        if self.selectedProviderId in {"chatgpt", "opencode"}:
             return False
 
         provider_id = self._selected_provider_id
@@ -4342,6 +4347,7 @@ class QmlSettingsController(QObject):
 
     @Property("QVariantMap", notify=personalSetupStateChanged)
     def personalSetupState(self):
+        rewrite = self._config.workflow(WorkflowScope.REWRITE.value)
         state = self._personal_setup
         recommendation = dict(state["recommendation"])
         if (
@@ -4380,11 +4386,13 @@ class QmlSettingsController(QObject):
                     {
                         "id": model,
                         "label": self._opencode_model_labels.get(model, model),
-                        "recommended": model == RECOMMENDED_FREE_REWRITE_MODEL,
                     }
                     for model in self._opencode_models
                 ],
                 "connected": bool(self._opencode_models),
+                "rewriteModelId": rewrite.model_id
+                if rewrite.enabled and rewrite.provider_id == "opencode"
+                else "",
                 "modelId": self._config.opencode.text_model,
                 "modelLabel": self._opencode_model_labels.get(
                     self._config.opencode.text_model, self._config.opencode.text_model
@@ -4486,6 +4494,8 @@ class QmlSettingsController(QObject):
             self.personalSetupStateChanged.emit()
             return True
         if self.personalSetupState["busy"]:
+            return False
+        if action == "connect_opencode" and self._provider_state("opencode")["busy"]:
             return False
         if action == "reset_text_choice":
             if self.providerBusy:
@@ -4693,8 +4703,7 @@ class QmlSettingsController(QObject):
                 elif action == "recommend":
                     self._personal_setup["recommendation"] = result
                 elif action == "connect_opencode":
-                    self._opencode_models = result.text_models
-                    self._opencode_model_labels = dict(result.display_names)
+                    self._remember_open_code_catalog(result)
                     self._provider_activity["opencode"] = {
                         "textModels": list(result.text_models),
                         "status": "active",
@@ -4837,7 +4846,7 @@ class QmlSettingsController(QObject):
                 config = replace(
                     config, workflows=routes, local_asr_cloud_refinement=False
                 )
-            else:
+            elif mode != "meetings":
                 raise ValueError("Escolha uma opção para continuar.")
             persisted = self._config_repository.apply(
                 replace(config, onboarding_completed=True)
@@ -4850,7 +4859,7 @@ class QmlSettingsController(QObject):
             self.selectProvider("groq")
         self._set_error(None)
         self.saved.emit()
-        if self._practice is not None:
+        if self._practice is not None and mode != "meetings":
             self._practice.command("open")
         return True
 
@@ -5129,6 +5138,8 @@ class QmlSettingsController(QObject):
             self.dirtyChanged.emit()
         if method == "useLocalAsr":
             self.selectWorkflow(WorkflowScope.TRANSCRIPTION.value)
+        elif method == "setOpenCodeRouteModel":
+            self.personalSetupStateChanged.emit()
         self._set_error(None)
         return True
 
@@ -5160,7 +5171,9 @@ class QmlSettingsController(QObject):
         }
         if not isinstance(method, str) or not isinstance(args, list):
             raise ValueError("Invalid settings value")
-        if method in bool_methods:
+        if method == "setOpenCodeRouteModel":
+            valid = len(args) == 2 and all(type(arg) is str for arg in args)
+        elif method in bool_methods:
             valid = len(args) == 1 and type(args[0]) is bool
         elif method in text_methods:
             valid = len(args) == 1 and type(args[0]) is str
@@ -5275,6 +5288,29 @@ class QmlSettingsController(QObject):
             )
 
         scope = self._selected_scope
+        if method == "setOpenCodeRouteModel":
+            scope, model = args
+            if (
+                WORKFLOW_CAPABILITIES.get(scope) != ProviderCapability.TEXT_GENERATION
+                or model not in self._opencode_models
+                or self._provider_state("opencode")["busy"]
+            ):
+                raise ValueError("Choose an available free OpenCode model.")
+
+            def change_open_code_route(config: AppConfig) -> AppConfig:
+                current = config.workflow(scope)
+                route = replace(
+                    current,
+                    provider_id="opencode",
+                    model_id=model,
+                    enabled=current.enabled or scope == WorkflowScope.REWRITE.value,
+                    independent=True,
+                    custom_endpoint="",
+                    account_id="",
+                )
+                return replace(config, workflows=config.workflows.with_route(scope, route))
+
+            return change_open_code_route
         if method == "useLocalAsr":
             if self.localAsrStatus != "installed":
                 raise ValueError("Instale o modelo local antes de usar.")
@@ -5526,8 +5562,8 @@ class QmlSettingsController(QObject):
                 "displayName": metadata.display_name,
                 "kind": "cloud",
                 "status": activity.get("status", "not_configured"),
-                "busy": self._personal_setup["busy"],
-                "error": "",
+                "busy": self._personal_setup["busy"] or bool(activity.get("busy")),
+                "error": activity.get("error", ""),
                 "configured": bool(self._opencode_models),
                 "hasApiKey": False,
                 "baseUrl": "",
@@ -5608,7 +5644,7 @@ class QmlSettingsController(QObject):
             self.providerStateChanged.emit()
             return
         try:
-            if provider_id != "chatgpt":
+            if provider_id not in {"chatgpt", "opencode"}:
                 self._persist_provider_credentials(
                     provider_id,
                     str(data.get("api_key") or ""),
@@ -5640,12 +5676,21 @@ class QmlSettingsController(QObject):
                     str(chatgpt_state["generation"]),
                 )
             ] = data["catalog"]
+        elif provider_id == "opencode":
+            self._remember_open_code_catalog(data["catalog"])
+            self.personalSetupStateChanged.emit()
         if provider_id == self._selected_provider_id:
             self._provider_api_key_draft = ""
             self._provider_base_url_draft = self._config_provider_base_url(provider_id)
         self._set_error(None)
         self.configChanged.emit()
         self.providerStateChanged.emit()
+
+    def _remember_open_code_catalog(self, catalog):
+        self._opencode_models = catalog.text_models
+        self._opencode_model_labels = dict(catalog.display_names)
+        self._model_catalogs[("opencode", "", "")] = catalog
+        self.modelCatalogChanged.emit()
 
     def _config_provider_base_url(self, provider_id: str) -> str:
         config = self._provider_config(provider_id)

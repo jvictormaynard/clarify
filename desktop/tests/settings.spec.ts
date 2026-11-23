@@ -2,6 +2,105 @@ import type { Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { test, expect, settingsScenario } from "./settings-fixture";
 import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure, settingsSectionLabel } from "./settings-navigation";
+import type { Meeting, MeetingState } from "../src/meetings/bridge";
+
+settingsScenario({ locale: "en" }, () => {
+  test("meeting shortcut reopens the exact note from Home and summary requires an explicit stop choice", async ({ page }, testInfo) => {
+    await page.evaluate(() => {
+      const testWindow = window as any;
+      const desktop = window.clarifyDesktop!;
+      const call = desktop.call.bind(desktop);
+      const stamp = Date.now();
+      const note: Meeting = {
+        id: "active-note", title: "Synthetic planning meeting", notes: "Keep this note.",
+        createdAt: stamp, updatedAt: stamp, startedAt: stamp, duration: 18, status: "paused",
+        source: "mic", error: "", hasSummary: false, summary: "",
+        segments: [{ start: 0, end: 4, text: "The group approved the plan." }],
+      };
+      const other = { ...note, id: "other-note", title: "Other meeting", status: "completed" };
+      let state: MeetingState = {
+        supported: true, installed: true, installing: false, installProgress: 0,
+        active: null, partial: "", generating: null, summaryAvailable: false,
+        summaryPending: null, summaryError: null, summaryRevision: 0, libraryRevision: 0, error: "", loopback: false,
+      };
+      testWindow.__meetingRequests = [];
+      testWindow.__meetingState = (patch: Partial<MeetingState>) => {
+        state = { ...state, ...patch };
+        testWindow.__testDesktop.state({ event: "meetings", state });
+      };
+      testWindow.__meetingStatus = (status: Meeting["status"]) => {
+        note.status = status;
+        testWindow.__meetingState({ active: status === "completed" ? null : { ...note } });
+      };
+      testWindow.__finishSummary = () => {
+        note.summary = "## Decisions\n\nThe group approved the plan.";
+        note.hasSummary = true;
+        testWindow.__meetingState({ generating: null, summaryRevision: 1 });
+      };
+      desktop.call = async (channel, method, args) => {
+        if (channel !== "meetings") return call(channel, method, args);
+        testWindow.__meetingRequests.push([method, ...args]);
+        if (method === "state") return state as any;
+        if (method === "list") return [note, other] as any;
+        if (method === "get") return (args[0] === note.id ? note : other) as any;
+        if (method === "stopAndGenerate") {
+          testWindow.__meetingState({ summaryPending: note.id });
+          testWindow.__meetingStatus("finalizing");
+          return undefined as any;
+        }
+        throw new Error(`Unexpected meeting method: ${method}`);
+      };
+    });
+    await navigate(page, "Meetings");
+    await page.getByRole("button", { name: /Other meeting/ }).click();
+    const title = page.getByRole("textbox", { name: "Meeting title" });
+    await expect(title).toHaveValue("Other meeting");
+    await navigate(page, "Home");
+    await page.evaluate(() => (window as any).__testDesktop.window("meetings", "active-note"));
+    await expect(title).toHaveValue("Synthetic planning meeting");
+    await page.evaluate(() => (window as any).__meetingStatus("paused"));
+    await expect(page.getByRole("button", { name: "Resume", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "My notes", exact: true })).toHaveValue("Keep this note.");
+    await page.screenshot({ path: testInfo.outputPath("paused.png") });
+    await page.evaluate(() => (window as any).__meetingStatus("recording"));
+    await expect(page.getByRole("button", { name: "Stop recording" })).toBeEnabled();
+    const notes = page.getByRole("tab", { name: "My notes" });
+    await notes.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "Transcript" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("The group approved the plan.", { exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("recording.png") });
+    await page.getByRole("tab", { name: "Generated notes" }).click();
+    const stopAndGenerate = page.getByRole("button", { name: "Stop & generate", exact: true });
+    await expect(stopAndGenerate).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Model settings" })).toBeVisible();
+    await page.evaluate(() => (window as any).__meetingState({ summaryAvailable: true }));
+    for (const width of [640, 820, 1040]) {
+      await page.setViewportSize({ width, height: 700 });
+      await expect(stopAndGenerate).toBeVisible();
+      await expect(page.evaluate(() => document.documentElement.scrollWidth)).resolves.toBe(width);
+      await page.screenshot({ path: testInfo.outputPath(`stop-choice-${width}.png`) });
+    }
+    const stopRequests = () => page.evaluate(() => (window as any).__meetingRequests.filter(
+      ([method]: string[]) => ["stop", "stopAndGenerate", "summarize"].includes(method),
+    ));
+    expect(await stopRequests()).toEqual([]);
+    await page.getByLabel("Template").selectOption("decisions");
+    await stopAndGenerate.click();
+    expect(await stopRequests()).toEqual([["stopAndGenerate", "active-note", "decisions"]]);
+    await expect(page.getByText("Saving the transcript before generating notes…")).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("finalizing.png") });
+    await page.evaluate(() => {
+      (window as any).__meetingStatus("completed");
+      (window as any).__meetingState({ summaryPending: null, generating: "active-note" });
+    });
+    await expect(page.getByRole("status").filter({ hasText: "Generating notes…" })).toBeVisible();
+    await page.evaluate(() => (window as any).__finishSummary());
+    await expect(page.getByRole("heading", { name: "Decisions" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("generated.png") });
+  });
+});
 
 test("diagnostics are generated on request, reviewed and saved locally", async ({ page }, testInfo) => {
   let requests = 0;
@@ -202,7 +301,7 @@ test("settings organization: tasks and action editors replace workflow destinati
   await closeSettings(page);
   const navigation = page.locator("aside nav");
   expect(await navigation.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual([
-    "Início", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
+    "Início", "Reuniões", "Dicionário", "Snippets", "Estilo", "Ações", "Configurações",
   ]);
   await openSettings(page, "Ditado");
   await expect(page.getByRole("combobox", { name: "Modo de gravação", exact: true })).toBeVisible();
@@ -326,6 +425,89 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
     await page.getByRole("textbox", { name: "E-mail", exact: true }).fill("test@example.test");
     await expect(page.getByRole("button", { name: "Continuar", exact: true })).toBeEnabled();
   } finally { release(); }
+});
+
+test.describe("OpenCode AI review service", () => {
+  test.use({ settingsScenario: { personalCatalog: true } });
+
+  test("selects OpenCode for AI review only after choosing a catalog model", async ({ page }) => {
+    await openStyleReview(page);
+    const snapshot = () => page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+    const before = await snapshot();
+    const service = page.getByRole("combobox", { name: "Serviço", exact: true });
+    await service.click();
+    await page.getByRole("option", { name: "OpenCode (free models)", exact: true }).click();
+    await expect(service).toContainText("OpenCode");
+    expect((await snapshot()).routeProviderId).toBe(before.routeProviderId);
+    const model = page.getByRole("combobox", { name: "Modelo", exact: true });
+    await model.click();
+    await page.getByPlaceholder("Buscar modelo…").fill("fixture-free-b");
+    await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
+    await expect(model).toContainText("opencode/fixture-free-b");
+    const saved = await snapshot();
+    expect([saved.routeProviderId, saved.routeModelId]).toEqual(["opencode", "opencode/fixture-free-b"]);
+    expect(saved.routeEnabled).toBe(before.routeEnabled);
+  });
+});
+
+test.describe("OpenCode cloud service", () => {
+  test.use({ settingsScenario: { personalCatalog: true, personalRuntimeMissing: true } });
+
+  test("loads and saves an OpenCode model for a processing profile", async ({ page }) => {
+    await navigate(page, "Modelos e serviços");
+    await page.getByRole("button", { name: "Editar perfil de Reescrita", exact: true }).click();
+    const profile = page.getByRole("dialog", { name: "Perfil de processamento", exact: true });
+    await profile.getByRole("combobox", { name: "Serviço do perfil", exact: true }).click();
+    await page.getByRole("option", { name: "OpenCode (free models)", exact: true }).click();
+    await profile.getByRole("combobox", { name: "Modelo do perfil", exact: true }).click();
+    await page.getByPlaceholder("Buscar modelo do perfil…").fill("fixture-free-b");
+    await page.getByRole("option", { name: "opencode/fixture-free-b", exact: true }).click();
+    await profile.getByRole("button", { name: "Salvar perfil", exact: true }).click();
+    await expect(profile).toBeHidden();
+    const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
+    expect(state.textActionProfiles.find((entry: { id: string }) => entry.id === "legacy-rewrite")).toMatchObject({
+      providerId: "opencode", modelId: "opencode/fixture-free-b",
+    });
+  });
+
+  test("connects to free models without an API key", async ({ page }, testInfo) => {
+    await navigate(page, "Modelos e serviços");
+    const cloud = page.locator("#cloud-services");
+    const select = cloud.getByRole("combobox", { name: "Serviço na nuvem", exact: true });
+    await select.click();
+    await page.getByRole("option", { name: "OpenCode (free models)", exact: true }).click();
+    await expect(cloud.getByLabel("Chave de API", { exact: true })).toHaveCount(0);
+    await expect(cloud.getByText("Download necessário", { exact: true })).toBeVisible();
+    await cloud.getByRole("button", { name: "Instalar e conectar OpenCode" }).click();
+    await expect(cloud.getByRole("status")).toHaveText("Conectado");
+    await page.setViewportSize({ width: 640, height: 520 });
+    await expect(cloud.getByRole("button", { name: "Consultar modelos gratuitos" })).toBeVisible();
+    const readRoute = (scope: string) => page.evaluate(async name => {
+      const result = await (window as any).__testSettings({ method: "selectWorkflow", args: [name] });
+      return [result.routeProviderId, result.routeModelId];
+    }, scope);
+    const speech = await readRoute("transcription");
+    const model = cloud.getByRole("combobox", { name: "Modelo de reescrita", exact: true });
+    await model.click();
+    const popup = page.locator('[data-slot="combobox-popup"]');
+    const search = popup.getByRole("combobox");
+    const lastModel = popup.getByRole("option", { name: "opencode/fixture-free-b", exact: true });
+    await expect(lastModel).not.toBeInViewport();
+    await popup.getByRole("option", { name: "opencode/fixture-free-a", exact: true }).hover();
+    await page.mouse.wheel(0, 900);
+    await expect(lastModel).toBeInViewport({ ratio: 1 });
+    await expect(search).toBeInViewport({ ratio: 1 });
+    await lastModel.click();
+    await expect(model).toContainText("opencode/fixture-free-b");
+    expect(await readRoute("rewrite")).toEqual(["opencode", "opencode/fixture-free-b"]);
+    expect(await readRoute("transcription")).toEqual(speech);
+    await cloud.getByRole("button", { name: "Consultar modelos gratuitos" }).click();
+    await expect(model).toContainText("opencode/fixture-free-b");
+    await cloud.screenshot({ path: testInfo.outputPath("opencode-cloud.png") });
+    await select.click();
+    await page.getByRole("option", { name: "OpenAI", exact: true }).click();
+    await expect(cloud.getByLabel("Chave de API", { exact: true })).toBeVisible();
+  });
 });
 
 test("provider selection: pending selection cannot transfer a key typed for the visible provider", async ({ page }) => {

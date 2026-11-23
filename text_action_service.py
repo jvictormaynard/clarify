@@ -635,6 +635,7 @@ class TextActionService:
                 ProviderCapability.TEXT_GENERATION
             ) or not metadata.supports(ProviderCapability.MODEL_DISCOVERY):
                 raise ValueError("This provider does not support text model discovery")
+            # Catalog discovery can run before a provider supplies any model IDs.
             route = validate_workflow_route(
                 replace(
                     before,
@@ -644,6 +645,7 @@ class TextActionService:
                     account_id="",
                 ),
                 "rewrite",
+                require_model=False,
             )
             account_id, generation, status = "", 0, "idle"
             if provider_id == "chatgpt":

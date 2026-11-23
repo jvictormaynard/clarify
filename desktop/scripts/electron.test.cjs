@@ -1,10 +1,34 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {PassThrough} = require('node:stream');
-const {EventEmitter} = require('node:events');
+const {PassThrough, Writable} = require('node:stream');
+const {EventEmitter, once} = require('node:events');
+const {readFileSync} = require('node:fs');
+const {runInNewContext} = require('node:vm');
+const {resolve} = require('node:path');
 const {Bridge, MAX_FRAME, validateRequest} = require('../electron/bridge.cjs');
 const {startHost} = require('../electron/host.cjs');
+
+test('Electron startup handles a diagnostic write after the parent pipe closes', async () => {
+  const stderr = new Writable({
+    write(_chunk, _encoding, callback) {
+      callback(Object.assign(new Error('write EPIPE'), {code: 'EPIPE'}));
+    },
+  });
+  const closed = new Promise(resolve => stderr.on('close', resolve));
+  const log = () => {};
+  runInNewContext(readFileSync(resolve(__dirname, '../electron/main.cjs'), 'utf8'), {
+    process: {platform: 'darwin', env: {}, stderr},
+    console: {error: log},
+    require(name) {
+      if (name === 'electron') return {};
+      assert.equal(name, './host.cjs');
+      return {startHost: async () => { stderr.write('Renderer exited\n'); }};
+    },
+  });
+  await closed;
+});
+
 test('JSON lines preserve split UTF-8, route concurrent replies and fail calls on EOF', async () => {
   const input = new PassThrough(), output = new PassThrough(); let sent = ''; output.on('data', c => sent += c);
   const events = []; let ended = false;
@@ -30,23 +54,434 @@ test('bridge bounds frames, arguments and call lifetime', async () => {
 function fakeElectron() {
   let contentsID = 0;
   const handlers = {}, app = new EventEmitter(); app.whenReady = async () => {}; app.quit = () => { app.quits = (app.quits || 0) + 1; };
+  app.setActivationPolicy = policy => { app.activationPolicy = policy; };
   class Window extends EventEmitter {
     constructor(options) { super(); this.options = options; this.focusable = options.focusable; this.messages = []; this.webContents = new EventEmitter();
-      Object.assign(this.webContents, {id: ++contentsID, mainFrame: {url: ''}, send: (topic, value) => this.messages.push({topic,value}), setWindowOpenHandler: fn => this.open = fn}); }
+      Object.assign(this.webContents, {id: ++contentsID, mainFrame: {url: ''}, send: (topic, value, target) => this.messages.push(target === undefined ? {topic,value} : {topic,value,target}), setWindowOpenHandler: fn => this.open = fn, forcefullyCrashRenderer: () => this.emit('watchdog-crash')}); }
     loadURL(url) { this.webContents.mainFrame.url = url; return Promise.resolve(); }
-    isDestroyed() { return false; } removeMenu() {} setPosition(x, y) { this.position = {x, y}; } setAlwaysOnTop() {} restore() {} focus() { this.focused = true; }
-    getBounds() { return {...(this.position || {x: 0, y: 0}), width: this.options.width, height: this.options.height}; }
+    isDestroyed() { return false; } removeMenu() {} setPosition(x, y) { this.position = {x, y}; } setAlwaysOnTop() {}
+    minimize() { this.minimized = true; this.focused = false; }
+    restore() { this.minimized = false; }
+    isMinimized() { return !!this.minimized; }
+    isMaximized() { return !!this.maximized; }
+    focus() { this.focused = true; }
+    getNormalBounds() { return this.getBounds(); }
+    setMinimumSize(width, height) { this.minimumSize = [width, height]; }
+    getBounds() { return {...(this.position || {x: this.options.x ?? 0, y: this.options.y ?? 0}), width: this.options.width, height: this.options.height}; }
     getContentBounds() { return this.getBounds(); }
     setBounds(bounds) { this.position = {x:bounds.x, y:bounds.y}; this.options.width=bounds.width; this.options.height=bounds.height; }
-    show() { this.visible = true; } showInactive() { this.inactive = true; this.visible = true; } hide() { this.visible = false; }
+    show() { this.visible = true; } showInactive() { this.inactive = true; this.visible = true; } hide() { this.visible = false; this.focused = false; }
+    close() {
+      let prevented = false;
+      this.emit('close', {preventDefault() { prevented = true; }});
+      assert.equal(prevented, true, 'the native close event must retain the renderer');
+    }
+    isVisible() { return !!this.visible; }
+    isFocused() { return !!this.focused; }
     setIgnoreMouseEvents(value) { this.ignores = value; }
     setFocusable(value) { this.focusable = value; }
     getNativeWindowHandle() { return Buffer.alloc(8); }
   }
-  return {passiveWindow: {setPassive() {}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
-    screen: {events:{}, on(name, callback) {this.events[name]=callback;}, reads: 0, cursor: {x:100,y:100}, getCursorScreenPoint() { this.reads++; return this.cursor; }, getPrimaryDisplay: () => ({workArea: {x:0,y:0,width:1920,height:1080}}), getDisplayNearestPoint: () => ({workArea: {x:0,y:0,width:1920,height:1080}})},
-    session: {defaultSession: {setPermissionRequestHandler() {}, setPermissionCheckHandler() {}, webRequest: {onBeforeRequest(fn) { handlers.content = fn; }}}}};
+  return {passiveWindow: {changes: [], setPassive(_handle, value) {this.changes.push(value);}}, app, BrowserWindow: Window, ipcMain: {handle: (key, fn) => handlers[key] = fn}, handlers,
+    screen: {events:{}, on(name, callback) {this.events[name]=callback;}, reads: 0, cursor: {x:100,y:100}, getCursorScreenPoint() { this.reads++; return this.cursor; }, getPrimaryDisplay: () => ({workArea: {x:0,y:0,width:1920,height:1080}}), getDisplayNearestPoint() {return this.getPrimaryDisplay();}, getDisplayMatching() {return this.getPrimaryDisplay();}},
+    session: {defaultSession: {
+      setPermissionRequestHandler(fn) { handlers.permission = fn; },
+      setPermissionCheckHandler(fn) { handlers.permissionCheck = fn; },
+      setDisplayMediaRequestHandler(fn) { handlers.display = fn; },
+      webRequest: {onBeforeRequest(fn) { handlers.content = fn; }}
+    }}};
 }
+test('meeting capture permission is scoped to an admitted recording and the workspace frame', async () => {
+  const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
+  const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow, 'linux');
+  const sender = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
+  const permit = (win, mediaTypes = ['audio'], isMainFrame = true) => {
+    let granted;
+    e.handlers.permission(win.webContents, 'media', value => granted = value, {
+      isMainFrame, mediaTypes, requestingUrl: win.webContents.mainFrame.url,
+    });
+    return granted;
+  };
+  try {
+    assert.equal(permit(settings), false);
+    assert.throws(() => e.handlers['clarify:call'](sender(pill), 'meetings', 'get', ['one']), /Invalid renderer channel/);
+    assert.throws(() => e.handlers['clarify:call'](sender(settings), 'meetings', 'start', ['one', 'mic']), /capture_unavailable/);
+    e.handlers['clarify:renderer-ready'](sender(settings));
+    input.write('{"window":"settings-show"}\n');
+    const start = e.handlers['clarify:call'](sender(settings), 'meetings', 'start', ['one', 'mic']);
+    input.write('{"event":"meetings","state":{"active":{"id":"one","status":"starting"},"captureId":"first"}}\n{"id":1,"result":{"captureId":"first"}}\n');
+    await start;
+    assert.equal(permit(settings), true);
+    assert.equal(permit(settings, ['video']), false);
+    assert.equal(permit(settings, ['audio'], false), false);
+    assert.equal(permit(pill), false);
+    let display;
+    e.handlers.display({frame:settings.webContents.mainFrame, audioRequested:true, videoRequested:true, userGesture:true}, value => display = value);
+    assert.equal(display, null);
+    input.write('{"event":"meetings","state":{"active":{"id":"one","status":"recording"},"captureId":"first"}}\n');
+    assert.equal(permit(settings), false);
+    e.handlers['clarify:window'](sender(settings), 'meetingAudioReleased', 'first');
+    const stale = e.handlers['clarify:call'](sender(settings), 'meetings', 'start', ['one', 'mic']);
+    input.write('{"id":2,"result":{"captureId":"stale"}}\n{"event":"meetings","state":{"active":null,"captureId":null}}\n');
+    await assert.rejects(stale, /capture_unavailable/);
+    assert.equal(permit(settings), false);
+  } finally { bridge.end(); }
+});
+test('early meeting open reaches the workspace with the latest note and dock stop stays scoped', async () => {
+  const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
+  const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow, 'linux');
+  const sender = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
+  let commands = '';
+  output.on('data', data => { commands += data; });
+  const windowEvent = 'clarify:window-event';
+  try {
+    input.write('{"window":"meetings-show"}\n');
+    input.write('{"event":"meetings","state":{"active":{"id":"paused-note","status":"paused"}}}\n');
+    assert.equal(settings.isVisible(), false);
+    e.handlers['clarify:renderer-ready'](sender(settings));
+    assert.equal(settings.isFocused(), true);
+    assert.deepEqual(settings.messages.at(-1), {topic:windowEvent, value:'meetings', target:'paused-note'});
+    assert.throws(() => e.handlers['clarify:window'](sender(pill), 'stopMeeting', 'other-note'), /Invalid pill control/);
+    assert.throws(() => e.handlers['clarify:call'](sender(pill), 'meetings', 'stop', ['paused-note']), /Invalid renderer channel/);
+    e.handlers['clarify:window'](sender(pill), 'stopMeeting', 'paused-note');
+    assert.deepEqual(settings.messages.at(-1), {topic:windowEvent, value:'meeting-stop', target:'paused-note'});
+    assert.equal(commands, '');
+  } finally { bridge.end(); }
+});
+test('macOS retains one right-aligned meeting window as the only capture owner', async () => {
+  const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
+  const {windows, bridge} = await startHost(e, input, output, e.passiveWindow, 'darwin');
+  const {settings, pill} = windows;
+  const sender = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
+  const ready = win => e.handlers['clarify:renderer-ready'](sender(win));
+  const command = (win, method, value) => e.handlers['clarify:window'](sender(win), method, value);
+  const call = (win, method, args) => e.handlers['clarify:call'](sender(win), 'meetings', method, args);
+  const permit = win => {
+    let allowed;
+    e.handlers.permission(win.webContents, 'media', value => { allowed = value; }, {
+      requestingUrl: win.webContents.mainFrame.url, mediaTypes: ['audio'], isMainFrame: true,
+    });
+    return allowed;
+  };
+  let sent = '';
+  output.on('data', chunk => { sent += chunk; });
+  try {
+    assert.equal(e.app.activationPolicy, 'accessory');
+    ready(settings);
+    ready(pill);
+    input.write('{"window":"settings-show"}\n');
+    assert.equal(e.app.activationPolicy, 'regular');
+    assert.equal(settings.options.title, 'Clarify Settings');
+    assert.equal(settings.options.skipTaskbar, false);
+    command(settings, 'openMeeting', 'note-a');
+    const editor = windows.meeting;
+    assert.deepEqual(editor.getBounds(), {x: 1380, y: 0, width: 540, height: 820});
+    assert.equal(editor.options.alwaysOnTop, false);
+    assert.equal(editor.options.skipTaskbar, false);
+    assert.equal(editor.options.resizable, true);
+    assert.equal(editor.options.title, 'Clarify Meeting');
+    assert.equal(editor.isVisible(), false);
+    ready(editor);
+    assert.equal(editor.isVisible(), true);
+    assert.deepEqual(editor.messages.at(-1), {topic: 'clarify:window-event', value: 'meeting-editor', target: 'note-a'});
+    for (const method of ['start', 'startWithOverlap', 'feed', 'stop', 'resume']) {
+      assert.throws(() => call(settings, method, ['note-a', 'mic']), /Invalid renderer channel/);
+    }
+    assert.throws(() => call(editor, 'start', ['another-note', 'mic']), /capture_unavailable/);
+    const opening = call(editor, 'startWithOverlap', ['note-a', 'system']);
+    input.write('{"event":"meetings","state":{"active":{"id":"note-a","status":"starting"},"captureId":"lease"}}\n{"id":1,"result":{"captureId":"lease"}}\n');
+    await opening;
+    assert.match(sent, /"method":"startWithOverlap"/);
+    assert.equal(permit(settings), false);
+    assert.equal(permit(pill), false);
+    assert.equal(permit(editor), true);
+    input.write('{"event":"meetings","state":{"active":{"id":"note-a","status":"recording"},"captureId":"lease"}}\n');
+    assert.equal(permit(editor), false);
+    command(settings, 'closeAccepted');
+    assert.equal(editor.isVisible(), true);
+    assert.equal(e.app.activationPolicy, 'regular');
+    let prevented = false;
+    editor.webContents.emit('before-input-event', {preventDefault: () => { prevented = true; }}, {type:'keyDown', meta:true, key:'w'});
+    assert.equal(prevented, true);
+    assert.equal(editor.isVisible(), false);
+    assert.equal(e.app.activationPolicy, 'accessory');
+    call(pill, 'open', []);
+    assert.match(sent, /"event":"meetings-open"/);
+    input.write('{"window":"meetings-show"}\n');
+    assert.equal(windows.meeting, editor);
+    assert.equal(editor.isVisible(), true);
+    assert.equal(settings.isVisible(), false);
+    command(settings, 'openMeeting', 'another-note');
+    assert.equal(editor.messages.at(-1).target, 'note-a');
+    editor.close();
+    command(pill, 'stopMeeting', 'note-a');
+    assert.deepEqual(editor.messages.at(-1), {topic: 'clarify:window-event', value: 'meeting-stop', target: 'note-a'});
+    assert.doesNotMatch(sent, /"method":"stop"/);
+    assert.throws(() => command(settings, 'meetingAudioReleased', 'lease'), /Invalid window control/);
+    command(editor, 'meetingAudioReleased', 'lease');
+    assert.match(sent, /"event":"meetings-media-released","captureId":"lease"/);
+  } finally { bridge.end(); }
+});
+async function windowsMeetingHost() {
+  const e = fakeElectron(), input = new PassThrough(), output = new PassThrough();
+  const commands = [];
+  output.on('data', data => commands.push(JSON.parse(data)));
+  const {windows, bridge} = await startHost(e, input, output, e.passiveWindow, 'win32');
+  const sender = win => ({sender: win.webContents, senderFrame: win.webContents.mainFrame});
+  const ready = win => e.handlers['clarify:renderer-ready'](sender(win));
+  const command = (win, method, value) => e.handlers['clarify:window'](sender(win), method, value);
+  const call = (win, method, args) => e.handlers['clarify:call'](sender(win), 'meetings', method, args);
+  const send = message => input.write(JSON.stringify(message) + '\n');
+  const reply = result => send({id: commands.at(-1).id, result});
+  return {...e, windows, bridge, commands, ready, command, call, send, reply, sender};
+}
+
+test('Windows puts a resizable meeting editor on the current monitor and restores its active note', async () => {
+  const {app, screen, passiveWindow, windows, bridge, commands, ready, command, call, send} = await windowsMeetingHost();
+  const {settings, pill} = windows;
+  const mainArea = {x: 0, y: 0, width: 1920, height: 1040};
+  const leftArea = {x: -1280, y: -140, width: 1280, height: 850};
+  const compactArea = {x: 1920, y: 80, width: 360, height: 440};
+  const displayAt = point => point.x < 0 ? {workArea: leftArea, scaleFactor: 1.5}
+    : point.x >= 1920 ? {workArea: compactArea, scaleFactor: 2} : {workArea: mainArea, scaleFactor: 1};
+  screen.getDisplayNearestPoint = displayAt;
+  screen.getDisplayMatching = ({x, y, width, height}) => displayAt({x: x + width / 2, y: y + height / 2});
+  try {
+    ready(settings);
+    ready(pill);
+    send({window: 'settings-show'});
+    settings.setPosition(-1200, -100);
+    command(settings, 'openMeeting', 'active-note');
+    const editor = windows.meeting;
+    assert.deepEqual(editor.getBounds(), {x: -540, y: -140, width: 540, height: 820});
+    assert.equal(editor.options.frame, true);
+    assert.equal(editor.options.resizable, true);
+    assert.equal(editor.options.alwaysOnTop, false);
+    assert.equal(editor.options.skipTaskbar, false);
+    assert.equal(editor.options.focusable, true);
+    assert.equal(editor.webContents.listenerCount('before-input-event'), 0, 'Windows uses the native keyboard controls');
+    assert.equal(app.activationPolicy, undefined);
+    assert.equal(pill.focusable, false);
+    ready(editor);
+    send({event: 'meetings', state: {active: {id: 'active-note', status: 'recording'}}});
+    const resized = {x: -630, y: -100, width: 590, height: 705};
+    editor.setBounds(resized);
+    command(settings, 'openMeeting', 'other-note');
+    assert.deepEqual(editor.getBounds(), resized);
+    assert.equal(editor.messages.at(-1).target, 'active-note');
+    command(editor, 'minimize');
+    assert.equal(editor.isMinimized(), true);
+    assert.equal(editor.isFocused(), false);
+
+    screen.cursor = {x: 2000, y: 100};
+    call(pill, 'open', []);
+    assert.deepEqual(commands.at(-1), {event: 'meetings-open'});
+    send({window: 'meetings-show'});
+    assert.equal(windows.meeting, editor);
+    assert.equal(editor.isMinimized(), false);
+    assert.equal(editor.isFocused(), true);
+    assert.deepEqual(editor.getBounds(), compactArea);
+    assert.deepEqual(editor.minimumSize, [360, 440]);
+    assert.equal(editor.messages.at(-1).target, 'active-note');
+    assert.equal(pill.focusable, false);
+    assert.deepEqual(passiveWindow.changes, [true]);
+
+    // The native close event is shared by the close button and Alt+F4.
+    editor.close();
+    assert.equal(editor.isVisible(), false);
+    assert.equal(editor.isFocused(), false);
+    assert.equal(commands.some(({event, method}) => event === 'quit' || method === 'stop'), false);
+    screen.getDisplayMatching = () => ({workArea: mainArea});
+    screen.events['display-removed']();
+    assert.deepEqual(editor.getBounds(), {x: 1480, y: 80, width: 440, height: 480});
+    assert.equal(editor.isVisible(), false);
+    command(settings, 'openMeeting', 'other-note');
+    assert.equal(windows.meeting, editor);
+    assert.equal(editor.messages.at(-1).target, 'active-note');
+  } finally { bridge.end(); }
+});
+
+test('Windows grants microphone and loopback only to the detached editor and its current attempt', {timeout: 7000}, async () => {
+  const {windows, bridge, handlers, commands, ready, command, call, send, reply} = await windowsMeetingHost();
+  const {settings, pill} = windows;
+  const permission = (win, kind, overrides = {}) => {
+    let allowed;
+    handlers.permission(win.webContents, kind, value => { allowed = value; }, {
+      requestingUrl: win.webContents.mainFrame.url, mediaTypes: ['audio'], isMainFrame: true, ...overrides,
+    });
+    return allowed;
+  };
+  const audio = (win, overrides) => permission(win, 'media', overrides);
+  const displayPermission = (win, overrides) => permission(win, 'display-capture', overrides);
+  const audioCheck = (win, overrides = {}) => handlers.permissionCheck(win.webContents, 'media', '', {
+    isMainFrame: true, mediaType: 'audio', ...overrides,
+  });
+  const display = (frame, overrides = {}) => {
+    let grant;
+    handlers.display({frame, userGesture: true, audioRequested: true, videoRequested: true, ...overrides}, value => { grant = value; });
+    return grant;
+  };
+  const capture = (status, source, captureId) => send({
+    event: 'meetings', state: {active: {id: 'note', status, source}, captureId},
+  });
+  try {
+    ready(settings);
+    ready(pill);
+    send({window: 'settings-show'});
+    command(settings, 'openMeeting', 'note');
+    const editor = windows.meeting;
+    const frame = editor.webContents.mainFrame;
+    assert.throws(() => call(editor, 'start', ['note', 'system']), /capture_unavailable/);
+    ready(editor);
+    for (const [method, args] of [['start', ['note', 'mic']], ['resume', ['note']], ['feed', ['note', 'AAE=', false, 'mic']]]) {
+      assert.throws(() => call(settings, method, args), /Invalid renderer channel/);
+    }
+    assert.throws(() => call(editor, 'start', ['other', 'mic']), /capture_unavailable/);
+    assert.equal(audio(editor), false);
+    assert.equal(displayPermission(editor), false);
+    assert.equal(display(frame), null);
+
+    const microphone = call(editor, 'start', ['note', 'mic']);
+    assert.throws(() => call(editor, 'start', ['note', 'mic']), /capture_unavailable/);
+    capture('starting', 'mic', 'mic-lease');
+    reply({captureId: 'mic-lease'});
+    await microphone;
+    assert.equal(audio(editor), true);
+    assert.equal(audioCheck(editor), true);
+    assert.equal(audio(settings), false);
+    assert.equal(audioCheck(pill), false);
+    assert.equal(audio(editor, {mediaTypes: ['audio', 'video']}), false);
+    assert.equal(audio(editor, {requestingUrl: settings.webContents.mainFrame.url}), false);
+    assert.equal(audio(editor, {isMainFrame: false}), false);
+    assert.equal(audioCheck(editor, {mediaType: 'video'}), false);
+    assert.equal(displayPermission(editor), false);
+    assert.equal(display(frame), null);
+    assert.throws(() => call(editor, 'feed', ['note', 'AAE=', false, 'mic-lease']), /capture_unavailable/);
+    capture('recording', 'mic', 'mic-lease');
+    assert.equal(audio(editor), false);
+    editor.close();
+    const pcm = call(editor, 'feed', ['note', 'AAE=', false, 'mic-lease']);
+    reply(null);
+    await pcm;
+    const stopped = call(editor, 'stop', ['note']);
+    reply(null);
+    await stopped;
+    command(editor, 'meetingAudioReleased', 'mic-lease');
+    send({event: 'meetings', state: {active: null, captureId: null}});
+
+    command(settings, 'openMeeting', 'note');
+    const system = call(editor, 'start', ['note', 'system']);
+    capture('starting', 'system', 'system-lease');
+    reply({captureId: 'system-lease'});
+    await system;
+    assert.equal(audio(editor), true);
+    assert.equal(displayPermission(settings), false);
+    assert.equal(displayPermission(editor, {requestingUrl: settings.webContents.mainFrame.url}), false);
+    assert.equal(displayPermission(editor, {isMainFrame: false}), false);
+    assert.equal(displayPermission(editor), true);
+    assert.equal(display(settings.webContents.mainFrame), null);
+    assert.equal(display({...frame}), null);
+    assert.equal(display(frame, {userGesture: false}), null);
+    assert.equal(display(frame, {audioRequested: false}), null);
+    assert.equal(display(frame, {videoRequested: false}), null);
+    assert.deepEqual(display(frame), {video: frame, audio: 'loopback'});
+    assert.equal(display(frame), null, 'only one loopback grant per attempt');
+    assert.equal(displayPermission(editor), false);
+    capture('recording', 'system', 'system-lease');
+    const pause = call(editor, 'pause', ['note']);
+    reply(null);
+    await pause;
+    capture('paused', 'system', null);
+    assert.equal(audio(editor), false);
+    assert.throws(() => call(editor, 'resume', ['note']), /capture_unavailable/);
+    assert.throws(() => command(settings, 'meetingAudioReleased', 'system-lease'), /Invalid window control/);
+    command(editor, 'meetingAudioReleased', 'system-lease');
+    assert.deepEqual(commands.at(-1), {event: 'meetings-media-released', captureId: 'system-lease'});
+    editor.minimize();
+    assert.throws(() => call(editor, 'resume', ['note']), /capture_unavailable/);
+    send({window: 'meetings-show'});
+    assert.throws(() => call(editor, 'resume', ['other']), /capture_unavailable/);
+    const resume = call(editor, 'resume', ['note']);
+    capture('starting', 'system', 'resume-lease');
+    reply({captureId: 'resume-lease'});
+    await resume;
+    command(editor, 'meetingAudioReleased', 'system-lease');
+    assert.equal(audio(editor), true);
+    const replacement = {url: frame.url};
+    editor.webContents.mainFrame = replacement;
+    assert.equal(audio(editor), false);
+    assert.equal(displayPermission(editor), false);
+    assert.equal(display(replacement), null);
+    assert.throws(() => call(editor, 'mediaReady', ['note', 'Fake mic', 'resume-lease']), /capture_unavailable/);
+    editor.webContents.mainFrame = frame;
+    assert.equal(displayPermission(editor), true);
+    assert.deepEqual(display(frame), {video: frame, audio: 'loopback'});
+    assert.throws(() => call(editor, 'mediaReady', ['note', 'Fake mic', 'system-lease']), /capture_unavailable/);
+    const mediaReady = call(editor, 'mediaReady', ['note', 'Fake mic', 'resume-lease']);
+    reply(null);
+    await mediaReady;
+    capture('recording', 'system', 'resume-lease');
+    assert.throws(() => call(editor, 'feedChannels', ['note', 'AAE=', 'AAI=', 'system-lease']), /capture_unavailable/);
+    assert.throws(() => call(editor, 'feed', ['note', 'AAE=', true, 'resume-lease']), /capture_unavailable/);
+    assert.throws(() => call(editor, 'feedChannels', ['note', 'A'.repeat(13657), 'AAI=', 'resume-lease']), /invalid_audio/);
+    const channels = ['note', 'AAE=', 'AAI=', 'resume-lease'];
+    const paired = call(editor, 'feedChannels', channels);
+    assert.deepEqual(commands.at(-1).args, channels);
+    assert.throws(() => call(editor, 'feedChannels', channels), /capture_overload/);
+    reply(null);
+    await paired;
+
+    editor.close();
+    assert.throws(() => command(pill, 'stopMeeting', 'other'), /Invalid pill control/);
+    command(pill, 'stopMeeting', 'note');
+    assert.deepEqual(editor.messages.at(-1), {topic: 'clarify:window-event', value: 'meeting-stop', target: 'note'});
+    assert.equal(editor.isVisible(), false);
+    assert.equal(pill.isFocused(), false);
+    const stop = call(editor, 'stop', ['note']);
+    reply(null);
+    await stop;
+    const crashed = once(editor, 'watchdog-crash');
+    const keepAlive = setTimeout(() => {}, 4000);
+    try {
+      capture('finalizing', 'system', 'resume-lease');
+      await crashed;
+    } finally { clearTimeout(keepAlive); }
+    assert.equal(audio(editor), false);
+    assert.equal(display(frame), null);
+  } finally { bridge.end(); }
+});
+test('the worklet sends no audio during model startup and drains only admitted samples', () => {
+  const messages = [];
+  let Worklet;
+  runInNewContext(readFileSync(resolve(__dirname, '../src/meetings/pcm-worklet.js'), 'utf8'), {
+    AudioWorkletProcessor: class { port = {postMessage: message => messages.push(message)}; },
+    registerProcessor: (_name, processor) => { Worklet = processor; },
+  });
+  const capture = new Worklet({});
+  const audio = new Float32Array(128).fill(.5);
+  const frame = () => capture.process([[audio], []], [[new Float32Array(128)]]);
+  for (let n = 0; n < 50; n++) frame();
+  assert.deepEqual(messages, []);
+  capture.port.onmessage({data:'begin'});
+  frame();
+  capture.port.onmessage({data:'drain'});
+  assert.equal(messages[0].pcm.byteLength, 256);
+  assert.equal(messages[0].system, undefined);
+  assert.equal(messages[1], 'drained');
+  assert.equal(frame(), false);
+  messages.length = 0;
+  const stalled = new Worklet({processorOptions: {separateSystem: true}});
+  const loopback = new Float32Array(128).fill(-.25);
+  stalled.port.onmessage({data:'begin'});
+  for (let frame = 0; frame < 1100; frame++) {
+    if (!stalled.process([[audio], [loopback]], [[new Float32Array(128)]])) break;
+  }
+  assert.equal(messages[0].pcm.byteLength, messages[0].system.byteLength);
+  assert.equal(new Int16Array(messages[0].pcm)[0], 16384);
+  assert.equal(new Int16Array(messages[0].system)[0], -8192);
+  assert.equal(messages.length, 26);
+  assert.equal(messages[25], 'overload');
+});
 test('host retains settings until accepted close, resets each reopen and keeps pill passive', async () => {
   const e = fakeElectron(), input = new PassThrough(), output = new PassThrough(); let sent = ''; output.on('data', c => sent += c);
   const {windows: {settings, pill}, bridge} = await startHost(e, input, output, e.passiveWindow);
@@ -134,18 +569,22 @@ test('host retains settings until accepted close, resets each reopen and keeps p
   bridge.end(); assert.ok(e.app.quits);
 });
 
-test('preload revokes and pauses hidden-window playback before acknowledging capture', async () => {
-  const fs = require('node:fs'), vm = require('node:vm');
-  const handlers = {}, effects = [];
-  const ipcRenderer = {on: (name, callback) => handlers[name] = callback,
-    invoke: async (_channel, _scope, method) => {effects.push(method); return true;}, removeListener() {}};
-  vm.runInNewContext(fs.readFileSync(require.resolve('../electron/preload.cjs'), 'utf8'), {
-    require: () => ({ipcRenderer, contextBridge: {exposeInMainWorld() {}}}),
-    CustomEvent: class {constructor(type, options) {this.type=type; this.detail=options.detail;}},
-    document: {dispatchEvent: event => effects.push('revoke:' + event.detail), querySelectorAll: () => [{pause: () => effects.push('pause')}]},
-  });
-  handlers['clarify:stop-audio'](null, 'owned-lease');
-  assert.deepEqual(effects, ['revoke:owned-lease', 'pause', 'endRecordingPlayback']);
+test('preload exposes the native meeting capability and revokes hidden-window playback before capture', () => {
+  for (const [platform, separate] of [['darwin', true], ['win32', true], ['linux', false]]) {
+    const handlers = {}, effects = [];
+    let api;
+    const ipcRenderer = {on: (name, callback) => handlers[name] = callback,
+      invoke: async (_channel, _scope, method) => {effects.push(method); return true;}, removeListener() {}};
+    runInNewContext(readFileSync(require.resolve('../electron/preload.cjs'), 'utf8'), {
+      process: {platform},
+      require: () => ({ipcRenderer, contextBridge: {exposeInMainWorld(_key, value) {api = value;}}}),
+      CustomEvent: class {constructor(type, options) {this.type=type; this.detail=options.detail;}},
+      document: {dispatchEvent: event => effects.push('revoke:' + event.detail), querySelectorAll: () => [{pause: () => effects.push('pause')}]},
+    });
+    assert.equal(api.separateMeetingWindow, separate);
+    handlers['clarify:stop-audio'](null, 'owned-lease');
+    assert.deepEqual(effects, ['revoke:owned-lease', 'pause', 'endRecordingPlayback']);
+  }
 });
 
 const webRTCModule = import('../electron/webrtc-transport.mjs');

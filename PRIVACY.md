@@ -123,7 +123,7 @@ owner-restricted files that contain plaintext credentials.
 
 ## Retention and deletion
 
-Desktop stopped recordings keep a full local audio copy in the profile's
+Desktop dictation keeps stopped recordings in the profile's
 `recording-recovery` folder, including failed processing attempts. History lists
 these recordings even when text history is disabled. They remain until you delete
 the corresponding History item. They do not synchronize with account history. Retry sends
@@ -132,6 +132,30 @@ request. Cancelled recordings are not added. A crash during capture, before the
 local copy is saved, can leave only the working file. History can also find
 remaining working files after processing ends or the app restarts. A full disk
 can prevent either copy from being saved.
+
+Desktop Meetings transcribes microphone audio on your computer. When you select
+system audio, it also transcribes sound from apps on Windows and macOS 14.2 or
+later. On macOS, Clarify requests system audio access and captures only audio.
+Clarify does not save meeting audio. It saves meeting notes, transcripts and
+summaries in the local profile. You can delete
+them from Meetings. They do not sync with your Clarify account. If you request
+a summary, Clarify sends the transcript and your notes to the configured
+text model on this computer.
+When speaker labels are enabled, Clarify analyzes voices on the device. It
+saves the labels and names you assign with the transcript. It does not save
+voiceprints or use the names to identify people in other meetings.
+On Mac, when the local speaker comparison model is installed, Clarify can
+compare clean system speech to keep a speaker's label after a long gap.
+The comparison vectors stay on the device, in memory, until the active
+meeting ends. This includes time spent paused.
+
+If you enable overlap recovery on Mac, Clarify keeps up to two short
+excerpts of system audio in the queue at a time, including the one it is
+processing. It can compare recovered
+speech with nearby clean speech to match speaker labels in the same meeting.
+Audio and voice vectors stay in memory and are released when processing ends.
+Clarify saves recovered text and any supported labels alongside the original
+transcript.
 
 iPhone stopped recordings remain in the app's private Application Support
 storage until explicit deletion from a History item in Dictation. Audio is excluded from device

@@ -1,8 +1,8 @@
 # Architecture
 
-Clarify has a local-first desktop client for Windows and macOS, an iOS client
-in `mobile/`, and an optional account service in `server/`. All inference uses
-the user's computer, provider credentials, or connected subscription. Clarify does not fund
+Clarify has a local-first Windows and macOS desktop client, an iOS client in `mobile/`,
+and an optional account service in `server/`. All inference uses the user's
+computer, provider credentials, or connected subscription. Clarify does not fund
 transcription or text processing. Signing in does not change provider routes.
 The iOS client requires an explicitly paired computer for processing; an account
 alone does not enable dictation. Existing account libraries and history remain
@@ -191,7 +191,7 @@ A keyless OpenAI-compatible endpoint must be literal loopback; its requests do
 not follow redirects. A missing optional text service preserves the transcript.
 
 The native Nemotron streaming engine accepts bounded mono 16 kHz PCM frames.
-The existing recorder remains the sole microphone owner. Cumulative partials are
+The existing recorder owns the microphone for dictation. Cumulative partials are
 for display; only final text enters the existing publication workflow. Whisper
 remains available. The optional Apple SpeechAnalyzer adapter remains disabled
 until native build and device acceptance establish its supported route.
@@ -201,6 +201,86 @@ The existing WAV path serves keyboard and background recording. An admitted live
 operation is not replayed as WAV. Cached asset readiness is checked outside the
 host lock; changed file identities invalidate it. Full integrity verification
 still precedes native loading.
+
+Meetings use the same pinned Nemotron model and recognition language. The
+Electron workspace acquires audio only after the Qt engine accepts a user start
+or resume. It matches the configured microphone by its device name. The audio
+worklet sends bounded mono PCM packets over the local child pipe. On Windows,
+combined capture sends synchronized microphone and loopback packets. At Start
+and Resume, the controller checks how many logical CPUs the process can use.
+With up to two, both capture modes use one Nemotron session and skip speaker
+labeling. Combined capture mixes the two sources in this mode. The capture
+queue keeps up to 64 seconds of pending PCM in memory. Pause, Stop, and normal
+Quit release audio capture and give the worker up to 90 seconds to process its
+backlog. Capture reports overload if the buffer fills or the recognizer exceeds
+an input or processing deadline. With more than two CPUs, combined capture uses
+two Nemotron sessions to keep overlapping turns in the transcript.
+On macOS 14.2 and later, the meeting controller opens a private Core Audio tap after model and
+microphone setup. It
+mixes both sources for recognition and keeps a bounded copy of each source in
+memory for attribution. The tap requires system audio permission.
+It captures only audio and leaves system playback active. The dock shows capture
+state when the workspace is hidden. Pause, stop, lost device, and system suspend
+release the streams. Desktop dictation and meeting capture have mutually exclusive
+admission. Meetings reserve the native engine across transcript segments, so a
+paired phone cannot start a second session on the same model between segments.
+
+`clarify/desktop/meetings.py` owns capture, checkpoints and the profile's
+`meetings.sqlite3`. It saves transcripts and notes with no audio files.
+Recognition finalizes short transcript segments during long meetings. Summary
+generation is explicit and uses an enabled OpenAI-compatible loopback text
+route. It uses no credentials or environment proxies. It saves the result
+only if the source note and summary still match the generation input.
+
+Meetings can download a pinned Sortformer model to label up to four voices
+per audio window. A separate worker adds labels from Nemotron token times.
+On macOS with both sources selected, it runs Sortformer on system audio alone
+every six seconds, with up to eight seconds of overlap. The pinned C API
+accepts complete windows. Clarify matches anonymous labels through shared
+speech and can revise recent turns as more audio arrives. During a pause it
+keeps a short system-audio tail and speaker timings in memory to help
+match labels when capture resumes. If the verified WeSpeaker asset is
+available, the Mac system-audio worker can also match returning speakers after
+a gap using several clean references. It keeps up to four vectors for each of
+eight speakers in the active meeting, including while paused. Strong timing
+matches take priority. A voice match requires two distinct references.
+When clean evidence is insufficient, the timing tracker can assign a new
+anonymous label after a short wait. This leaves the existing names on their
+original speaker IDs. The optional inference worker skips work under memory
+pressure and cannot delay finalization. Speaker continuity
+works with overlap recovery off and uses the existing model without a new
+download route. The microphone source has its own label
+when the system track is sufficiently quiet and available. Echo, simultaneous
+speech and other uncertain matches can leave text unassigned. On Windows,
+the microphone channel has a fixed local label in two-session capture. A
+separate Sortformer worker labels turns from the system channel in that mode
+and from the microphone in microphone-only capture.
+The worker starts at six seconds between windows and can reach 0.8 seconds
+when inference stays within budget. Capture or recognition backlog delays
+optional windows. Pause and Stop discard pending windows. After ASR saves
+the transcript, the speaker worker can make one bounded pass over an
+unlabeled tail. Mac microphone-only recordings apply labels to completed
+transcript blocks. Clarify saves text and labels. User-assigned names apply
+only to their meeting.
+
+Optional Mac overlap recovery uses sub-second Sortformer updates to find
+two-speaker intervals. One warm worker runs the pinned MossFormer2 ONNX
+model and decodes each separated stream with its own Nemotron model handle.
+The worker accepts up to two clips at a time, including the clip in progress.
+When both slots are busy, the next interval stays in the mixed transcript.
+Long overlaps can produce multiple short clips as capacity becomes available.
+The original recognition stream has its own model and queue. Pause and Stop
+release the capture devices first. The worker can then finish accepted clips
+within a 20-second budget. Clarify retries archived text in a bounded memory
+buffer if the database write fails.
+
+Sortformer anchors link single-speaker intervals to meeting-local speaker
+IDs. Waveform correlation on the edges of each overlap and, when needed,
+WeSpeaker comparisons to nearby clean turns match the separated tracks to
+these IDs. Weak matches stay unlabeled. The worker retains bounded PCM in
+memory and does not save voice vectors. The transcript can show recovered
+turns during capture. SQLite keeps the recovered text and labels alongside
+the original mixed transcript.
 
 Shortcut capture is owned by the Qt Settings controller, including the React
 dialog's capture state. Capture temporarily releases native hotkeys and input

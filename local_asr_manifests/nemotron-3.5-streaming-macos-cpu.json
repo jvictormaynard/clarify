@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "provider": "local_asr",
+  "engine": {
+    "name": "transcribe.cpp",
+    "version": "v0.4.2",
+    "source_url": "https://github.com/handy-computer/transcribe.cpp/tree/v0.4.2",
+    "license": "MIT"
+  },
+  "recommended_model": {
+    "id": "nemotron-3.5-streaming",
+    "display_name": "Nemotron 3.5 Streaming (provisional)",
+    "source_url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/tree/53ce288f69326b415aeef030cfcb02a08a8096dd",
+    "license": "OpenMDW-1.1"
+  },
+  "requirements": {
+    "platform": "macOS Apple Silicon",
+    "compute": "CPU, maximum 3 threads; provisional candidate",
+    "runtime": "transcribe.cpp 0.4.2; CPU acceleration",
+    "memory_bytes": 2000000000,
+    "disk_bytes": 1000000000,
+    "download_bytes": 753545800
+  },
+  "license_files": [
+    "local_asr_manifests/nemotron35-LICENSE.txt",
+    "local_asr_manifests/nemotron35-NOTICE.txt"
+  ],
+  "assets": {
+    "runtime": {
+      "filename": "transcribe-native-0.4.2-macos-arm64-metal.tar.gz",
+      "url": "https://github.com/handy-computer/transcribe.cpp/releases/download/v0.4.2/transcribe-native-0.4.2-macos-arm64-metal.tar.gz",
+      "size": 2451560,
+      "sha256": "75ea3a705f3edec09942fdbb1b2b5509d7ecd75bda55158a47a3ab1e2d1105b3",
+      "license": "MIT",
+      "source_url": "https://github.com/handy-computer/transcribe.cpp/releases/tag/v0.4.2",
+      "archive": "tar.gz"
+    },
+    "model": {
+      "filename": "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
+      "url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/53ce288f69326b415aeef030cfcb02a08a8096dd/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
+      "source_url": "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/tree/53ce288f69326b415aeef030cfcb02a08a8096dd",
+      "license": "OpenMDW-1.1",
+      "size": 751094240,
+      "sha256": "b94545b313b3223fda7b2857a52681da813935c2127643d1e9ff0c23d988089c"
+    }
+  },
+  "extracted_files": [
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/contract.json",
+      "path": "runtime/contract.json",
+      "size": 113,
+      "sha256": "32626396975d0bf465d96cc4fa5b07e1fd669bb92e679fde959ec9cdb1fefb14"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/libggml-base.dylib",
+      "path": "runtime/libggml-base.dylib",
+      "size": 674368,
+      "sha256": "c83c2cc72d1e1042791d2cd00d230547022133af6a62424c6052b1ae2763d52e"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/libggml-cpu.dylib",
+      "path": "runtime/libggml-cpu.dylib",
+      "size": 934368,
+      "sha256": "268a3a43c84b513af2c904b910566bb41430f5f51c15397cb790bc58f482fc17"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/libggml-metal.dylib",
+      "path": "runtime/libggml-metal.dylib",
+      "size": 5482096,
+      "sha256": "1e1adad931674e3bcbeddc6a3ec0997c45a0bc542a731f40f1a20815cd6b9951"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/libggml.dylib",
+      "path": "runtime/libggml.dylib",
+      "size": 72976,
+      "sha256": "72d7df190c68305f7563405c46cc9e7567a105fbe9bbe071c2746ddf288fb9f7"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/libtranscribe.dylib",
+      "path": "runtime/libtranscribe.dylib",
+      "size": 1618464,
+      "sha256": "ef1c794c6d9d00957db55228703f8903bdf24572423cbe17beaf7dbaddd88db7"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/licenses/LICENSE",
+      "path": "runtime/licenses/LICENSE",
+      "size": 1083,
+      "sha256": "86a53633b56f6b029d3cb42158bcc7aac0cdff898aceb13e83b93e368bbc4ac6"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/licenses/ggml/LICENSE",
+      "path": "runtime/licenses/ggml/LICENSE",
+      "size": 1078,
+      "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/licenses/src/third_party/miniz/LICENSE",
+      "path": "runtime/licenses/src/third_party/miniz/LICENSE",
+      "size": 1162,
+      "sha256": "6f20fa7672b00e2e975c291df737cf227addf3ad32e36fef3fe0f416e4664d3d"
+    },
+    {
+      "archive_path": "transcribe-native-macos-arm64-metal/licenses/src/third_party/silero_vad/LICENSE",
+      "path": "runtime/licenses/src/third_party/silero_vad/LICENSE",
+      "size": 1075,
+      "sha256": "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"
+    }
+  ]
+}

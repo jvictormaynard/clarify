@@ -9,6 +9,7 @@ fi
 
 repo=$PWD
 python="$repo/.venv/bin/python"
+ort_notices=$("$python" -c 'from pathlib import Path; from importlib.util import find_spec; print(Path(find_spec("onnxruntime").origin).parent)')
 arch=x64
 if [[ $(uname -m) == arm64 ]]; then arch=arm64; fi
 
@@ -20,6 +21,11 @@ output="$repo/dist/macos"
 work="$repo/build/macos"
 mkdir -p "$work"
 app="$output/Clarify.app"
+meeting_audio="$work/libclarify_meeting_audio.dylib"
+xcrun clang -dynamiclib -mmacosx-version-min=13.0 -fobjc-arc -fvisibility=hidden -O2 \
+    -install_name @rpath/libclarify_meeting_audio.dylib \
+    -framework Foundation -framework CoreAudio \
+    "$repo/clarify/desktop/native/meeting_audio.m" -o "$meeting_audio"
 
 "$python" -m PyInstaller --noconfirm --clean --onedir --windowed \
     --name Clarify --osx-bundle-identifier com.clarify.desktop \
@@ -31,6 +37,7 @@ app="$output/Clarify.app"
     --exclude-module lark --exclude-module lxml --exclude-module packaging \
     --exclude-module setuptools --exclude-module tomli --exclude-module typing_extensions \
     --exclude-module wheel \
+    --add-binary "$meeting_audio:." \
     --add-data "$repo/clarify/desktop/qml:qml" \
     --add-data "$repo/assets:assets" \
     --add-data "$repo/shared:shared" \
@@ -38,6 +45,9 @@ app="$output/Clarify.app"
     --add-data "$repo/local_asr_manifest.json:." \
     --add-data "$repo/local_asr_manifests:local_asr_manifests" \
     --add-data "$repo/licenses:licenses" \
+    --add-data "$ort_notices/LICENSE:licenses/onnxruntime" \
+    --add-data "$ort_notices/ThirdPartyNotices.txt:licenses/onnxruntime" \
+    --copy-metadata numpy \
     "$repo/clarify/desktop/qml_app.py"
 
 contents="$app/Contents"
@@ -52,6 +62,7 @@ version=$("$python" -c 'from version import __version__; print(__version__)')
 /usr/libexec/PlistBuddy -c 'Add :LSUIElement bool true' \
     -c 'Add :LSMinimumSystemVersion string 13.0' \
     -c 'Add :NSMicrophoneUsageDescription string Clarify uses your microphone when you record.' \
+    -c 'Add :NSAudioCaptureUsageDescription string Clarify uses system audio to transcribe meetings when you select it.' \
     -c "Set :CFBundleShortVersionString $version" "$plist"
 codesign --force --sign - "$app"
 codesign --verify --deep --strict "$app"

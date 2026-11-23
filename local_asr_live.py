@@ -8,6 +8,7 @@ raw transcript for the existing once-only workflow publication path.
 from __future__ import annotations
 
 import ctypes as C
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import io
@@ -25,6 +26,14 @@ MODEL_ID = "nemotron-3.5-streaming"
 RATE = 16000
 MAX_CHUNK = 2560  # 80 ms
 MAX_PENDING = 100  # eight seconds, including cold load; never drop speech
+
+
+class LocalASRBacklogError(LocalASRSidecarError):
+    """The recognizer could not admit or drain its input in time."""
+
+
+class LocalASRBusyError(LocalASRSidecarError):
+    pass
 
 
 class Load(C.Structure):
@@ -101,17 +110,41 @@ class Text(C.Structure):
     ]
 
 
+class Token(C.Structure):
+    _fields_ = [
+        ("size", C.c_uint64),
+        ("id", C.c_int),
+        ("probability", C.c_float),
+        ("start", C.c_int64),
+        ("end", C.c_int64),
+        ("segment", C.c_int),
+        ("word", C.c_int),
+        ("text", C.c_char_p),
+    ]
+
+
+@dataclass(frozen=True)
+class TimedToken:
+    start: int
+    end: int
+    text: bytes
+
+
 @dataclass(frozen=True)
 class LiveResult:
     text: str
     committed: str
     final: bool
     received_seconds: float
+    tokens: tuple[TimedToken, ...] = ()
 
 
 def _check(status):
     if status:
         raise LocalASRSidecarError(f"Native recognition failed ({status})")
+
+
+_NATIVE_ABORT = C.CFUNCTYPE(C.c_bool, C.c_void_p)
 
 
 class NativeEngine:
@@ -124,22 +157,30 @@ class NativeEngine:
     compute_device = "cpu"
     native_streaming = True
 
-    def __init__(self, installer, idle_seconds=120):
+    def __init__(self, installer, idle_seconds=120, *, threads=3, native_abort=False):
         self.installer = installer
         self.idle_seconds = idle_seconds
+        self.threads = threads
+        self.native_abort = native_abort
         self._lock = threading.Lock()
         self._state = threading.Lock()
         self._sessions = set()
+        self._reservation = None
         self._timer = None
         self._model = C.c_void_p()
         self._lib = None
         self._dll_directory = None
         self._closed = False
 
-    def _load(self):
+    def _load(self, *, cancel_check=None):
         if self._model.value:
             return
-        self.installer.verify()
+        if cancel_check is None:
+            self.installer.verify()
+        else:
+            self.installer.verify(cancel_check=cancel_check)
+            if cancel_check():
+                raise LocalASRCancelledError("Recognition was cancelled")
         path = self.installer.executable_path
         if os.name == "nt":
             self._dll_directory = os.add_dll_directory(str(path.parent))
@@ -159,6 +200,7 @@ class NativeEngine:
                 C.c_int,
             ),
             "session_free": ([C.c_void_p], None),
+            "set_abort_callback": ([C.c_void_p, _NATIVE_ABORT, C.c_void_p], None),
             "run_params_init": ([C.POINTER(Run)], None),
             "stream_params_init": ([C.POINTER(StreamParams)], None),
             "stream_update_init": ([C.POINTER(Update)], None),
@@ -173,6 +215,9 @@ class NativeEngine:
             ),
             "stream_finalize": ([C.c_void_p, C.POINTER(Update)], C.c_int),
             "stream_get_text": ([C.c_void_p, C.POINTER(Text)], C.c_int),
+            "n_tokens": ([C.c_void_p], C.c_int),
+            "token_init": ([C.POINTER(Token)], None),
+            "get_token": ([C.c_void_p, C.c_int, C.POINTER(Token)], C.c_int),
         }
         for name, (args, result) in signatures.items():
             fn = getattr(lib, "transcribe_" + name)
@@ -180,27 +225,98 @@ class NativeEngine:
         if lib.transcribe_version() != b"0.4.2":
             raise LocalASRSidecarError("Native runtime ABI does not match 0.4.2")
         _check(lib.transcribe_init_backends_default())
+        self._lib = lib
+        self._load_model()
+
+    def _load_model(self):
         params = Load()
-        lib.transcribe_model_load_params_init(C.byref(params))
+        self._lib.transcribe_model_load_params_init(C.byref(params))
         params.backend = 4  # CPU_ACCEL; never auto-select a GPU
         _check(
-            lib.transcribe_model_load_file(
+            self._lib.transcribe_model_load_file(
                 os.fsencode(self.installer.model_path),
                 C.byref(params),
                 C.byref(self._model),
             )
         )
-        self._lib = lib
 
-    def open_live_session(self, language="en", on_result=None):
+    @contextmanager
+    def isolated_decoder(self, cancel, *, live_tokens=False):
+        # transcribe.cpp 0.4.2 allows concurrent compute only on distinct models.
+        # Use the verified ABI bindings, but give recovery its own CPU model.
+        engine = NativeEngine(self.installer, threads=2, native_abort=True)
+        engine._lib = self._lib
+        try:
+            if engine._lib is None:
+                engine._load(cancel_check=cancel.is_set)
+            else:
+                engine.installer.verify(cancel_check=cancel.is_set)
+                if cancel.is_set():
+                    raise LocalASRCancelledError("Recognition was cancelled")
+                engine._load_model()
+            if cancel.is_set():
+                raise LocalASRCancelledError("Recognition was cancelled")
+            with engine.reserve_live(
+                token_timestamps=True, live_tokens=live_tokens
+            ) as open_session:
+                yield open_session
+        finally:
+            # This runs on the recovery worker. Native compute owns the model
+            # until its last session exits, even after the meeting stops waiting.
+            engine.shutdown()
+
+    @property
+    def verified_library(self):
+        if self._lib is None:
+            raise LocalASRSidecarError("Recognition runtime is not loaded")
+        return self._lib
+
+    @contextmanager
+    def reserve_live(self, *, token_timestamps=False, live_tokens=False, threads=None):
+        """Hold admission across consecutive sessions of one recording."""
+        reservation = object()
+        with self._state:
+            if self._closed or self._sessions or self._reservation is not None:
+                raise LocalASRBusyError("Recognition is already active")
+            self._reservation = reservation
+        try:
+            yield lambda language, callback: self.open_live_session(
+                language,
+                callback,
+                reservation=reservation,
+                token_timestamps=token_timestamps,
+                live_tokens=live_tokens,
+                threads=threads,
+            )
+        finally:
+            with self._state:
+                self._reservation = None
+
+    def open_live_session(
+        self,
+        language="en",
+        on_result=None,
+        *,
+        reservation=None,
+        token_timestamps=False,
+        live_tokens=False,
+        threads=None,
+    ):
         with self._state:
             if self._closed:
                 raise LocalASRSidecarError("Recognition engine is closed")
-            if self._sessions:
-                raise LocalASRSidecarError("Recognition is already active")
+            if self._sessions or self._reservation is not reservation:
+                raise LocalASRBusyError("Recognition is already active")
             if self._timer:
                 self._timer.cancel()
-            session = LiveSession(self, language, on_result)
+            session = LiveSession(
+                self,
+                language,
+                on_result,
+                token_timestamps=token_timestamps,
+                live_tokens=live_tokens,
+                threads=threads,
+            )
             self._sessions.add(session)
             session.worker.start()
             return session
@@ -279,8 +395,20 @@ class NativeEngine:
 
 
 class LiveSession:
-    def __init__(self, engine, language, callback):
+    def __init__(
+        self,
+        engine,
+        language,
+        callback,
+        *,
+        token_timestamps=False,
+        live_tokens=False,
+        threads=None,
+    ):
         self.engine, self.callback = engine, callback
+        self.threads = threads
+        self.token_timestamps = token_timestamps or live_tokens
+        self.live_tokens = live_tokens
         language = str(language or "auto").replace("_", "-")
         defaults = {
             "en": "en-US",
@@ -351,7 +479,7 @@ class LiveSession:
             except queue.Full:
                 if time.monotonic() >= deadline:
                     self.cancel()
-                    raise LocalASRSidecarError("Recognition queue is full")
+                    raise LocalASRBacklogError("Recognition queue is full")
 
     def feed(self, pcm: bytes, *, timeout=0.0, cancel_event=None):
         if not pcm or len(pcm) > MAX_CHUNK or len(pcm) % 2:
@@ -365,17 +493,20 @@ class LiveSession:
             self._put(bytes(pcm), timeout, cancel_event)
             self._samples += len(pcm) // 2
 
-    def finish(self, *, timeout=30.0, cancel_event=None):
-        deadline = time.monotonic() + timeout
+    def end_input(self, *, timeout=30.0, cancel_event=None):
         with self._input_lock:
             if not self._finishing:
                 self._finishing = True
                 self._put(None, timeout, cancel_event)
+
+    def finish(self, *, timeout=30.0, cancel_event=None):
+        deadline = time.monotonic() + timeout
+        self.end_input(timeout=timeout, cancel_event=cancel_event)
         while not self.done.wait(0.05):
             self._check(cancel_event)
             if time.monotonic() >= deadline:
                 self.cancel()
-                raise LocalASRSidecarError("Recognition finalization timed out")
+                raise LocalASRBacklogError("Recognition finalization timed out")
         self._check(cancel_event)
         return self.result
 
@@ -390,6 +521,18 @@ class LiveSession:
             if self.callback:
                 self.callback(result)
 
+    @staticmethod
+    def _tokens(lib, session):
+        tokens = []
+        for index in range(lib.transcribe_n_tokens(session)):
+            token = Token()
+            lib.transcribe_token_init(C.byref(token))
+            if lib.transcribe_get_token(session, index, C.byref(token)):
+                return ()
+            if token.text:
+                tokens.append(TimedToken(token.start, token.end, token.text))
+        return tuple(tokens)
+
     def _run(self):
         session = C.c_void_p()
         try:
@@ -399,14 +542,21 @@ class LiveSession:
                 lib = self.engine._lib
                 sp = SessionParams()
                 lib.transcribe_session_params_init(C.byref(sp))
-                sp.threads = 3
+                sp.threads = self.engine.threads
+                if self.threads is not None:
+                    sp.threads = min(sp.threads, self.threads)
                 _check(
                     lib.transcribe_session_init(
                         self.engine._model, C.byref(sp), C.byref(session)
                     )
                 )
+                if self.engine.native_abort:
+                    abort_callback = _NATIVE_ABORT(lambda _: self.abort.is_set())
+                    lib.transcribe_set_abort_callback(session, abort_callback, None)
                 rp = Run()
                 lib.transcribe_run_params_init(C.byref(rp))
+                if self.token_timestamps:
+                    rp.timestamps = 4  # TRANSCRIBE_TIMESTAMPS_TOKEN
                 rp.language = (
                     None if self.language == "auto" else self.language.encode("utf8")
                 )
@@ -440,19 +590,24 @@ class LiveSession:
                     tx = Text()
                     lib.transcribe_stream_text_init(C.byref(tx))
                     _check(lib.transcribe_stream_get_text(session, C.byref(tx)))
-                    result = LiveResult(
-                        (tx.full or b"").decode("utf8"),
-                        (tx.committed or b"").decode("utf8"),
-                        chunk is None,
-                        u.received / 1000,
-                    )
+                    text = (tx.full or b"").decode("utf8")
+                    final = chunk is None
                     self._check()
-                    if result.final or result.text != previous:
+                    if final or text != previous:
+                        result = LiveResult(
+                            text,
+                            (tx.committed or b"").decode("utf8"),
+                            final,
+                            u.received / 1000,
+                            self._tokens(lib, session)
+                            if self.live_tokens or (final and self.token_timestamps)
+                            else (),
+                        )
                         self._publish(result)
-                    previous = result.text
-                    if result.final:
-                        self.result = result
-                        break
+                        previous = text
+                        if final:
+                            self.result = result
+                            break
         except Exception as error:
             self.error = error
         finally:

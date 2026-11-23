@@ -1,4 +1,28 @@
 {
+  "setup_choose_purpose": {
+    "de": "Wie möchten Sie Clarify nutzen?",
+    "ru": "Как вы хотите использовать Clarify?"
+  },
+  "setup_purpose_hint": {
+    "de": "Wählen Sie die Funktionen aus, die Sie nutzen möchten.",
+    "ru": "Отметьте функции, которыми хотите пользоваться."
+  },
+  "setup_purpose_dictation": {
+    "de": "Diktat",
+    "ru": "Диктовка"
+  },
+  "setup_purpose_dictation_hint": {
+    "de": "Schreiben Sie in anderen Apps mit Ihrer Stimme.",
+    "ru": "Пишите голосом в других приложениях."
+  },
+  "setup_purpose_meetings": {
+    "de": "Besprechungen",
+    "ru": "Встречи"
+  },
+  "setup_purpose_meetings_hint": {
+    "de": "Transkribieren Sie Besprechungen und machen Sie Notizen.",
+    "ru": "Расшифровывайте встречи и делайте заметки."
+  },
   "setup_choose_language": {
     "de": "Sprache auswählen",
     "ru": "Выберите язык"

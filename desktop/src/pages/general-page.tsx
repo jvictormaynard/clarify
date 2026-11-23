@@ -14,7 +14,11 @@ const languageNames: Record<string, string> = {
 
 export function GeneralPage({ controller }: SettingsPageProps) {
   const { state, run } = controller;
-  const macDesktop = isMacDesktop();
+  if (isMacDesktop()) return state.applicationVersion && (
+    <Section title={t("Sistema")}>
+      <Row title={t("Versão {v0}", { v0: state.applicationVersion })}>{null}</Row>
+    </Section>
+  );
   return (
     <>
       <Section title={t("Sistema")}>
@@ -23,20 +27,14 @@ export function GeneralPage({ controller }: SettingsPageProps) {
             options={interfaceLanguages}
             disabled={controller.busy} onChange={value => void run("personalSetupCommand", "interface_language", JSON.stringify({ interfaceLanguage: value }))} />
         </Row>
-        {macDesktop ? (
-          state.applicationVersion && (
-            <Row title={t("Versão {v0}", { v0: state.applicationVersion })}>{null}</Row>
-          )
-        ) : (
-          <Toggle
-            title={t("Iniciar com o Windows")}
-            hint={t("Deixe o Clarify pronto quando você precisar.")}
-            checked={state.autostart}
-            onChange={(v) => void run("setAutostart", v)}
-          />
-        )}
+        <Toggle
+          title={t("Iniciar com o Windows")}
+          hint={t("Deixe o Clarify pronto quando você precisar.")}
+          checked={state.autostart}
+          onChange={(v) => void run("setAutostart", v)}
+        />
       </Section>
-      {!macDesktop && state.applicationVersion && (
+      {state.applicationVersion && (
         <Section title={t("Atualizações")}>
           <Toggle
             title={t("Atualização automática")}
