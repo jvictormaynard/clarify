@@ -417,6 +417,7 @@ def validate_workflow_route(
     scope: WorkflowScope | str,
     *,
     registry=PROVIDER_REGISTRY,
+    require_model: bool = True,
 ) -> WorkflowRoute:
     """Validate and canonicalize one route before provider work starts."""
     normalized_scope = normalize_workflow_scope(scope)
@@ -461,7 +462,11 @@ def validate_workflow_route(
     model = str(route.model_id or "").strip()
     if not model:
         model = _default_model_for_scope(metadata, normalized_scope)
-    if not model and getattr(metadata, "authentication", "api_key") != "oauth":
+    if (
+        require_model
+        and not model
+        and getattr(metadata, "authentication", "api_key") != "oauth"
+    ):
         raise WorkflowConfigurationError(
             normalized_scope,
             f"{metadata.display_name} has no default model for this workflow.",

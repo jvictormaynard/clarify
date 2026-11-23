@@ -7,7 +7,7 @@ let child;
 const stop = () => { if (child) stopProcessTree(child); };
 try {
   child = spawnOwned(process.execPath, [fileURLToPath(new URL('./test-electron.mjs', import.meta.url))], {
-    env: process.env, stdio: 'inherit', windowsHide: true, ownDetached: true,
+    env: process.env, stdio: 'inherit', windowsHide: true, ownDetached: process.platform !== 'darwin',
   });
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);

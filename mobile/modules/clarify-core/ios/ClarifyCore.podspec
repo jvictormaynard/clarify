@@ -11,6 +11,8 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
   s.source_files = '*.{swift,h,m}'
+  s.resource_bundles = { 'ClarifyWebRTC' => ['ComputerWebRTC/*'] }
+  s.frameworks = 'WebKit'
   s.libraries = 'sqlite3'
   s.swift_version = '5.0'
 end

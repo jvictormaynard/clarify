@@ -5,6 +5,11 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+### Added
+
+- Run Clarify on Apple Silicon Macs with cloud dictation, global shortcuts, a menu bar icon, and focus-safe paste.
+- Download the macOS app and its SHA-256 checksum with each new desktop release.
+
 ## [0.18.0] - 2026-11-13
 
 ### Added

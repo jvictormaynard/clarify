@@ -4,13 +4,12 @@ The React/Electron desktop window follows the Wispr Flow Windows reference
 with Clarify branding and semantic colors. Shared React controls retain their
 existing focus, keyboard, bridge and lifecycle owners. Its workspace includes dictation, style, text actions, dictionary,
 snippets and history. Application preferences and account access use a Settings
-dialog. The fixed dock,
-quick menus and Qt/QML recovery views retain their own theme and
-behavior. Mobile and the server are outside this system.
+dialog. The dock and quick menus use their existing compact React styles. The native
+file-import panel retains its Qt/QML theme. Mobile and the server are outside this system.
 
 ## Required use
 
-This guide is the sole visual specification for React/Tauri desktop pages and
+This guide is the sole visual specification for React/Electron desktop pages and
 controls, including new pages. Read it before any desktop visual change. Apply
 the standard within authorized UI work even when the request has no prior
 conversation or does not repeat the style requirement. Routine work that follows
@@ -22,9 +21,9 @@ colors in separate page controls is not sufficient. Keep visual metrics here;
 update the shared implementation and this guide together when the standard
 changes. Do not create another style guide or copy the metrics into `AGENTS.md`.
 
-For Qt/QML work, preserve the native theme, shell, passive pill focus and existing
-interaction contracts. Do not apply Settings panels, dialogs or popup geometry
-to the pill or its quick menus.
+The pill and quick menus have one React/Electron implementation. Qt/QML owns
+only the native file-import panel and its existing theme. Preserve passive pill
+focus and the native input ownership contracts.
 
 ## Source reference
 
@@ -47,7 +46,12 @@ License. Exact provenance is in
 
 ## Tokens and typography
 
-`desktop/src/styles/tokens.css` owns the semantic values. Earlier `--color-*`
+`shared/ui-colors.json` owns the semantic dark and light colors shared by
+desktop and mobile. Mobile reads it directly. `npm run colors:sync` in
+`desktop/` generates `styles/shared-colors.css`; do not edit that output.
+`desktop/src/styles/tokens.css` maps the shared roles and owns desktop surfaces,
+effects and geometry. Native mobile keeps its existing surface and contrast choices.
+Earlier `--color-*`
 names remain aliases for page styles. Do not create a second palette in a page.
 `styles.css` maps the semantic roles into Tailwind utilities. Document defaults
 use the base layer, shared and feature layouts use the components layer, and
@@ -102,6 +106,50 @@ finish before it unmounts. Reduced motion removes these transitions. Keep the
 existing Clarify surface colors, glass effects, focus rings and draft guards.
 Static reference inspection does not prove every runtime or native interaction.
 
+## Component ownership and design decisions
+
+These rules adapt T3 Code's [Web UI guidance](https://github.com/pingdotgg/t3code/blob/e8bfabaa398f98031bf09c0f1496225e38365cbf/docs/internals/web-ui.md)
+and [component ownership and performance guidance](https://github.com/pingdotgg/t3code/blob/e8bfabaa398f98031bf09c0f1496225e38365cbf/AGENTS.md#taste).
+The existing T3 MIT notice is in `desktop/licenses/t3code-MIT.txt`.
+Clarify's geometry, CSS layers, native focus contracts and motion values in this
+document remain authoritative. Keep the current React memoization patterns;
+T3's compiler-specific rules do not apply to Clarify.
+
+- Search the facade, primitives and an existing page before adding a control.
+  Shared controls own their appearance. Select a `variant` or `size`; add a
+  reusable treatment there when no option fits. Put placement and surrounding
+  spacing on the parent. A feature-specific treatment stays with its feature.
+- Compose shared parts instead of copying markup and classes. Extend existing
+  search, library, disclosure and dialog owners before adding another pattern.
+  Keep state, draft handling and commands with their existing controller.
+- Use the existing typography, spacing and semantic roles. Keep a clear primary
+  action, quiet secondary actions and visible state. Add borders, cards, icons
+  and motion only when they explain grouping, action or state. Follow the task
+  navigation defined here; do not add navigation for unsupported features.
+- Keep keyboard operation, accessible names, focus return and reduced motion.
+  Check empty, loading, disabled, error, long-content and translated states where
+  applicable. Verify the full flow in its real container, including cancel and undo.
+- Bound list and payload work. Keep paged history, debounced search and deferred
+  detail loading. Avoid continuous decorative repainting. Measure a performance
+  problem before adding caches or abstractions; do not replace existing guide
+  artwork or animations as part of unrelated work.
+
+`npm run lint:ui` in `desktop/` checks control restyling, Tailwind colors and
+arbitrary visual values, static inline styling, Base UI import boundaries, shared-color synchronization,
+and literal colors in application CSS. `npm run typecheck` runs it too, so the
+existing `settings_unit` CI task enforces the policy. The lint fixtures check
+that rejected and permitted patterns still work.
+
+The lint contracts name existing feature-owned CSS classes. Additions need a
+clear owner and a reason; do not widen contracts or suppress rules to pass a
+check. Unstyled disclosure parts accept feature styling. Native titlebar controls
+retain their own scoped contract. Runtime meters, waveform timing, native input
+style forwarding and pill positioning have narrow inline-style exceptions. Flags and provider marks retain fixed SVG colors.
+The CSS check permits literals only in the palette, generated shared colors,
+provider branding and the existing guide/phone illustration files. Keep those
+exceptions confined to their existing purpose. Lint does not judge hierarchy,
+CSS overrides through allowed feature classes, or usability; rendered review does.
+
 ## Reusable controls
 
 `components/primitives/` contains the reusable Base UI components. Their
@@ -136,6 +184,30 @@ Pages use the feature-facing facade in `components/ui.tsx`:
 - `Picker`: searchable combobox with stable option IDs, keyboard selection,
   selected state, refresh, empty state and focus return.
 
+## Settings page composition
+
+Use `SettingsPage.Root` and `Body` when a settings page needs to keep controls
+outside the scrolling content. Keep the shell header and navigation. Use
+`Intro` for a brief instruction only when it helps users complete the task.
+The Models and services page uses `SettingsTabs` to separate services and local
+models from text processing profiles. Use the same segmented tabs for related
+views that replace one another. Arrow keys switch tabs. Use buttons for actions.
+
+Put connection status, recovery and advanced options beside the control they
+affect. Show a default or recommendation only when the product supplies one.
+Keep local and cloud processing choices clear. Group related inputs in one
+`Section` and reveal optional details when users need them.
+
+The Settings dialog owns its save/discard footer and draft guards. A self-contained
+form can use `SettingsPage.Actions` outside `Body` for pending changes. Show it
+only while it has an action to offer. Do not repeat the current setup in a
+persistent footer.
+
+Use the shared loading state for actions such as Refresh. Loading keeps
+keyboard focus on the control, exposes its busy state, and blocks repeat
+activation. Use native `disabled` when an action is unavailable. Verify the
+actions and focus in the real shell at normal and compact sizes.
+
 `components/settings-navigation.tsx` renders grouped page buttons from the shared
 button styles. Navigation remains available while a preference, refresh, or
 text save is pending. The sidebar starts with Home and uses direct task
@@ -144,7 +216,7 @@ Dialogs and dropdowns retain their own keyboard handling.
 
 `components/titlebar.tsx` owns the native drag region, identity, page context and
 existing minimize, maximize and close commands. Page geometry belongs in
-`styles/pages.css` and `styles/snippets.css`; window geometry belongs in
+`styles/pages.css` and `styles/libraries.css`; window geometry belongs in
 `styles/layout.css`. Reuse the facade instead of copying control styles.
 
 ## Settings organization
@@ -362,12 +434,57 @@ focus removes the mask. Main content has no top fade, so headings retain full
 contrast at the measured 40 px inset. It keeps a stable scrollbar lane. Controls stack when needed. Library and history text can wrap and remain
 available in full; layout must not truncate persisted content.
 
-Authentication keeps full-width forms through each step. Managed accounts hide
-personal providers. Destructive operations keep their confirmation and account
+Authentication keeps full-width forms through each step. Signed-in accounts retain
+personal provider controls. Destructive operations keep their confirmation and account
 context checks. Opening a screen does not acquire the microphone or submit an
 authentication request.
 
-Initial setup and Account Settings share the same sign-in method selector:
+Personal onboarding follows the approved OpenBot reference layout, implemented
+with Clarify components and assets. Start with a centered interface-language
+wheel, then optional Clarify account sign-in or sign-up, speech model selection,
+rewriting setup, verified installation, practice and optional phone pairing.
+Reuse the account sign-in form and offer Continue without an account.
+Signing in to Clarify leaves personal rewriting services available. The interface preference is separate from spoken and
+output languages. The wheel uses local flag marks for English (US), Portuguese
+(Brazil), Spanish (Spain), German and Russian. It supports keyboard arrows,
+wheel input and drag. German and Russian onboarding copy uses English for
+messages that have no translation yet.
+The saved interface language can also be changed in System Settings.
+Back preserves choices; each step moves keyboard focus to its heading.
+
+Use one focused task per screen, a centered heading, small step dots and a compact
+480 px content column. Show the Clarify brand on the language screen. Use grouped
+choice and provider rows, quiet separators, short copy and generous spacing.
+The primary action is a centered pill with foreground/background colors. Use
+semantic tokens and shared controls. At 640 px, retain readable spacing without
+horizontal scroll. Short windows scroll.
+
+Rewriting setup offers separate choices for free models and a subscription.
+The free path shows OpenCode. The subscription path shows ChatGPT. Personal
+API services and compatible local endpoints have their own path. Keep raw
+transcription available. In the provider group, show a selection control, the
+provider mark and its connection state. Place More providers below the group
+and open a searchable dialog. Use the primary action to connect the selected
+provider or continue after model selection. Put the connected provider's
+management action in its row. Offer the OpenCode download in its row when
+a verified runtime is missing. On Windows, a verified native OpenCode install
+in the user Programs folder can supply the runtime. API keys and endpoint details use a connection
+dialog. ChatGPT uses the supported browser
+sign-in and cancellation flow. Do not show unsupported code-login methods.
+Show model selection after connection and catalog discovery. Rewriting and speech
+models have separate controls and saved routes. Changing a provider clears its
+setup errors. An optional skip continues with the raw transcript.
+
+The speech card shows the model, processing location and download. Put hardware
+details and the refresh action in the model-options disclosure. Installation
+shows progress and supports cancel and retry. Provider preparation uses an
+indeterminate status when byte progress is unavailable. Completion requires the
+backend installation check. Opening setup does not request audio, install a
+model or connect a provider. The user starts each action.
+Live speech appears in a bounded panel above the pill while recording. Partials
+are display-only and clear when capture ends.
+
+Account Settings uses the shared sign-in method selector:
 Google, Microsoft, GitHub and email. The shared sign-in form keeps full-width
 controls with a 44 px minimum height, 8 px gaps between method choices and a
 14 px form gap during onboarding. Email opens its own form; Back retains the
@@ -395,8 +512,8 @@ the configured toggle or hold behavior. Practice has only Skip and Continue in
 its footer. Continue stays disabled until a completed, nonempty transcript has
 no error or blocked state. Skip also closes active recording safely. Error
 recovery uses a contextual settings link. Starting again uses the shortcut.
-Back appears on the left and the forward action on the right in onboarding
-navigation rows, including email and code confirmation. Setup and practice
+Email and code confirmation place Back on the left and the forward action on
+the right. Personal model setup uses the centered stacked footer described above. Setup and practice
 group Skip and Continue on the right, with Skip immediately before Continue. The sign-in
 method choices retain their order. A completed transcript shows a success state;
 Skip and failed attempts do not. Replay uses the same practice destination and
@@ -431,8 +548,8 @@ phrase and restores the keys. The animation loops automatically, including on
 hover. Reduced motion shows the completed text without motion.
 
 The email form and Account Settings use an outlined guest button. It opens local setup during onboarding and
-returns to General from Account Settings. An expired managed session retains its
-explicit sign-out action before personal processing becomes available.
+returns to General from Account Settings. An expired account session retains its
+explicit sign-out action. Personal processing does not depend on that session.
 
 Provider marks use local official assets. The Google button uses the current
 gradient G and a bundled Google Sans Medium font, with its provider-specific
@@ -471,7 +588,7 @@ isolated controller-backed browser checks. Cover labels, help, keyboard, focus,
 page navigation, local filters, automatic preferences, drafts, managed accounts
 and 640/820/1040 px geometry. Run the TypeScript/production build and Settings
 suite. Python behavior changes also require the Python suite. Native Windows checks cover the
-Tauri/QProcess boundary and the actual window.
+Electron/QProcess boundary and the actual window.
 
 Automated checks establish only the tested interactions. Manual Windows
 acceptance of DPI, global hotkeys, tray, transparency and passive pill focus

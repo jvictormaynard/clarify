@@ -90,7 +90,7 @@ final class CloudAccountTests: XCTestCase {
     XCTAssertFalse(account.outputPreferencesSupported, "False capability must remain disabled")
     supports = true
     _ = try await account.command("refresh", value: "", library: library, connectionOnly: true)
-    XCTAssertTrue(ProcessingDestination(defaults: defaults, account: account).outputPreferencesSupported)
+    XCTAssertTrue(account.outputPreferencesSupported)
     XCTAssertEqual(account.historyScope, prod + "|" + productionUser)
     XCTAssertTrue(try library.history(scope: account.historyScope, includeLocal: false).entries.isEmpty)
     XCTAssertEqual(try library.history(scope: oldScope, includeLocal: false).entries, [entry])
@@ -324,68 +324,6 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertTrue((f.account.snapshot()["usage"] as! [String: Any]).isEmpty)
     }
   }
-  @MainActor func testSelectedTextUsesAccountSessionAndExplicitTranslationTarget() async throws {
-    let f = try ActivationFixture(); defer { f.cleanup() }
-    var requests: [URLRequest] = []
-    let account = CloudAccount(defaults: f.defaults, transport: { request in
-      requests.append(request)
-      return try f.response(request, ["text": "Hi, how are you?", "usage": ["used_ms": 0]])
-    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
-    for action in ["rewrite", "translate"] {
-      let id = UUID().uuidString
-      let result = try await account.processText(id, action: action, text: "Oi, tudo bem?", language: "en")
-      XCTAssertEqual(result.text, "Hi, how are you?"); XCTAssertTrue(result.successful)
-      let request = try XCTUnwrap(requests.last)
-      XCTAssertEqual(request.url?.absoluteString, "https://one.test/v1/text")
-      XCTAssertEqual(request.httpMethod, "POST")
-      XCTAssertEqual(request.value(forHTTPHeaderField: "X-Session-Token"), "fixture")
-      let body = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: String])
-      XCTAssertEqual(body, ["operation_id": id, "action": action, "text": "Oi, tudo bem?", "language": "en"])
-      XCTAssertFalse(account.isBusy)
-    }
-    XCTAssertEqual(requests.count, 2, "One request per action, without audio or automatic retries")
-  }
-  @MainActor func testSelectedTextRejectsInvalidInputAndDoesNotRetryQuotaOrMalformedResults() async throws {
-    let f = try ActivationFixture(); defer { f.cleanup() }
-    var requests = 0, status = 429
-    var response: [String: Any] = ["code": "allowance_exhausted"]
-    let account = CloudAccount(defaults: f.defaults, transport: { request in
-      requests += 1; return try f.response(request, response, status)
-    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
-    let id = UUID().uuidString
-    for (operation, action, text, language) in [("invalid", "rewrite", "Text", "en"),
-      (id, "dictate", "Text", "en"), (id, "rewrite", "Text", "xx"),
-      (id, "translate", " ", "pt"), (id, "rewrite", String(repeating: "é", count: 8001), "auto")] {
-      do { _ = try await account.processText(operation, action: action, text: text, language: language); XCTFail("Invalid text input accepted") }
-      catch let error as ClarifyError { XCTAssertEqual(error.code, "invalid_text_request") }
-    }
-    XCTAssertEqual(requests, 0)
-    do { _ = try await account.processText(id, action: "rewrite", text: "Text", language: "auto"); XCTFail("Quota error accepted") }
-    catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
-    XCTAssertEqual(requests, 1); XCTAssertFalse(account.isBusy)
-    status = 200
-    for output in [" ", String(repeating: "é", count: 32_001)] {
-      response = ["text": output]
-      do { _ = try await account.processText(UUID().uuidString, action: "translate", text: "Text", language: "pt"); XCTFail("Invalid result accepted") }
-      catch is ClarifyError {}
-    }
-    XCTAssertEqual(requests, 3); XCTAssertFalse(account.isBusy)
-  }
-  @MainActor func testLateSelectedTextResponseCannotEnterAnotherSession() async throws {
-    let f = try ActivationFixture(); defer { f.cleanup() }
-    var pending: CheckedContinuation<(Data, HTTPURLResponse), Error>?, sent: URLRequest?
-    let account = CloudAccount(defaults: f.defaults, transport: { request in
-      sent = request; return try await withCheckedThrowingContinuation { pending = $0 }
-    }, readCredential: { f.token }, saveCredential: { f.token = $0 })
-    let task = Task { try await account.processText(UUID().uuidString, action: "rewrite", text: "Original", language: "auto") }
-    while pending == nil { await Task.yield() }
-    f.token = "new-session"
-    pending!.resume(returning: try f.response(try XCTUnwrap(sent), ["text": "Stale result", "usage": ["used_ms": 999]]))
-    do { _ = try await task.value; XCTFail("Stale result accepted") }
-    catch is CancellationError {}
-    XCTAssertEqual(f.token, "new-session"); XCTAssertFalse(account.isBusy)
-    XCTAssertNil((account.snapshot()["usage"] as? [String: Any])?["used_ms"])
-  }
   @MainActor private final class ActivationFixture {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -605,116 +543,6 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertEqual(activations, stage == "audio" ? 1 : 0); XCTAssertFalse(f.account.isBusy)
     }
   }
-  @MainActor func testSnippetRewriteAndExpandedFallbackStayTerminalAndKeepRawHistory() async throws {
-    let raw = "Quero avisar que minha disponibilidade."
-    let expanded = "Quero avisar que posso atender de segunda a sexta."
-    let rewritten = "Posso atender de segunda a sexta. Segunda frase."
-    let snippets = [Snippet(trigger: "minha disponibilidade", replacement: "posso atender de segunda a sexta"),
-      Snippet(trigger: "segunda frase", replacement: "RECURSION SHOULD NOT RUN")]
-    for (text, didRewrite) in [(rewritten, true), (expanded, false)] {
-      let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-      let defaults = UserDefaults(suiteName: suite)!
-      defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
-      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-      let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("synthetic.m4a")
-      let guest = Snippet(trigger: "guest", replacement: "Guest only")
-      try library.saveSnippets([guest]); try Data("synthetic audio".utf8).write(to: audio)
-      var dictations = 0
-      let account = CloudAccount(defaults: defaults, transport: { request in
-        switch request.url!.path {
-        case "/v1/dictionary": return try self.response(request, ["revision": 0, "entries": []])
-        case "/v1/snippets":
-          XCTAssertEqual(request.httpMethod, "GET")
-          return try self.response(request, ["revision": 1, "entries": snippets.map { ["trigger": $0.trigger, "replacement": $0.replacement, "enabled": $0.enabled, "case_sensitive": $0.caseSensitive] as [String: Any] }])
-        default:
-          XCTAssertEqual(request.url!.path, "/v1/dictations", "The mobile app must not call a rewrite provider or apply another snippet pass")
-          dictations += 1
-          return try self.response(request, ["transcript": raw, "text": text, "rewritten": didRewrite, "snippet_expanded": true])
-        }
-      }, readCredential: { "fixture" }, saveCredential: { _ in })
-      let operationID = UUID().uuidString
-      let outcome = try await account.dictate(audio, operationID: operationID, library: library)
-      XCTAssertTrue(outcome.successful); XCTAssertEqual(outcome.rewritten, didRewrite)
-      XCTAssertEqual(outcome.transcript, raw); XCTAssertEqual(outcome.text, text)
-      XCTAssertFalse(outcome.text.contains("RECURSION SHOULD NOT RUN")); XCTAssertEqual(dictations, 1)
-      let entry = HistoryEntry(id: operationID, createdAt: 1000, transcript: outcome.transcript, text: outcome.text, rewritten: outcome.rewritten)
-      try library.record(entry, scope: account.historyScope)
-      let reopened = try LocalLibrary(root: root)
-      XCTAssertEqual(try reopened.history(scope: account.historyScope).entries, [entry])
-      XCTAssertEqual(try reopened.history(scope: account.historyScope).entries.first?.rewritten, didRewrite)
-      XCTAssertEqual(try reopened.snippets(scope: account.snippetScope), snippets)
-      XCTAssertEqual(try reopened.snippets(), [guest])
-    }
-  }
-  @MainActor func testDictationRevocationNotifiesResourceOwnerAfterInvalidatingSession() async throws {
-    for status in [401, 403] {
-      let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-      let defaults = UserDefaults(suiteName: suite)!
-      defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-      var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
-      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-      let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("synthetic.m4a")
-      try Data("synthetic audio".utf8).write(to: audio)
-      var token: String? = "fixture", invalidations = 0, dictations = 0
-      var account: CloudAccount! = nil
-      account = CloudAccount(defaults: defaults, transport: { request in
-        if ["/v1/dictionary", "/v1/snippets"].contains(request.url!.path) {
-          return try self.response(request, ["revision": 0, "entries": []])
-        }
-        XCTAssertEqual(request.url!.path, "/v1/dictations"); dictations += 1
-        return try self.response(request, ["code": "authentication_required"], status: status)
-      }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: {
-        XCTAssertTrue(Thread.isMainThread); XCTAssertNil(token); XCTAssertFalse(account.configured)
-        XCTAssertNil(account.scope); invalidations += 1
-      })
-      do {
-        _ = try await account.dictate(audio, operationID: UUID().uuidString, library: library)
-        XCTFail("An expired session cannot publish a dictation")
-      } catch let error as ClarifyError { XCTAssertEqual(error.code, "authentication_required") }
-      XCTAssertEqual(invalidations, 1); XCTAssertEqual(dictations, 1)
-      XCTAssertTrue(try library.history(scope: account.historyScope).entries.isEmpty)
-      account.setSessionInvalidationHandler({})
-    }
-  }
-  @MainActor func testPreflightRevocationKeepsLocalSnippetsAndNeverStartsPaidDictation() async throws {
-    for deniedPath in ["/v1/dictionary", "/v1/snippets"] {
-      for status in [401, 403] {
-        let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-        var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
-        defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-        var token: String? = "fixture", invalidations = 0, paths: [String] = []
-        var account: CloudAccount! = nil
-        account = CloudAccount(defaults: defaults, transport: { request in
-          let path = request.url!.path; paths.append(path)
-          XCTAssertTrue(["/v1/dictionary", "/v1/snippets"].contains(path), "An expired preflight must not start inference")
-          return try self.response(request, path == deniedPath ? ["code": "authentication_required"] : ["revision": 0, "entries": []],
-            status: path == deniedPath ? status : 200)
-        }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: {
-          XCTAssertTrue(Thread.isMainThread); XCTAssertNil(token); XCTAssertFalse(account.configured)
-          XCTAssertNil(account.scope); invalidations += 1
-        })
-        let library = try LocalLibrary(root: root), owner = try XCTUnwrap(account.snippetScope)
-        let saved = Snippet(trigger: "signature", replacement: "Offline saved text")
-        try library.saveSnippets([saved], scope: owner)
-        do {
-          // The absent audio also proves that revocation stops before reading it.
-          _ = try await account.dictate(root.appendingPathComponent("must-not-be-read.m4a"), operationID: UUID().uuidString, library: library)
-          XCTFail("A revoked preflight cannot continue to dictation")
-        } catch let error as ClarifyError {
-          XCTAssertEqual(error.code, "authentication_required")
-          XCTAssertEqual(error.localizedDescription, L("Entre na conta novamente."))
-          XCTAssertNil(error.operationID, "No inference operation was submitted")
-        }
-        XCTAssertEqual(paths, deniedPath == "/v1/dictionary" ? ["/v1/dictionary"] : ["/v1/dictionary", "/v1/snippets"])
-        XCTAssertEqual(invalidations, 1); XCTAssertNil(token); XCTAssertFalse(account.configured); XCTAssertFalse(account.isBusy)
-        XCTAssertEqual(try library.snippets(scope: owner), [saved]); XCTAssertTrue(try library.snippets().isEmpty)
-        account.setSessionInvalidationHandler({})
-      }
-    }
-  }
   @MainActor func testAccountCommandRevocationNotifiesTheSameResourceOwner() async throws {
     for action in ["refresh", "sync"] {
       let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -735,28 +563,6 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertEqual(invalidations, 1); XCTAssertFalse(account.configured)
       XCTAssertEqual(account.snapshot()["signedIn"] as? Bool, false)
     }
-  }
-  @MainActor func testSignedOutProcessingRejectsBeforeReadingAudioOrSendingRequests() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-    let library = try LocalLibrary(root: root)
-    let local = HistoryEntry(id: "old", createdAt: 1000, transcript: "old", text: "Old.", rewritten: true)
-    try library.record(local)
-    try library.saveDictionary([VocabularyEntry(term: "Local")])
-    var requests = 0
-    let account = CloudAccount(defaults: defaults, transport: { request in
-      requests += 1; return try self.response(request, [:])
-    }, readCredential: { nil }, saveCredential: { _ in XCTFail("Local credentials must not be changed") })
-    XCTAssertFalse(account.configured)
-    XCTAssertEqual(account.snapshot()["signedIn"] as? Bool, false)
-    do {
-      _ = try await account.dictate(root.appendingPathComponent("missing-audio"), operationID: UUID().uuidString, library: library)
-      XCTFail("An account is required before processing")
-    } catch let error as ClarifyError { XCTAssertEqual(error.localizedDescription, L("Entre na conta novamente.")) }
-    XCTAssertEqual(requests, 0)
-    XCTAssertEqual(try library.history().entries, [local])
-    XCTAssertEqual(try library.dictionary().map(\.term), ["Local"])
   }
   @MainActor func testAccountMetadataWithoutCredentialRequiresSignInAndCanRequestANewCode() async throws {
     let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -851,76 +657,6 @@ final class CloudAccountTests: XCTestCase {
       XCTAssertNil(usage["used_ms"]); XCTAssertNil(usage["limit_ms"])
       XCTAssertTrue(account.configured)
     }
-  }
-  @MainActor func testShortDictationFailureUpdatesUsageAndDoesNotRetryOrStoreHistory() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-    var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
-    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-    let operation = UUID().uuidString, library = try LocalLibrary(root: root)
-    // The hosted client must not impose a one-second minimum. The server owns decoding.
-    let audio = root.appendingPathComponent("short.wav")
-    var clip = Data()
-    func text(_ value: String) { clip.append(Data(value.utf8)) }
-    func integer<T: FixedWidthInteger>(_ value: T) { var little = value.littleEndian; withUnsafeBytes(of: &little) { clip.append(contentsOf: $0) } }
-    text("RIFF"); integer(UInt32(36 + 32_000)); text("WAVEfmt "); integer(UInt32(16)); integer(UInt16(1)); integer(UInt16(1))
-    integer(UInt32(16_000)); integer(UInt32(32_000)); integer(UInt16(2)); integer(UInt16(16)); text("data"); integer(UInt32(32_000))
-    clip.append(Data(repeating: 0, count: 32_000)); try clip.write(to: audio)
-    var dictations = 0
-    let account = CloudAccount(defaults: defaults, transport: { request in
-      if ["/v1/dictionary", "/v1/snippets"].contains(request.url!.path) { return try self.response(request, ["revision": 0, "entries": []]) }
-      XCTAssertEqual(request.url!.path, "/v1/dictations"); dictations += 1
-      return try self.response(request, ["code": "no_speech", "phase": "transcription", "operation_id": operation,
-        "usage": ["used_ms": 1000, "limit_ms": 18_000_000]], status: 422)
-    }, readCredential: { "fixture" }, saveCredential: { _ in })
-    do { _ = try await account.dictate(audio, operationID: operation, library: library); XCTFail("Empty speech must not become a successful dictation") }
-    catch let error as ClarifyError { XCTAssertEqual(error.code, "no_speech"); XCTAssertEqual(error.phase, "transcription") }
-    XCTAssertEqual(dictations, 1)
-    XCTAssertEqual((account.snapshot()["usage"] as? [String: Any])?["used_ms"] as? Int, 1000)
-    XCTAssertTrue(try library.history(scope: account.historyScope).entries.isEmpty)
-  }
-  @MainActor func testMalformedUnauthorizedResponseRevokesSessionBeforeAudioUpload() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-    var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
-    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-    var token: String? = "fixture", requests = 0
-    let account = CloudAccount(defaults: defaults, transport: { request in
-      requests += 1; XCTAssertEqual(request.url!.path, "/v1/dictionary")
-      return (Data("not JSON".utf8), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
-    }, readCredential: { token }, saveCredential: { token = $0 })
-    let library = try LocalLibrary(root: root)
-    do { _ = try await account.dictate(root.appendingPathComponent("never-read"), operationID: UUID().uuidString, library: library); XCTFail("Must require a new sign-in") }
-    catch let error as ClarifyError { XCTAssertEqual(error.localizedDescription, L("Entre na conta novamente.")) }
-    XCTAssertNil(token); XCTAssertFalse(account.hosted); XCTAssertTrue(account.managed); XCTAssertEqual(requests, 1)
-  }
-  @MainActor func testLateDictationFailureCannotRevokeOrUpdateTheNewCredential() async throws {
-    let suite = "ClarifyTests.\(UUID().uuidString)", root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let defaults = UserDefaults(suiteName: suite)!
-    defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: root) }
-    var state = CloudAccountState(); state.endpoint = "https://one.test"; state.userID = UUID().uuidString
-    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-    let library = try LocalLibrary(root: root), audio = root.appendingPathComponent("clip.m4a")
-    try Data("synthetic audio".utf8).write(to: audio)
-    var token: String? = "old", pending: CheckedContinuation<(Data, HTTPURLResponse), Error>?, dictationRequest: URLRequest?
-    var invalidations = 0
-    let account = CloudAccount(defaults: defaults, transport: { request in
-      if ["/v1/dictionary", "/v1/snippets"].contains(request.url!.path) { return try self.response(request, ["revision": 0, "entries": []]) }
-      dictationRequest = request
-      return try await withCheckedThrowingContinuation { pending = $0 }
-    }, readCredential: { token }, saveCredential: { token = $0 }, sessionInvalidated: { invalidations += 1 })
-    let task = Task { try await account.dictate(audio, operationID: UUID().uuidString, library: library) }
-    while pending == nil { await Task.yield() }
-    token = "new"
-    pending!.resume(returning: try response(dictationRequest!, ["code": "authentication_required", "usage": ["used_ms": 999]], status: 401))
-    do { _ = try await task.value; XCTFail("A stale request must be cancelled") }
-    catch is CancellationError {}
-    XCTAssertEqual(token, "new"); XCTAssertTrue(account.hosted)
-    XCTAssertNil((account.snapshot()["usage"] as? [String: Any])?["used_ms"])
-    XCTAssertFalse(account.isBusy)
-    XCTAssertEqual(invalidations, 0, "A response from the earlier session cannot stop the new session")
   }
   private func response(_ request: URLRequest, _ value: [String: Any], status: Int = 200) throws -> (Data, HTTPURLResponse) {
     (try JSONSerialization.data(withJSONObject: value), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
@@ -1019,11 +755,11 @@ final class CloudAccountTests: XCTestCase {
     _ = await account.syncHistory(library, force: true)
     XCTAssertNil(account.scope)
     XCTAssertEqual(account.historyScope, scope)
-    XCTAssertTrue(account.managed)
+    XCTAssertFalse(account.managed)
     XCTAssertFalse(account.acceptsHistory(capture))
     XCTAssertFalse(account.configured)
   }
-  func testExistingSignedInAccountProcessesWithoutSeparateActivation() throws {
+  func testExistingSignedInAccountDoesNotEnableInference() throws {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -1031,9 +767,9 @@ final class CloudAccountTests: XCTestCase {
     state.userID = UUID().uuidString
     defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
     let account = CloudAccount(defaults: defaults)
-    XCTAssertTrue(account.hosted)
-    XCTAssertTrue(account.managed)
-    XCTAssertEqual(account.snapshot()["hosted"] as? Bool, true)
+    XCTAssertFalse(account.hosted)
+    XCTAssertFalse(account.managed)
+    XCTAssertEqual(account.snapshot()["hosted"] as? Bool, false)
   }
   func testSavingAnOpenDraftPreservesWordsReceivedDuringAutomaticRefresh() throws {
     let suite = "ClarifyTests.\(UUID().uuidString)"
@@ -1057,7 +793,7 @@ final class CloudAccountTests: XCTestCase {
     state.hosted = true
     defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
     let account = CloudAccount(defaults: defaults)
-    XCTAssertTrue(account.managed)
+    XCTAssertFalse(account.managed)
     XCTAssertFalse(account.hosted)
     XCTAssertFalse(account.configured)
   }

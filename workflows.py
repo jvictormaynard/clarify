@@ -92,6 +92,7 @@ class WorkflowPhase(str, Enum):
 class SelectionDisposition(str, Enum):
     PASTED = "pasted"
     COPIED = "copied"
+    PRESERVED = "preserved"
 
 
 class NoUsableAudioError(RuntimeError):
@@ -152,6 +153,7 @@ class WorkflowState:
     result_text: str | None = None
     status_key: str | None = None
     can_retry: bool = False
+    recording_id: str | None = None
     can_undo: bool = False
     # Optional source/route metadata lets the desktop runtime persist an
     # opt-in history entry without coupling the orchestration layer to a
@@ -383,6 +385,7 @@ class _Session:
     usage_context: dict[str, Any] = field(default_factory=dict)
     recording: RecordingSessionGateway | None = None
     retry_audio: RecordingSnapshot | None = None
+    recovery_retry: bool = False
     cancel_capture_pending: bool = False
     # A publication is claimed under the service lock, then all gateway calls
     # happen after the lock is released.  This makes cancellation a clear
@@ -633,6 +636,7 @@ class WorkflowService:
                 result_text=result_text,
                 status_key=status_key,
                 can_retry=can_retry,
+                recording_id=getattr(session.recording, "recovery_id", None),
                 can_undo=can_undo,
                 source_text=source_text,
                 refined_text=refined_text,
@@ -722,8 +726,23 @@ class WorkflowService:
 
     # Dictation
 
-    def _start_dictation(self, command: StartDictation) -> bool:
-        if self._audio.microphone_available() is False:
+    def recover_dictation(
+        self, recording: RecordingSessionGateway, language: str
+    ) -> bool:
+        """Process retained audio as a new operation with the current route."""
+        return self._start_dictation(
+            StartDictation(target=None, mode="prompt", language=language),
+            recording=recording,
+        )
+
+    def _start_dictation(
+        self,
+        command: StartDictation,
+        *,
+        recording: RecordingSessionGateway | None = None,
+    ) -> bool:
+        recovered = recording is not None
+        if not recovered and self._audio.microphone_available() is False:
             session = self._new_session(
                 WorkflowKind.DICTATION,
                 target=command.target,
@@ -742,7 +761,8 @@ class WorkflowService:
             ):
                 return False
         try:
-            recording = self._audio.create_session()
+            if not recovered:
+                recording = self._audio.create_session()
         except MicrophoneUnavailableError:
             session = self._new_session(
                 WorkflowKind.DICTATION,
@@ -810,8 +830,15 @@ class WorkflowService:
                     self._stop_dictation()
 
             set_boundary_callback(automatic_stop)
-        self._transition(session, WorkflowPhase.RECORDING)
-        self._run_recording(recording, lambda: self._start_audio(session))
+        if recovered:
+            session.processing_started = self._clock.monotonic()
+            self._transition(session, WorkflowPhase.PROCESSING)
+            self._run_recording(
+                recording, lambda: self._process_dictation(session, 0.0)
+            )
+        else:
+            self._transition(session, WorkflowPhase.RECORDING)
+            self._run_recording(recording, lambda: self._start_audio(session))
         return True
 
     def _start_audio(self, session: _Session) -> None:
@@ -819,7 +846,11 @@ class WorkflowService:
             if session.recording is None:
                 raise RuntimeError("Recording session was not created")
             session.recording.transcription_language = (
-                "auto" if session.dictation_snapshot is not None else session.language
+                getattr(
+                    session.dictation_snapshot.config, "recognition_language", "auto"
+                )
+                if session.dictation_snapshot is not None
+                else session.language
             )
             session.recording.start()
             prepare = getattr(self._provider, "prepare_dictation", None)
@@ -893,6 +924,11 @@ class WorkflowService:
             ):
                 return False
             audio_source = session.retry_audio
+            if not cancelled:
+                # An HWND cannot establish which text field still owns this retry.
+                # Leave the result copied for an explicit paste instead.
+                session.target = None
+                session.recovery_retry = True
             session.retry_audio = None
             session.processing_started = self._clock.monotonic()
             session.timings_ms.clear()
@@ -921,6 +957,14 @@ class WorkflowService:
                 if not self._is_current(session.operation_id):
                     return
                 audio_source = session.recording.stop()
+            persist_audio = getattr(session.recording, "persist_audio", None)
+            if callable(persist_audio):
+                persist_audio(audio_source)
+            processing = getattr(session.recording, "begin_processing", None)
+            if callable(processing):
+                processing()
+            if audio_source.duration_seconds is not None:
+                elapsed = audio_source.duration_seconds
             provider_started = self._clock.monotonic()
             session.timings_ms["capture_finalize_ms"] = (
                 max(
@@ -967,9 +1011,7 @@ class WorkflowService:
             if not self._is_current(session.operation_id):
                 return
             if self._provider_failed(result):
-                session.recording.fail(RuntimeError("Transcription returned no text"))
-                self._transition(session, WorkflowPhase.FAILED, status_key="error")
-                return
+                raise RuntimeError("Transcription returned no text")
             if not self._is_current(session.operation_id):
                 return
             completion = session.recording.complete()
@@ -987,6 +1029,8 @@ class WorkflowService:
                     in {"refinement_failed", "refinement_not_allowed"}
                     else "refinement_failed"
                     if provider_result.refinement_failed
+                    else "dictation_recovered"
+                    if session.recovery_retry
                     else None
                 ),
                 source_text=(
@@ -1079,15 +1123,24 @@ class WorkflowService:
         except Exception as error:
             if not self._is_current(session.operation_id):
                 return
+            with self._lock:
+                if not self._is_current_locked(session.operation_id):
+                    return
+                session.retry_audio = audio_source
+                session.elapsed_seconds = elapsed
             if session.recording is not None:
                 try:
-                    session.recording.fail(error)
+                    # Keep the provider traceback out of the recorder owner.
+                    session.recording.fail(
+                        RuntimeError("Transcription processing failed")
+                    )
                 except Exception:
                     pass
             self._transition(
                 session,
                 WorkflowPhase.FAILED,
                 status_key=_failure_status(error, "error"),
+                can_retry=audio_source is not None,
             )
 
     def _write_dictation_if_current(
@@ -1657,9 +1710,10 @@ class WorkflowService:
             )
             return
         else:
-            status_key = (
-                None if disposition is SelectionDisposition.PASTED else copied_status
-            )
+            status_key = {
+                SelectionDisposition.COPIED: copied_status,
+                SelectionDisposition.PRESERVED: "clipboard_preserved",
+            }.get(disposition)
             with self._lock:
                 session.publication_finished = True
             self._transition(

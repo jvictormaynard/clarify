@@ -86,7 +86,7 @@ export function Picker({
               className="absolute end-1 top-1.5"
               aria-label={t("Atualizar {label}", { label: label.toLocaleLowerCase() })}
               onClick={onRefresh}
-              disabled={busy}
+              loading={busy}
               aria-busy={busy || undefined}
             >
               <RefreshCw size={15} className={busy ? "spin" : undefined} aria-hidden />

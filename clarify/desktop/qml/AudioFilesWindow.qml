@@ -1,0 +1,586 @@
+import QtQuick 6.5
+import QtQuick.Controls 6.5
+import QtQuick.Dialogs 6.5
+import QtQuick.Layouts 6.5
+import QtQuick.Window 6.5
+
+ApplicationWindow {
+    id: root
+    objectName: "audioFilesWindow"
+    property bool presentationVisible: false
+    readonly property Theme visualTheme: theme
+    width: theme.panelWidth * theme.uiScale
+    height: theme.panelHeight * theme.uiScale
+    minimumWidth: 400
+    minimumHeight: 300
+    visible: presentationVisible
+    title: qsTr("Import audio")
+    color: theme.card
+    flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    onClosing: function(close) { close.accepted = false; if (!audioBatch.running) workflow.closeFiles() }
+    Theme { id: theme }
+    Item {
+        id: filesPage
+        anchors.fill: parent
+        objectName: "filesPage"
+
+        // File imports are an explicit batch route.  Start with the
+        // saved transcription route, but keep every picker change
+        // local to this batch instead of mutating Settings.
+        property var persistedTranscriptionRoute:
+            settings.routes["transcription"]
+        property string batchExecution:
+            persistedTranscriptionRoute.providerId === "local_asr"
+            ? "local" : "cloud"
+        property string batchProviderId:
+            persistedTranscriptionRoute.providerId || ""
+        property string batchModelId:
+            persistedTranscriptionRoute.modelId || ""
+        property bool batchRouteTouched: false
+        property bool manualBatchModel: false
+        readonly property var defaultAudioModels: ({
+            "gemini": "gemini-2.5-flash",
+            "openai": "whisper-1",
+            "groq": "whisper-large-v3-turbo",
+            "local_asr": "ggml-small"
+        })
+
+        function providerIdsForExecution(execution) {
+            var providers = settings.providersForScope("transcription")
+            var selected = []
+            for (var index = 0; index < providers.length; ++index) {
+                var providerId = providers[index]
+                if ((execution === "local" && providerId === "local_asr")
+                        || (execution === "cloud" && providerId !== "local_asr"))
+                    selected.push(providerId)
+            }
+            return selected
+        }
+
+        function modelIdsForProvider(providerId) {
+            var models = []
+            var addModel = function(model) {
+                var value = String(model || "").trim()
+                if (value !== "" && models.indexOf(value) < 0)
+                    models.push(value)
+            }
+            var route = persistedTranscriptionRoute
+            if (route && route.providerId === providerId)
+                addModel(route.modelId)
+            var state = settings.providerStates[providerId]
+            if (state && state.models) {
+                for (var index = 0; index < state.models.length; ++index)
+                    addModel(state.models[index])
+            }
+            addModel(defaultAudioModels[providerId])
+            return models
+        }
+
+        function defaultModelForProvider(providerId) {
+            var route = persistedTranscriptionRoute
+            if (route && route.providerId === providerId && route.modelId)
+                return route.modelId
+            var models = modelIdsForProvider(providerId)
+            return models.length > 0 ? models[0] : ""
+        }
+
+        function initializeBatchRoute() {
+            manualBatchModel = false
+            var route = persistedTranscriptionRoute
+            var providerId = route && route.providerId
+                    ? route.providerId : ""
+            var execution = providerId === "local_asr" ? "local" : "cloud"
+            var providers = providerIdsForExecution(execution)
+            if (providers.indexOf(providerId) < 0)
+                providerId = providers.length > 0 ? providers[0] : ""
+            batchExecution = execution
+            batchProviderId = providerId
+            batchModelId = route && route.providerId === providerId
+                    ? route.modelId : defaultModelForProvider(providerId)
+            batchRouteTouched = false
+        }
+
+        function selectBatchExecution(execution) {
+            manualBatchModel = false
+            var providers = providerIdsForExecution(execution)
+            var providerId = providers.indexOf(batchProviderId) >= 0
+                    ? batchProviderId
+                    : (providers.length > 0 ? providers[0] : "")
+            batchExecution = execution
+            batchProviderId = providerId
+            batchModelId = defaultModelForProvider(providerId)
+            batchRouteTouched = true
+        }
+
+        function selectBatchProvider(providerId) {
+            if (providerIdsForExecution(batchExecution).indexOf(providerId) < 0)
+                return
+            batchProviderId = providerId
+            manualBatchModel = false
+            batchModelId = defaultModelForProvider(providerId)
+            batchRouteTouched = true
+        }
+
+        function selectBatchModel(model) {
+            batchModelId = String(model || "").trim()
+            batchRouteTouched = true
+        }
+
+        function commitBatchModel() {
+            var value = batchModelId
+            if (manualBatchModel)
+                value = batchModelField.text
+            batchModelId = String(value || "").trim()
+            batchRouteTouched = true
+        }
+
+        function startBatch() {
+            commitBatchModel()
+            audioBatch.start(
+                audioBatch.selectedFiles,
+                batchProviderId,
+                batchModelId,
+                workflow.language,
+                workflow.mode
+            )
+        }
+
+        function retryBatch() {
+            commitBatchModel()
+            audioBatch.retryFailed(
+                batchProviderId,
+                batchModelId,
+                workflow.language,
+                workflow.mode
+            )
+        }
+
+        Component.onCompleted: initializeBatchRoute()
+
+        Connections {
+            target: settings
+
+            function onConfigChanged() {
+                if (!filesPage.batchRouteTouched && !audioBatch.running)
+                    filesPage.initializeBatchRoute()
+            }
+        }
+
+        FileDialog {
+            id: audioFileDialog
+            title: qsTr("Import audio files")
+            fileMode: FileDialog.OpenFiles
+            nameFilters: [
+                qsTr("Audio files") + " (*.wav *.aif *.aiff *.au *.flac *.oga *.ogg *.wv)",
+                qsTr("All files") + " (*)"
+            ]
+            onAccepted: {
+                var paths = []
+                for (var index = 0; index < selectedFiles.length; ++index)
+                    paths.push(selectedFiles[index].toLocalFile())
+                audioBatch.setSelectedFiles(paths)
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Import audio")
+                        color: theme.text
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                    }
+
+                    Label {
+                        Layout.fillWidth: true
+                        text: audioBatch.running
+                              ? qsTr("Transcribing selected files")
+                              : qsTr("Select local files to transcribe")
+                        color: theme.dim
+                        font.pixelSize: 10
+                    }
+                }
+
+                AppButton {
+                    iconSource: "icons/x.svg"
+                    theme: root.visualTheme
+                    quiet: true
+                    enabled: !audioBatch.running
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 26
+                    Accessible.name: qsTr("Close audio import")
+                    onClicked: workflow.closeFiles()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: theme.border
+            }
+
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 4
+                columnSpacing: 7
+                rowSpacing: 5
+
+                Label {
+                    text: qsTr("Route")
+                    color: theme.dim
+                    font.pixelSize: 10
+                }
+
+                SearchSelect {
+                    id: batchExecutionBox
+                    objectName: "batchExecutionBox"
+                    visualTheme: theme
+                    Layout.fillWidth: true
+                    enabled: !audioBatch.running
+                    caption: qsTr("Transcription route")
+                    searchable: false
+                    options: [{id: "local", label: qsTr("Local Whisper")}, {id: "cloud", label: qsTr("Cloud")}]
+                    value: filesPage.batchExecution
+                    onActivated: function(value) { filesPage.selectBatchExecution(value) }
+                }
+
+                Label {
+                    text: qsTr("Provider")
+                    color: theme.dim
+                    font.pixelSize: 10
+                }
+
+                SearchSelect {
+                    id: batchProviderBox
+                    objectName: "batchProviderBox"
+                    visualTheme: theme
+                    Layout.fillWidth: true
+                    enabled: !audioBatch.running
+                    caption: qsTr("Transcription service")
+                    searchable: false
+                    options: filesPage.providerIdsForExecution(filesPage.batchExecution).map(function(id) { return {id: id, label: settings.providerName(id)} })
+                    value: filesPage.batchProviderId
+                    onActivated: function(value) { filesPage.selectBatchProvider(value) }
+                }
+
+                Label {
+                    text: qsTr("Model")
+                    color: theme.dim
+                    font.pixelSize: 10
+                }
+
+                SearchSelect {
+                    id: batchModelBox
+                    objectName: "batchModelBox"
+                    visualTheme: theme
+                    Layout.fillWidth: true
+                    enabled: !audioBatch.running
+                    Layout.columnSpan: 3
+                    caption: qsTr("Transcription model")
+                    searchPlaceholder: qsTr("Search models")
+                    options: filesPage.modelIdsForProvider(filesPage.batchProviderId).map(function(id) { return {id: id, label: id} })
+                    value: filesPage.batchModelId
+                    secondaryActionText: filesPage.batchExecution === "cloud" ? qsTr("Use model ID…") : ""
+                    onSecondaryRequested: {
+                        filesPage.manualBatchModel = true
+                        Qt.callLater(function() { batchModelField.forceActiveFocus(); batchModelField.selectAll() })
+                    }
+                    onActivated: function(value) { filesPage.manualBatchModel = false; filesPage.selectBatchModel(value) }
+                }
+
+                Label {
+                    visible: filesPage.manualBatchModel
+                    text: qsTr("Model ID")
+                    color: theme.dim
+                    font.pixelSize: 10
+                }
+                SettingsField {
+                    id: batchModelField
+                    objectName: "batchModelField"
+                    visualTheme: theme
+                    visible: filesPage.manualBatchModel
+                    enabled: !audioBatch.running
+                    Layout.columnSpan: 3
+                    Layout.fillWidth: true
+                    text: filesPage.batchModelId
+                    placeholderText: qsTr("For models not listed by your service")
+                    Accessible.name: qsTr("Custom transcription model ID")
+                    onEditingFinished: filesPage.selectBatchModel(text)
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 5
+
+                AppButton {
+                    text: qsTr("Choose files")
+                    theme: root.visualTheme
+                    enabled: !audioBatch.running
+                    Layout.preferredWidth: 94
+                    Layout.preferredHeight: 26
+                    Accessible.name: qsTr("Choose local audio files")
+                    onClicked: audioFileDialog.open()
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: audioBatch.selectedFiles.length === 0
+                          ? qsTr("No files selected")
+                          : audioBatch.selectedFiles.length + " file(s) selected"
+                    color: theme.secondaryText
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                ScrollView {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    clip: true
+
+                    Column {
+                        width: parent.width
+                        spacing: 4
+
+                        Repeater {
+                            model: audioBatch.results
+
+                            delegate: Rectangle {
+                                id: fileResultRow
+                                required property var modelData
+                                property bool hasTranscript: modelData.status === "succeeded"
+                                                              && modelData.text.length > 0
+                                property string copyLabel: qsTr("Copy")
+                                width: parent.width
+                                height: hasTranscript ? 166 : 34
+                                radius: 7
+                                color: "transparent"
+
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 1
+                                    color: theme.border
+                                }
+
+                                Timer {
+                                    id: transcriptCopyResetTimer
+                                    interval: 900
+                                    repeat: false
+                                    onTriggered: fileResultRow.copyLabel = qsTr("Copy")
+                                }
+
+                                Connections {
+                                    target: audioBatch
+
+                                    function onCopyCompleted(path, success) {
+                                        if (path !== fileResultRow.modelData.path)
+                                            return
+                                        fileResultRow.copyLabel = success ? qsTr("Copied") : qsTr("Copy")
+                                        if (success)
+                                            transcriptCopyResetTimer.restart()
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8
+                                    anchors.rightMargin: 8
+                                    anchors.topMargin: 4
+                                    anchors.bottomMargin: 4
+                                    spacing: 3
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 22
+                                        text: fileResultRow.modelData.name
+                                        color: theme.text
+                                        font.pixelSize: 10
+                                        elide: Text.ElideMiddle
+                                    }
+
+                                    Label {
+                                        text: qsTr(fileResultRow.modelData.status)
+                                        color: fileResultRow.modelData.status === "failed"
+                                               ? theme.secondaryText : theme.dim
+                                        font.pixelSize: 9
+                                    }
+
+                                    ScrollView {
+                                        property bool fadeShown: fileResultRow.hasTranscript
+                                        visible: fadeShown || opacity > 0.001
+                                        opacity: fadeShown ? 1.0 : 0.0
+                                        Behavior on opacity {
+                                            NumberAnimation {
+                                                duration: theme.fadeDuration
+                                                easing.type: Easing.OutCubic
+                                            }
+                                        }
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 88
+                                        clip: true
+
+                                        SettingsArea {
+                                            id: transcriptText
+                                            visualTheme: theme
+                                            flat: true
+                                            width: parent.width
+                                            height: Math.max(implicitHeight, 88)
+                                            text: fileResultRow.modelData.text
+                                            readOnly: true
+                                            color: theme.secondaryText
+                                            font.pixelSize: 10
+                                            Accessible.name: qsTr("Transcript for ")
+                                                              + fileResultRow.modelData.name
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        property bool fadeShown: fileResultRow.hasTranscript
+                                        visible: fadeShown || opacity > 0.001
+                                        opacity: fadeShown ? 1.0 : 0.0
+                                        Behavior on opacity {
+                                            NumberAnimation {
+                                                duration: theme.fadeDuration
+                                                easing.type: Easing.OutCubic
+                                            }
+                                        }
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 25
+                                        spacing: 5
+
+                                        Label {
+                                            text: qsTr("Select text to reuse")
+                                            color: theme.dim
+                                            font.pixelSize: 9
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+
+                                        AppButton {
+                                            text: fileResultRow.copyLabel
+                                            theme: root.visualTheme
+                                            enabled: !audioBatch.running
+                                            Layout.preferredWidth: 58
+                                            Layout.preferredHeight: 24
+                                            Accessible.name: qsTr("Copy transcript for ")
+                                                              + fileResultRow.modelData.name
+                                            onClicked: {
+                                                if (audioBatch.copyFile(fileResultRow.modelData.path))
+                                                    fileResultRow.copyLabel = "Copying…"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Label {
+                            property bool fadeShown: audioBatch.results.length === 0
+                            visible: fadeShown || opacity > 0.001
+                            opacity: fadeShown ? 1.0 : 0.0
+                            Behavior on opacity {
+                                NumberAnimation {
+                                    duration: theme.fadeDuration
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+                            width: parent.width
+                            text: qsTr("Your selected files will appear here.")
+                            color: theme.dim
+                            font.pixelSize: 10
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                property bool fadeShown: audioBatch.lastError !== ""
+                visible: fadeShown || opacity > 0.001
+                opacity: fadeShown ? 1.0 : 0.0
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.fadeDuration
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                text: qsTr(audioBatch.lastError)
+                color: theme.secondaryText
+                font.pixelSize: 10
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 5
+
+                AppButton {
+                    text: qsTr("Start")
+                    theme: root.visualTheme
+                    enabled: !audioBatch.running
+                             && audioBatch.selectedFiles.length > 0
+                    Layout.preferredWidth: 54
+                    Layout.preferredHeight: 26
+                    Accessible.name: qsTr("Start audio transcription")
+                    onClicked: filesPage.startBatch()
+                }
+
+                AppButton {
+                    text: qsTr("Cancel")
+                    theme: root.visualTheme
+                    quiet: true
+                    enabled: audioBatch.running
+                    Layout.preferredWidth: 58
+                    Layout.preferredHeight: 26
+                    Accessible.name: qsTr("Cancel audio transcription")
+                    onClicked: audioBatch.cancel()
+                }
+
+                AppButton {
+                    text: qsTr("Retry")
+                    theme: root.visualTheme
+                    quiet: true
+                    enabled: !audioBatch.running && audioBatch.canRetry
+                    Layout.preferredWidth: 52
+                    Layout.preferredHeight: 26
+                    Accessible.name: qsTr("Retry failed audio files")
+                    onClicked: filesPage.retryBatch()
+                }
+
+                Item { Layout.fillWidth: true }
+
+                AppButton {
+                    text: qsTr("Close")
+                    theme: root.visualTheme
+                    quiet: true
+                    enabled: !audioBatch.running
+                    Layout.preferredWidth: 56
+                    Layout.preferredHeight: 26
+                    Accessible.name: qsTr("Close audio import")
+                    onClicked: workflow.closeFiles()
+                }
+            }
+        }
+    }
+
+}

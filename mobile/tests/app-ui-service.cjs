@@ -1,26 +1,22 @@
 const http = require('node:http');
 
 // Only synthetic simulator data. No request leaves this loopback service.
-function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
+function createAppUIService({ record = () => {}, heartbeatMs = 1000, now = Date.now } = {}) {
   const requests = [], unexpected = [], held = [], waiters = [];
   let catalog = 'ready', revision = 1;
   const libraries = { '/v1/dictionary': [], '/v1/snippets': [] };
-  const periodStart = new Date(); periodStart.setUTCHours(0, 0, 0, 0);
-  periodStart.setUTCDate(periodStart.getUTCDate() - (periodStart.getUTCDay() + 6) % 7);
-  const resetAt = new Date(periodStart); resetAt.setUTCDate(resetAt.getUTCDate() + 7);
-  const user = { id: '00000000-0000-4000-8000-000000000033', email: 'clarify-e2e@example.test', output_preferences_supported: true,
-    processing_contract: { schema_version: 1, output_languages: ['auto', 'pt', 'en', 'es', 'de', 'ru'],
-      writing_styles: ['formal', 'casual', 'very_casual', 'natural', 'informal', 'organized'],
-      cleanup_levels: ['preserve', 'light', 'clarity'], dictation_actions: true, explicit_dictation_policy: true,
-      dictation_editing: { legacy: true, natural: true, clarity: true, action: true, legacy_translated: true, natural_translated: true },
-      text_input_bytes: 16000, text_output_bytes: 64000 }, usage: {
-    schema_version: 2, period_start: periodStart.toISOString(), reset_at: resetAt.toISOString(), used_percent: 12.5,
-    remaining_percent: 82.5, reserved_percent: 5, allocation_status: 'available', hosted_available: true,
-  } };
+  const computerID = '00000000-0000-4000-8000-000000000034';
+  const token = Buffer.alloc(32, 3).toString('base64url');
+  const user = { id: '00000000-0000-4000-8000-000000000033', email: 'clarify-e2e@example.test' };
+  const contract = { schema_version: 1, output_languages: ['auto', 'pt', 'en', 'es', 'de', 'ru'],
+    writing_styles: ['formal', 'casual', 'very_casual', 'natural', 'informal', 'organized'],
+    cleanup_levels: ['preserve', 'light', 'clarity'], dictation_actions: true, explicit_dictation_policy: true,
+    dictation_editing: { legacy: true, natural: true, clarity: true, action: true, legacy_translated: true, natural_translated: true },
+    text_input_bytes: 16000, text_output_bytes: 64000 };
   const actions = () => [
-    { id: 'rewrite', revision, name: 'Reescrever', kind: 'rewrite', enabled: true, prompt: 'Fixture rewrite' },
-    { id: 'translation', revision, name: 'Traduzir', kind: 'translation', enabled: true, prompt: 'Fixture translation' },
-    { id: 'disabled', revision, name: 'Desativada', kind: 'custom', enabled: false, prompt: 'Fixture disabled' },
+    { id: 'rewrite', revision, name: 'Reescrever', kind: 'rewrite', enabled: true, ready: true },
+    { id: 'translation', revision, name: 'Traduzir', kind: 'translation', enabled: true, ready: true },
+    { id: 'disabled', revision, name: 'Desativada', kind: 'custom', enabled: false, ready: false },
   ];
   const server = http.createServer(async (request, response) => {
     const route = request.url.split('?')[0], method = request.method;
@@ -46,9 +42,28 @@ function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
       return;
     }
     if (method === 'GET' && route === '/__fixture/state') {
-      send(200, { held: held.length, processing: requests.filter(item => item.method === 'POST' && ['/v1/text', '/v1/text-actions/execute'].includes(item.route)) }); return;
+      send(200, { held: held.length, processing: requests.filter(item => item.method === 'POST' && item.route === '/v1/computer/text') }); return;
     }
-    if (method === 'GET' && route === '/v1/text-actions') {
+    if (method === 'GET' && route === '/__fixture/invitation') {
+      send(200, { invitation: 'clarify://computer?data=' + Buffer.from(JSON.stringify({
+        schema_version: 1, computer_id: computerID, computer_name: 'Fixture PC',
+        routes: [{ url: 'https://192.168.1.33:9443', certificate_sha256: 'a'.repeat(64) }],
+        pairing_token: Buffer.alloc(32, 2).toString('base64url'), expires_at: new Date(now() + 240000).toISOString(),
+      })).toString('base64url') }); return;
+    }
+    if (route.startsWith('/v1/computer/')) {
+      if (method === 'POST' && route === '/v1/computer/pair') {
+        if (request.headers.authorization || value.pairing_token !== Buffer.alloc(32, 2).toString('base64url') || !value.device_name) { send(401, {}); return; }
+        send(201, { schema_version: 1, computer_id: computerID, computer_name: 'Fixture PC',
+          device_id: '00000000-0000-4000-8000-000000000035', session_token: token }); return;
+      }
+      if (request.headers.authorization !== 'Bearer ' + token) { send(401, {}); return; }
+    }
+    if (method === 'DELETE' && route === '/v1/computer/session') { send(204, null); return; }
+    const status = () => ({ schema_version: 1, computer_id: computerID, computer_name: 'Fixture PC', ready: true,
+      action_readiness: { dictate: true, rewrite: true, translate: true }, output_preferences_supported: true,
+      processing_contract: contract, ...(catalog === 'unsupported' ? {} : { text_actions: catalog === 'empty' ? [] : actions() }) });
+    if (method === 'GET' && route === '/v1/computer/status') {
       if (catalog === 'slow') {
         // Keep the request active; only the release barrier completes its JSON.
         response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -59,14 +74,17 @@ function createAppUIService({ record = () => {}, heartbeatMs = 1000 } = {}) {
         heartbeat.unref();
         const stop = () => clearInterval(heartbeat);
         response.once('close', stop);
-        held.push(() => { stop(); send(200, { revision, actions: actions() }); });
+        held.push(() => { stop(); send(200, status()); });
         waiters.splice(0).forEach(done => done()); return;
       }
-      send(catalog === 'failed' ? 503 : catalog === 'unsupported' ? 404 : 200,
-        { revision, actions: catalog === 'empty' ? [] : actions() }); return;
+      send(catalog === 'failed' ? 503 : 200, status()); return;
     }
-    if (method === 'POST' && ['/v1/text', '/v1/text-actions/execute'].includes(route)) {
-      const result = { operation_id: value.operation_id, text: `Fixture result: ${value.text}` };
+    if (method === 'POST' && route === '/v1/computer/text') {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.operation_id || '')
+        || !value.text || value.action !== 'text_action') { send(400, {}); return; }
+      if (requests.some(item => item.route === route && item.status === 200 && item.value.operation_id === value.operation_id)) { send(409, {}); return; }
+      if (!actions().some(action => action.id === value.action_id && action.revision === value.action_revision && action.enabled)) { send(409, { error: 'text_action_stale' }); return; }
+      const result = { operation_id: value.operation_id, transcript: value.text, text: `Fixture result: ${value.text}`, rewritten: true, successful: true };
       if (value.action_id) Object.assign(result, { action_id: value.action_id, action_revision: value.action_revision });
       Object.assign(result, { output_language_requested: value.language, output_language_applied: value.language, output_language_status: value.language === 'auto' ? 'unchanged' : 'applied' });
       if (value.writing_style) Object.assign(result, { writing_style_requested: value.writing_style, writing_style_applied: value.writing_style, writing_style_status: 'applied' });

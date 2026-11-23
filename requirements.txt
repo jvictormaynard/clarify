@@ -5,6 +5,5 @@ PySide6-Essentials>=6.8,<7
 Pillow>=13.0.0,<14
 qrcode==8.2
 
-# Windows uses native RegisterHotKey calls. Other source platforms use this
-# optional fallback and remain experimental.
-keyboard>=0.13.5,<1; platform_system != "Windows"
+# The legacy keyboard fallback is optional on source platforms with no native desktop adapter.
+keyboard>=0.13.5,<1; platform_system != "Windows" and platform_system != "Darwin"

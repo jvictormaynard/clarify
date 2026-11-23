@@ -3,7 +3,6 @@ import { SearchIcon } from "lucide-react";
 import type * as React from "react";
 import { cn } from "../../lib/utils";
 import { Input } from "./input";
-import { ScrollArea } from "./scroll-area";
 
 const Combobox = ComboboxPrimitive.Root;
 const useComboboxFilter = ComboboxPrimitive.useFilter;
@@ -118,9 +117,14 @@ function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
 
 function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
   return (
-    <ScrollArea>
-      <ComboboxPrimitive.List className={cn("not-empty:scroll-py-1 not-empty:px-1 not-empty:py-1", className)} data-slot="combobox-list" {...props} />
-    </ScrollArea>
+    <ComboboxPrimitive.List
+      className={cn(
+        "min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain not-empty:scroll-py-1 not-empty:px-1 not-empty:py-1",
+        className,
+      )}
+      data-slot="combobox-list"
+      {...props}
+    />
   );
 }
 

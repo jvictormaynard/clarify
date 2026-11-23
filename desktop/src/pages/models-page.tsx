@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import {
@@ -8,6 +9,8 @@ import {
   Row,
   Section,
   SettingsDisclosure,
+  SettingsPage,
+  SettingsTabs,
   Toggle,
 } from "../components/ui";
 import { Check, LoaderCircle, Download } from "lucide-react";
@@ -15,6 +18,7 @@ import { ChatGPTPlan } from "../components/chatgpt-plan";
 import { profileName } from "../settings/display-labels";
 
 export function ModelsPage({ controller }: SettingsPageProps) {
+  const tabRevision = useRef(0);
   const {
     state,
     run,
@@ -32,11 +36,16 @@ export function ModelsPage({ controller }: SettingsPageProps) {
   const requirements = [
     ...new Set(state.localAsrRequirementsList.filter(Boolean)),
   ];
+  const openCode = state.selectedProviderId === "opencode";
+  const openCodeOption = state.personalSetupState?.textOptions.find(
+    (option) => option.id === "opencode",
+  );
+  const openCodeInstalled = openCodeOption?.runtimeInstalled;
   const cloudSection = (
       <Section
         key="cloud-services" id="cloud-services"
         title={
-          <>{t("Serviços na nuvem")}<span className="badge">{t(state.selectedProviderId === "chatgpt" ? "Seu plano ChatGPT" : "Sua chave de API")}</span>
+          <>{t("Serviços na nuvem")}{!openCode && <span className="badge">{t(state.selectedProviderId === "chatgpt" ? "Seu plano ChatGPT" : "Sua chave de API")}</span>}
           </>
         }
       >
@@ -49,7 +58,38 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             onChange={(value) => void selectProvider(value)}
           />
         </Row>
-        {state.selectedProviderId === "chatgpt" ? <ChatGPTPlan controller={controller} /> : state.selectedProviderId !== "local_asr" && (
+        {state.selectedProviderId === "chatgpt" ? <ChatGPTPlan controller={controller} /> : openCode ? (
+          <>
+            <p className="hint">{t("setup_free")}</p>
+            <div className="service-actions">
+              <span className="hint" role="status">
+                {state.providerError ? t(state.providerError)
+                  : state.providerStatus === "active" ? t("setup_connected")
+                  : openCodeInstalled === false ? t("setup_runtime_needed")
+                  : t("setup_not_connected")}
+              </span>
+              <Button
+                disabled={state.providerBusy || validatingProvider || selectingProvider}
+                onClick={() => void validateProvider()}
+              >
+                {state.providerBusy ? t("setup_connecting")
+                  : openCodeInstalled === false ? t("setup_install_opencode")
+                  : t("setup_connect_free")}
+              </Button>
+            </div>
+            {!!openCodeOption?.models?.length && (
+              <Row title={t("setup_rewriting_model")}>
+                <Picker
+                  label={t("setup_rewriting_model")}
+                  value={openCodeOption.rewriteModelId ?? ""}
+                  options={openCodeOption.models}
+                  disabled={state.providerBusy || validatingProvider || selectingProvider}
+                  onChange={(model) => void run("savePreference", "setOpenCodeRouteModel", ["rewrite", model])}
+                />
+              </Row>
+            )}
+          </>
+        ) : state.selectedProviderId !== "local_asr" && (
           <>
             <Field
               title={t("Chave de API")}
@@ -123,6 +163,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             onChange={(v) => void run("selectLocalProfile", Number(v))}
           />
         </Row>
+        {state.localModelDescription && <p className="hint" role="status">{t(state.localModelDescription)}</p>}
         <Row title={t("Processamento")}>
           <Picker
             label={t("Processamento")}
@@ -155,7 +196,10 @@ export function ModelsPage({ controller }: SettingsPageProps) {
               <Button
                 variant="primary"
                 disabled={state.localAsrBusy || state.localBenchmarkBusy}
-                onClick={() => void useLocalModel()}
+                onClick={() => {
+                  const revision = tabRevision.current;
+                  void useLocalModel(() => revision === tabRevision.current);
+                }}
               >{t("Usar este modelo")}</Button>
             )}
             {state.localAsrBusy ? (
@@ -188,18 +232,18 @@ export function ModelsPage({ controller }: SettingsPageProps) {
           </SettingsDisclosure>
         )}
         <SettingsDisclosure title={t("Opções do modelo local")}>
-          <Toggle
+          {state.localSupportsGpu !== false && <Toggle
             title={t("Reconhecer durante a gravação (experimental)")}
             hint={t("Requer GPU NVIDIA. Pode reduzir a espera ao terminar com uma pausa, mas pode aumentar a espera em fala contínua. Mantém a gravação completa.")}
             checked={state.localStreaming}
             onChange={(v) => void run("setLocalStreaming", v)}
-          />
+          />}
           <p className="hint" role="status">
             {state.localBenchmarkDetail}
           </p>
           <div className="inline-actions">
             <Button
-              disabled={state.localAsrBusy}
+              disabled={state.localAsrBusy || state.localSupportsGpu === false}
               onClick={() =>
                 void run(
                   state.localBenchmarkBusy
@@ -224,14 +268,30 @@ export function ModelsPage({ controller }: SettingsPageProps) {
       </Section>
   );
   const localFirst = state.selectedScope === "transcription" && state.routeProviderId === "local_asr";
-  return <>{localFirst ? localSection : cloudSection}{localFirst ? cloudSection : localSection}
-    <Section title={t("Processamento de texto")}>
-      <p className="hint">{t("As ações usam estes perfis. Alterar um perfil não altera suas instruções.")}</p>
-      {(state.textActionProfiles ?? []).filter(profile => !profile.managed).map(profile => <Row key={profile.id}
-        title={profileName(profile.id)} hint={`${state.textActionProviders?.find(provider => provider.id === profile.providerId)?.label ?? profile.providerId} · ${profile.modelId || t("Sem modelo")}`}>
-        <Button aria-label={t("Editar perfil de {name}", { name: profileName(profile.id) })}
-          onClick={() => controller.textProfileEditor.open(profile)}>{t("Editar perfil")}</Button>
-      </Row>)}
-    </Section>
-  </>;
+  return (
+    <SettingsPage.Root>
+      <SettingsTabs.Root defaultValue="services" onValueChange={() => { tabRevision.current++; }}>
+        <SettingsTabs.List aria-label={t("Modelos e serviços")}>
+          <SettingsTabs.Tab value="services">{t("Serviços e modelos locais")}</SettingsTabs.Tab>
+          <SettingsTabs.Tab value="profiles">{t("Processamento de texto")}</SettingsTabs.Tab>
+        </SettingsTabs.List>
+        <SettingsTabs.Panel value="services">
+          {localFirst ? localSection : cloudSection}
+          {localFirst ? cloudSection : localSection}
+        </SettingsTabs.Panel>
+        <SettingsTabs.Panel value="profiles">
+          <Section>
+            <p className="hint">{t("As ações usam estes perfis. Alterar um perfil não altera suas instruções.")}</p>
+            {(state.textActionProfiles ?? []).filter(profile => !profile.managed).map(profile => (
+              <Row key={profile.id} title={profileName(profile.id)}
+                hint={`${state.textActionProviders?.find(provider => provider.id === profile.providerId)?.label ?? profile.providerId} · ${profile.modelId || t("Sem modelo")}`}>
+                <Button aria-label={t("Editar perfil de {name}", { name: profileName(profile.id) })}
+                  onClick={() => controller.textProfileEditor.open(profile)}>{t("Editar perfil")}</Button>
+              </Row>
+            ))}
+          </Section>
+        </SettingsTabs.Panel>
+      </SettingsTabs.Root>
+    </SettingsPage.Root>
+  );
 }

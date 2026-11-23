@@ -50,7 +50,7 @@ export function WelcomeBenefits() {
   const rows: { icon: SymbolViewProps['name']; title: string; detail: string }[] = [
     { icon: 'mic', title: 'Fale em qualquer aplicativo', detail: 'Dite pelo teclado Clarify.' },
     { icon: 'square.and.pencil', title: 'Texto revisado enquanto você fala', detail: 'Menos hesitações. Pontuação no lugar.' },
-    { icon: 'globe', title: 'Vários idiomas', detail: 'Fale nos idiomas que você usa.' },
+    { icon: 'desktopcomputer', title: 'setup_mobile_computer', detail: 'setup_mobile_computer_hint' },
   ];
   return <View style={{ gap: 16 }}>{rows.map(row => <View key={row.title} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14 }}>
     <View style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: c.accentSoft }}>

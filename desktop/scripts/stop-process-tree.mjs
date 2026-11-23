@@ -50,7 +50,9 @@ export function stopProcessTree(child) {
     try {
       process.kill(-child.pid, "SIGKILL");
     } catch (error) {
-      if (error.code !== "ESRCH") throw error;
+      const exitedMacGroup = process.platform === "darwin" && error.code === "EPERM" &&
+      (child.exitCode !== null || child.signalCode !== null);
+    if (error.code !== "ESRCH" && !exitedMacGroup) throw error;
     }
   }
 }

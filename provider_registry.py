@@ -27,6 +27,7 @@ from provider_types import (
 )
 from local_asr import LocalASRProviderAdapter
 from chatgpt_provider import ChatGPTPlanAdapter
+from opencode_provider import OpenCodeAdapter
 
 
 OPENAI_OFFICIAL_AUDIO_MODELS = (
@@ -356,6 +357,7 @@ def build_provider_registry(
     # typed configuration error rather than falling back to cloud.
     registry.register(local_asr_adapter or LocalASRProviderAdapter())
     registry.register(ChatGPTPlanAdapter(http, session=chatgpt_session))
+    registry.register(OpenCodeAdapter(http))
     return registry
 
 

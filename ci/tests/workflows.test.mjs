@@ -98,7 +98,7 @@ test('Settings unit tests need neither Qt nor a browser', () => {
 test('Windows builds embed the complete Electron shell without a Rust toolchain', () => {
   const action = parseDocument(readFileSync(resolve(root, '.github/actions/settings-build/action.yml'), 'utf8')).toJS();
   const commands = action.runs.steps.map(step => step.run || '').join('\n');
-  for (const command of ['npm ci', 'npm audit', 'npm run build',
+  for (const command of ['npm ci', '../scripts/javascript_dependency_audit.py --component desktop', 'npm run build',
     '../scripts/ci.py --task settings_browser',
     'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
   for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {
@@ -214,13 +214,24 @@ test('desktop publication consumes a sealed candidate across a permission bounda
   assert.equal(publish.steps.find(step => step.uses?.startsWith('actions/checkout@')).with.ref,
     '$' + '{{ github.workflow_sha }}');
   assert.ok(!publish.steps.some(step => /npm |pip install|build\.ps1|cargo build|create_portable_update_manifest/.test(step.run || '')));
+  const mac = release.jobs.build_macos;
+  assert.equal(mac['runs-on'], 'macos-26');
+  assert.equal(mac.permissions.contents, 'read');
+  assert.ok(release.jobs.build_candidate.needs.includes('build_macos'));
+  const macUpload = mac.steps.find(step => step.name === 'Upload macOS candidate inputs');
+  const macDownload = release.jobs.build_candidate.steps.find(step => step.name === 'Download macOS candidate inputs');
+  assert.equal(macUpload.with.name, macDownload.with.name);
+  assert.match(macUpload.with.name, /github\.run_id.*github\.run_attempt/);
+  assert.equal(macUpload.with.overwrite, false);
+  assert.match(macDownload.with.path, /runner\.temp.*macos-candidate-inputs/);
   const names = release.jobs.build_candidate.steps.map(step => step.name);
   const required = JSON.parse(execFileSync(process.env.CLARIFY_TEST_PYTHON || 'python', [
-    '-c', 'import json; from scripts.release_candidate import producer_steps; print(json.dumps({c:producer_steps(c) for c in ("preview","stable")}))',
+    '-c', 'import json; from scripts.release_candidate import producer_steps; print(json.dumps({c:producer_steps(c, "0.19.0") for c in ("preview","stable")}))',
   ], { cwd: root }));
   for (const expected of Object.values(required)) for (const name of expected) {
     assert.equal(names.filter(value => value === name).length, 1, name);
   }
+  assert.ok(names.indexOf('Download macOS candidate inputs') < names.indexOf('Seal desktop candidate'));
   assert.ok(names.indexOf('Seal desktop candidate') < names.indexOf('Attest candidate provenance'));
   assert.ok(names.indexOf('Attest candidate provenance') < names.indexOf('Upload desktop candidate'));
   assert.equal(release.concurrency.queue, 'max');

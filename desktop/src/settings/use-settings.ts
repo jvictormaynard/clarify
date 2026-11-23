@@ -1,11 +1,11 @@
-import { electron } from "../platform";
+import { electron, isMacDesktop, shortcutKey } from "../platform";
 import { t, setUiLanguage } from "../i18n";
 import {
   useCallback, useEffect, useMemo, useRef, useState,
   type KeyboardEvent, type MouseEvent,
 } from "react";
 import {
-  call, pollSettings, preferenceMethods, settingsTransaction, historyCorrection, SettingsOperationError,
+  call, preferenceMethods, settingsTransaction, historyCorrection, SettingsOperationError,
   type DictionaryEntry, type Snippet, type Settings, type SettingsArguments,
   type SettingsMethod, type SettingsCall, type PreferenceMethod,
 } from "./bridge";
@@ -240,7 +240,7 @@ export function useSettings() {
     setSaved(false);
   };
   const setRetention = (value: string) => { setRetentionDraft(value); setSaved(false); };
-  const setEndpoint = (value: string) => { if (selectingProviderRef.current) return; setEndpointDraft(value); setSaved(false); };
+  const setEndpoint = (value: string | null) => { if (selectingProviderRef.current) return; setEndpointDraft(value); setSaved(false); };
   const setApiKey = (value: string) => { if (selectingProviderRef.current) return; setApiKeyDraft(value); setSaved(false); };
   const setRecording = (value: RecordingDraft | null) => { setRecordingDraft(value); setSaved(false); };
   const capture = state?.hotkeyCaptureAction || undefined;
@@ -259,8 +259,15 @@ export function useSettings() {
   const pendingOperations = useRef(0);
   const needsDraftRecovery = useRef(false);
   const lifetime = useRef(0);
-  const acceptState = useCallback((update: Partial<Settings>) => {
+  const acceptState = useCallback((update: Partial<Settings>, fromPush = false) => {
     const previous = current.current;
+    if (fromPush && savingRef.current && (!update.snippetContext || update.snippetContext === previous?.snippetContext)) {
+      // Setters can publish staged lists before Save commits. The reserved
+      // transaction owns their terminal snapshot and any edits made meanwhile.
+      update = { ...update };
+      delete update.dictionaryEntries;
+      delete update.snippets;
+    }
     const next = previous ? mergeSettings(previous, update) : update as Settings;
     if (next === previous) return;
     if (previous?.chatgptState && next.chatgptState &&
@@ -425,23 +432,20 @@ export function useSettings() {
             const snapshot = await call("snapshot");
             if (live) acceptState(snapshot);
             needsSnapshot = false;
-          } else if (!electron()) {
-            const delta = await pollSettings();
-            if (live) acceptState(delta);
           }
         } catch (e) {
           needsSnapshot = true;
           if (live) setError(String(e));
         } finally { pending.current -= 1; }
       }
-      if (live && (!electron() || needsSnapshot || !current.current)) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
+      if (live && (needsSnapshot || !current.current)) timer = setTimeout(refresh, current.current?.microphoneTestBusy ? 100 : 1000);
     };
     const visibility = () => {
       if (document.hidden && current.current?.hotkeyCaptureAction && !actionsCaptureRef.current) void run("cancelHotkeyCapture");
       if (document.hidden && current.current?.microphoneTestBusy) void run("stopMicrophoneTest");
     };
     const unsubscribe = electron()?.subscribe(message => {
-      if (live && current.current && message.event === "settings") acceptState(message.state as Partial<Settings>);
+      if (live && current.current && message.event === "settings") acceptState(message.state as Partial<Settings>, true);
     });
     void electron()?.ready();
     document.addEventListener("visibilitychange", visibility);
@@ -756,6 +760,7 @@ export function useSettings() {
     event.preventDefault();
     if (event.repeat) return;
     const modifierKey = ({ Control: "CTRL", Alt: "ALT", Shift: "SHIFT", Meta: "WIN" } as Record<string, string>)[event.key];
+    if (isMacDesktop() && (modifierKey || event.type === "keyup")) return;
     if (event.type === "keydown" && modifierKey) {
       captureModifier.current = event.key;
       return;
@@ -770,12 +775,12 @@ export function useSettings() {
     ];
     await run("setHotkey", action, {
       modifiers: modifiers.filter(name => name.toUpperCase() !== modifierKey),
-      key: modifierKey || (event.key === " " ? "SPACE" : event.key.toUpperCase()),
+      key: modifierKey || shortcutKey(event),
     });
   };
   const captureMouseHotkey = async (event: MouseEvent<HTMLInputElement>) => {
     const action = activeCapture();
-    if (!action || ![3, 4].includes(event.button)) return;
+    if (!action || isMacDesktop() || ![3, 4].includes(event.button)) return;
     event.preventDefault();
     captureModifier.current = null;
     await run("setHotkey", action, {
@@ -830,9 +835,9 @@ export function useSettings() {
       return call("savePreference", "setRouteEnabled", [enabled]);
     });
   };
-  const useLocalModel = async () => {
+  const useLocalModel = async (stillOnTab: () => boolean) => {
     const epoch = navigationEpoch.current;
-    if (await run("useLocalAsr") && epoch === navigationEpoch.current) await navigate("dictation");
+    if (await run("useLocalAsr") && epoch === navigationEpoch.current && stillOnTab()) await navigate("dictation");
   };
 
   const setLibraryPreference = async (library: "dictionary" | "snippets", index: number, field: "enabled" | "case_sensitive", value: boolean) => {

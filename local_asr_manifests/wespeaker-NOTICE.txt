@@ -1,0 +1,9 @@
+WeSpeaker VoxCeleb ResNet34 ONNX weights
+Publisher: the WeSpeaker project
+Source: https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34/tree/ff1ac5bca8ef11e90662b879aa923979e0bd277b
+Clarify retrieves the publisher's ONNX file without modification.
+
+The model card lists Apache-2.0. The publisher's pretrained model documentation
+specifies Creative Commons Attribution 4.0 International for the VoxCeleb weights.
+Publisher terms: https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md#model-license
+License: https://creativecommons.org/licenses/by/4.0/

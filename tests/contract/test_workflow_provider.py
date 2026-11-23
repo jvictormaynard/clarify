@@ -60,55 +60,36 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(language_display_name(value), expected)
 
-    def test_managed_text_ignores_disabled_personal_routes_and_does_not_fallback(self):
-        from clarify_account import AccountError
+    def test_signed_in_account_never_receives_text_or_audio_inference(self):
+        from provider_types import TranslationResult
 
-        account = Mock(hosted=False, signed_in=True, managed=True)
-        account.transform_text.return_value = "Managed text."
+        account = Mock(hosted=True, signed_in=True, managed=True)
         self.service.account = account
-        self.assertEqual(self.service.rewrite("Source").text, "Managed text.")
-        self.assertEqual(self.service.translate("Source", "es").text, "Managed text.")
-        self.registry.rewrite.assert_not_called()
-        self.registry.translate.assert_not_called()
-        account.transform_text.side_effect = AccountError("Session expired")
-        account.signed_in = False
-        with self.assertRaises(AccountError):
+        self.registry.translate.return_value = TranslationResult(
+            "Texto.", "openai", "translator", "es"
+        )
+        for signed_in in (True, False):
+            account.signed_in = signed_in
             self.service.rewrite("Source")
-        self.registry.rewrite.assert_not_called()
-
-    def test_hosted_dictation_and_import_ignore_personal_provider_selection(
-        self,
-    ):
-        account = Mock(hosted=True)
-        account.transcribe.return_value = TranscriptionResult(
-            "Hosted.", "clarify", "whisper-large-v3-turbo"
-        )
-        self.service.account = account
-        result = self.service.transcribe(self.audio, "prompt", "pt")
-        self.assertEqual(result.text, "Hosted.")
-        account.transcribe.assert_called_once_with(self.audio, "pt", self.dictionary)
-        self.registry.transcribe.assert_not_called()
-        account.transcribe.reset_mock()
-        selection = FileTranscriptionSelection(
-            "groq",
-            "whisper-large-v3",
-            "pt",
-            connection=ProviderConnection("test-only", ""),
-        )
-        self.service.transcribe(self.audio, "prompt", "pt", selection=selection)
-        account.transcribe.assert_called_once_with(self.audio, "pt", self.dictionary)
-        account.transcribe.reset_mock()
-        self.service.transcribe(
-            self.audio, "prompt", "auto", selection=selection, output_language="es"
-        )
-        account.transcribe.assert_called_once_with(
-            self.audio, "auto", self.dictionary, output_language="es"
-        )
-        self.registry.transcribe.assert_not_called()
-        self.registry.transcribe.reset_mock()
-        self.service.account = Mock(hosted=False)
-        self.service.transcribe(self.audio, "transcription", "pt")
-        self.registry.transcribe.assert_called_once()
+            self.service.translate("Source", "es")
+            result = self.service.transcribe(
+                self.audio, "prompt", "pt", writing_style="natural"
+            )
+            self.assertEqual(result.writing_style_applied, "natural")
+            self.assertIn(
+                "natural", self.registry.rewrite.call_args.args[1].instruction.lower()
+            )
+            selection = FileTranscriptionSelection(
+                "groq",
+                "whisper-large-v3",
+                "pt",
+                connection=ProviderConnection("test-only", ""),
+            )
+            self.service.transcribe(self.audio, "prompt", "pt", selection=selection)
+        account.transcribe.assert_not_called()
+        account.transform_text.assert_not_called()
+        self.assertEqual(self.registry.transcribe.call_count, 4)
+        self.assertEqual(self.registry.transcribe.call_args.args[0], "groq")
 
     def test_output_language_without_style_separates_multimodal_recognition_from_editing(
         self,

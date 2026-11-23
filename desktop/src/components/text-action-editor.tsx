@@ -69,7 +69,7 @@ export function TextActionEditor({ controller: c }: SettingsPageProps) {
             <Section title={a.using ? t("Texto de entrada") : t("Testar ação")} grouped={false}>
               {a.using && <>
                 {unavailable && <p className="error" role="status">{t("A ação ou o serviço de texto não está disponível. Verifique a configuração.")}</p>}
-                {unavailable && <Button onClick={async () => { if (await a.close(true)) await c.navigate(c.state.accountState?.managed || c.state.accountState?.signedIn ? "account" : "models"); }}>{t("Configurar processamento")}</Button>}</>}
+                {unavailable && <Button onClick={async () => { if (await a.close(true)) await c.navigate(c.state.accountState?.managed ? "account" : "models"); }}>{t("Configurar processamento")}</Button>}</>}
               <label className="sr-only" htmlFor={sampleId}>{a.using ? t("Texto de entrada") : t("Texto de exemplo")}</label>
               <TextArea id={sampleId} className="min-h-24" autoFocus={a.using} value={a.sample} onChange={event => a.setSample(event.target.value)}
                 placeholder={a.using ? t("Cole o texto que você quer transformar.") : t("Cole um texto de exemplo.")} />

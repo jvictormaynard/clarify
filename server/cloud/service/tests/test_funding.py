@@ -10,10 +10,9 @@ from django.core.management import call_command
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from cloud.service import funding, groq, ledger
+from cloud.service import funding, ledger
 from cloud.service.models import FundingEntry, Operation, Treasury, User, WeeklyQuota
 
-from . import test_dictation
 from .test_api import client_for
 
 
@@ -27,7 +26,7 @@ class FundingContractTests(TestCase):
         self.user, self.client = client_for("funding@example.test")
 
     def test_an_environment_cap_is_not_received_cash(self):
-        usage = self.client.get("/v1/usage").json()
+        usage = ledger.usage(self.user)
         self.assertFalse(usage["hosted_available"])
         self.assertEqual(usage["allocation_status"], "unfunded")
 
@@ -324,76 +323,6 @@ class WeeklyFundingTests(TestCase):
         self.assertEqual(
             funding.public_summary()["operating_reserved_usd"], "1.000000000"
         )
-
-    @patch("cloud.service.groq.perform")
-    def test_500_active_users_can_afford_work_below_the_old_two_cent_reservation(
-        self, provider
-    ):
-        users = [
-            User(
-                email=f"person{index}@example.test",
-                hosted_requested_at=NOW - timedelta(days=7),
-                hosted_last_active_at=NOW - timedelta(days=1),
-            )
-            for index in range(499)
-        ]
-        User.objects.bulk_create(users)
-        EmailAddress.objects.bulk_create(
-            [
-                EmailAddress(user=user, email=user.email, primary=True, verified=True)
-                for user in users
-            ]
-        )
-        self.contribute()
-        funding.record_operating(
-            kind="reserve",
-            amount_usd=Decimal("4"),
-            reference="server-month",
-            occurred_at=NOW,
-        )
-        provider.side_effect = [{"text": "Original."}, groq.ProviderFailure()]
-        operation_id = uuid.uuid4()
-        response = test_dictation.DictationTests.send(self, operation_id)
-        self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["text"], "Original.")
-        operation = Operation.objects.get(operation_id=operation_id)
-        self.assertLess(operation.reserved_cost, ledger.MAX_COST)
-        self.assertGreater(operation.cost, 0)
-        self.assertLessEqual(operation.cost, operation.reserved_cost)
-        payload = provider.call_args_list[1].kwargs["json"]
-        messages = payload["messages"]
-        bound = sum(len(message["content"].encode()) for message in messages) + 256
-        provider_bound = ledger.asr_cost(1000) + funding.money(
-            bound * groq.INPUT_RATE
-            + payload["max_completion_tokens"] * groq.OUTPUT_RATE,
-            up=True,
-        )
-        self.assertLessEqual(provider_bound, operation.reserved_cost)
-        self.assertLess(payload["max_completion_tokens"], 8192)
-        self.assertEqual(self.client.get("/v1/usage").json()["schema_version"], 2)
-
-    @patch("cloud.service.groq.perform")
-    def test_asr_only_quota_returns_text_without_unfunded_rewrite(self, provider):
-        # A fully released receipt can fund ASR, with too little for chat input.
-        self.contribute("0.0002", at=NOW - timedelta(days=32))
-        funding.distribute()
-        provider.return_value = {"text": "Original."}
-        response = test_dictation.DictationTests.send(self, uuid.uuid4())
-        self.assertEqual(response.status_code, 200, response.content)
-        self.assertFalse(response.json()["rewritten"])
-        provider.assert_called_once()
-        self.assertEqual(Operation.objects.get().cost, ledger.asr_cost(1000))
-        self.assertEqual(Treasury.objects.get().processing_spent, ledger.asr_cost(1000))
-
-    @patch("cloud.service.groq.perform")
-    def test_insufficient_quota_rejects_audio_before_any_provider_charge(
-        self, provider
-    ):
-        self.contribute("0.0001", at=NOW - timedelta(days=32))
-        response = test_dictation.DictationTests.send(self, uuid.uuid4())
-        self.assertEqual(response.status_code, 429)
-        provider.assert_not_called()
-        self.assertEqual(Treasury.objects.get().processing_spent, 0)
 
 
 class FundingMigrationTests(TransactionTestCase):

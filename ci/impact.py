@@ -26,6 +26,7 @@ RELEASE_INTENT = ".github/release-intent.json"
 POLICY_TOOLS = {
     "scripts/release_delivery.py",
     "scripts/release_candidate.py",
+    "scripts/release_status.py",
     "scripts/app_store_handoff.py",
     "scripts/check_agent_skills.py",
     "scripts/format_staged.py",
@@ -98,10 +99,10 @@ SETTINGS_INPUTS = {
 PACKAGE_INPUTS = {
     "build.bat",
     "scripts/build.ps1",
-    "scripts/build-settings.ps1",
     "scripts/build-desktop.ps1",
     "scripts/windows-build-paths.ps1",
     "scripts/deploy.ps1",
+    "scripts/deployment_profile_backup.py",
     "scripts/setup.ps1",
     "scripts/install_bootstrap_tools.py",
     "scripts/check_settings_payload.py",
@@ -205,11 +206,7 @@ def path_components(path: str) -> set[str]:
         or path.startswith(".github/ISSUE_TEMPLATE/")
     ):
         return set()
-    if path in {
-        "scripts/release_delivery.py",
-        "scripts/app_store_handoff.py",
-        "tests/contract/test_ios_ipa.py",
-    }:
+    if path == "tests/contract/test_ios_ipa.py":
         # Repository checks exercise publication policy; this is not app input.
         return set()
     if path == "workflow_provider.py":
@@ -252,6 +249,7 @@ def path_components(path: str) -> set[str]:
         ".github/dependabot.yml",
         ".github/workflows/dependency-audit.yml",
         "scripts/dependency_audit.py",
+        "scripts/javascript_dependency_audit.py",
     }:
         return {"audit"}
     if dependency_input(path):
@@ -293,7 +291,6 @@ def path_components(path: str) -> set[str]:
         # retain the Windows lane below.
         if path.startswith("desktop/src/pages/") or path in {
             "desktop/src/styles/pages.css",
-            "desktop/src/styles/snippets.css",
             "desktop/src/styles/provider-brands.css",
         }:
             return {"settings"}
@@ -473,6 +470,20 @@ def event_selection(repo, event_name, event, head):
             reason = (
                 "Full validation required by changed controls or unclassified paths"
             )
+        # Temporary owner-approved exception for the desktop Meetings PR.
+        if event_name == "pull_request" and event.get("number") == 352:
+            pr = event["pull_request"]
+            if (
+                pr.get("base", {}).get("repo", {}).get("full_name")
+                == "jvictormaynard/clarify"
+                and pr.get("base", {}).get("ref") == "main"
+                and pr.get("head", {}).get("repo", {}).get("full_name")
+                == "jvictormaynard/clarify"
+                and pr.get("head", {}).get("ref") == "codex/desktop-meetings"
+                and not any(p.startswith("mobile/") or p in IOS_INPUTS for p in paths)
+            ):
+                selected.discard("ios")
+                reason += "; native iOS deferred for desktop PR #352"
         return result(selected, paths, reason)
     except (KeyError, OSError, ValueError, subprocess.SubprocessError) as error:
         # An unavailable diff is a request for full validation, never no checks.

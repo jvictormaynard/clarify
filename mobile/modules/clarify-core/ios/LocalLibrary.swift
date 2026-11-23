@@ -385,6 +385,14 @@ final class LocalLibrary {
       }
     }
   }
+  func hasHistoryEntry(_ id: String, scope: String?, includeLocal: Bool) throws -> Bool {
+    if !includeLocal, scope == nil { return false }
+    let row = try statement("SELECT 1 FROM history WHERE ((owner='' AND ?1=1) OR \(historyOwnerPredicate(at: 2))) AND operation_id=?4 LIMIT 1")
+    defer { sqlite3_finalize(row) }
+    sqlite3_bind_int(row, 1, includeLocal ? 1 : 0); bindHistoryOwner(scope ?? "", to: row, at: 2)
+    sqlite3_bind_text(row, 4, id, -1, transient)
+    switch sqlite3_step(row) { case SQLITE_ROW: return true; case SQLITE_DONE: return false; default: throw failure() }
+  }
   func history(before: String = "", limit: Int = 50, scope: String? = nil, includeLocal: Bool = true) throws -> HistoryPage {
     if !includeLocal, scope == nil { return HistoryPage(entries: [], nextCursor: nil) }
     let limit = max(1, min(50, limit))

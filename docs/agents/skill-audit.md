@@ -71,3 +71,18 @@ After changing behavior in the instructions, walk through representative tasks
 and review the routes and evidence requirements. Keep temporary walkthrough
 results with task evidence. Metadata checks and written walkthroughs do not
 prove agent judgment, native acceptance, or measured delivery improvements.
+
+## Product UI guidance
+
+`clarify-ui` adapts [Emil Kowalski's skills](https://github.com/emilkowalski/skills/tree/64eb3deb9a5fbfa041faf783e0bc3fd635872e9c)
+at `64eb3deb9a5fbfa041faf783e0bc3fd635872e9c`.
+Design engineering informs the entrypoint. Break-ui and Apple design inform
+interaction checks. Animate, remove-animations, animation-performance,
+review-animations, and animate-expo inform the optional motion reference.
+Learn-taste and prototype inform the existing design guide and prototype route.
+See the [Emil MIT notice](../../.agents/skills/licenses/emilkowalski-skills-MIT.txt).
+
+[Taste-skill](https://github.com/Leonxlnx/taste-skill/tree/f6b76575f949707b4e3c37cd86cb44b0b98643e8)
+at `f6b76575f949707b4e3c37cd86cb44b0b98643e8` informs action labels,
+field errors, layout checks, and asset restraint. Its website kit, visual
+effects, and hooks remain external. See the [upstream MIT notice](https://github.com/Leonxlnx/taste-skill/blob/f6b76575f949707b4e3c37cd86cb44b0b98643e8/LICENSE).

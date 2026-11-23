@@ -1,0 +1,51 @@
+.segmented-tabs,
+.segmented-tabs-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  gap: var(--space-4);
+}
+
+.segmented-tabs-list {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.segmented-tab {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-size: var(--font-size-body);
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.segmented-tab:hover,
+.segmented-tab[data-active] { color: var(--foreground); }
+.segmented-tab[data-active] { background: var(--card); border-color: var(--border); }
+.segmented-tab:focus-visible,
+.segmented-tabs-panel:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.segmented-tabs-panel[hidden] { display: none; }
+
+
+.segmented-tabs-panel {
+  gap: var(--space-6);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  scrollbar-gutter: stable;
+}
+.segmented-tabs-panel > .settings-section { margin: 0; }

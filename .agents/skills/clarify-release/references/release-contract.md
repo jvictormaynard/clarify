@@ -7,7 +7,7 @@
 - Version: Semantic Versioning, immutable annotated `vX.Y.Z` tags
 - Maintained desktop: Python/Qt `clarify/desktop/qml_app.py`
 - Presentation: React/TypeScript Settings and pill in the Electron child under `desktop/`
-- Public desktop platform: Windows 10/11 x64 portable executable
+- Public desktop platforms: Windows 10/11 x64 and Apple Silicon macOS after v0.18.0
 
 Read [release automation](../../../../docs/release-automation.md) for exact inputs,
 intent, evidence, activation and recovery. This contract defines release gates;
@@ -74,9 +74,9 @@ repository, workflow, job, run, attempt, channel, version/tag and each allowed
 asset's SHA-256 and size. Provenance covers every asset and the manifest. Record
 the artifact ID and archive SHA-256 digest. No overwrite is permitted.
 
-## Stable portable assets
+## Stable desktop assets
 
-The stable portable release contains exactly:
+The stable release includes these Windows and source assets.
 
 - `Clarify.exe`
 - `Clarify.exe.sha256`
@@ -86,6 +86,12 @@ The stable portable release contains exactly:
 - `sox-14.4.2-source.tar.gz`
 - `Clarify-portable-update.json`
 - `Clarify-portable-update.json.sig`
+
+Versions after v0.18.0 also include `Clarify-macos-arm64.zip` and
+`Clarify-macos-arm64.zip.sha256`. The macOS ZIP has the ad hoc signed app,
+licenses, notices, and platform SBOM. Its Apple Silicon job verifies the
+extracted bundle and Qt startup. Windows joins these verified files to the
+candidate of the same run and attempt.
 
 The ZIP contains exactly Clarify.exe, its checksum, the merged SBOM, LICENSE,
 THIRD_PARTY_NOTICES.md, Clarify-settings-NOTICES.txt, Clarify-qt-NOTICES.txt and
@@ -101,7 +107,8 @@ in `docs/windows-distribution.md`; activation needs separate authorization.
 
 ## Preview assets
 
-Preview has the same six portable/source assets, plus `Clarify-preview.json`,
+Preview has the same six portable/source assets and the two macOS assets,
+plus `Clarify-preview.json`,
 with neither update metadata file. The identity receipt records source, run,
 attempt, version/tag and disabled updater. Source X.Y.Z is retained for runtime
 compatibility; the final channel/tag is nonstable before packaging. The runtime
@@ -111,8 +118,8 @@ stable update feed. A preview does not accept changed stable candidate bytes.
 
 ## Native acceptance and publication
 
-Windows acceptance covers the actual packaged stable artifact. First verify its
-artifact digest and executable checksum. Record the affected native checks and
+Acceptance covers the actual packaged stable artifact on each included platform.
+First verify its artifact digest and platform checksums. Record native checks and
 limits in a fresh canonical maintainer issue/comment, with the exact source and
 candidate digest. The automation guide defines the strict acceptance JSON.
 Publication reads the canonical report, verifies author permission, exact evidence

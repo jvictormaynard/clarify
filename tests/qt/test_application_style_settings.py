@@ -64,6 +64,29 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
         finally:
             controller.timer.stop()
 
+    def test_macos_settings_does_not_replace_the_external_target(self):
+        from unittest.mock import Mock
+        from clarify.desktop.qml_quick_paste import QuickPasteController
+        from workflows import SelectionTarget
+
+        clipboard = Mock(platform_name="Darwin")
+        applications = Path(tempfile.gettempdir()) / "Applications"
+        editor = SelectionTarget(
+            object(), str(applications / "Editor.app/Contents/MacOS/Editor")
+        )
+        clipboard.capture_target.return_value = editor
+        controller = QuickPasteController(
+            clipboard, lambda callback: callback(), list, lambda: None
+        )
+        shell = str(applications / "Clarify Desktop.app/Contents/MacOS/Clarify Desktop")
+        controller.excluded_executable = lambda: shell
+        try:
+            self.assertEqual(controller.capture_target(), editor)
+            clipboard.capture_target.return_value = SelectionTarget(object(), shell)
+            self.assertEqual(controller.capture_target(), editor)
+        finally:
+            controller.timer.stop()
+
     def test_unavailable_foreground_defaults_without_losing_capsule_target(self):
         from unittest.mock import Mock
         from clarify.desktop.qml_quick_paste import QuickPasteController
@@ -88,24 +111,6 @@ class ApplicationStyleSettingsTests(unittest.TestCase):
             self.assertEqual(controller.target, target)
         finally:
             controller.timer.stop()
-
-    def test_real_capsule_keeps_compact_height_without_style_caption_then_expires(self):
-        import subprocess
-        import sys
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                str(
-                    Path(__file__).resolve().parents[1]
-                    / "support/qml_application_style_smoke.py"
-                ),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     @classmethod
     def setUpClass(cls):

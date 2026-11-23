@@ -112,3 +112,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+OpenCode mark
+Source: https://opencode.ai/brand/files/opencode-logo-transparent-dark.svg
+Source SHA-256: 502ff18efbef0432d8a702481669767c0738d744d18c45d6c3bd3b776d2d6a8e
+Use terms: https://opencode.ai/brand
+The SVG bytes are unchanged. Display dimensions are 16 by 20 pixels.
+The mark identifies the OpenCode provider. OpenCode and its logo are trademarks
+of Anomaly. No endorsement or general open-source logo license is asserted.

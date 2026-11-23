@@ -58,7 +58,7 @@ final class CloudSnippetTests: XCTestCase {
     token = "new"
     pending!.resume(returning: try response(snippetRequest!, ["revision": 1, "entries": []]))
     do { _ = try await task.value; XCTFail("The stale response must be rejected") } catch is CancellationError {}
-    XCTAssertEqual(token, "new"); XCTAssertTrue(account.hosted); XCTAssertFalse(account.isBusy)
+    XCTAssertEqual(token, "new"); XCTAssertTrue(account.signedIn); XCTAssertFalse(account.isBusy)
     XCTAssertNil(try library.cloudSnippets(owner).revision)
   }
   @MainActor func testOldEditorCannotSaveAfterAccountTransition() async throws {

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clarify UI"
+  short_description: "Design and check Clarify product UI"
+  default_prompt: "Use $clarify-ui to design or review this Clarify interface."

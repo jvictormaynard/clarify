@@ -5,6 +5,91 @@ import XCTest
 @testable import ClarifyContracts
 
 final class ComputerTests: XCTestCase {
+  @MainActor private final class RTCPeer: ComputerWebRTCTransport {
+    let computerID = ComputerTests.computer
+    var canStartOperation = true
+    var closed = false
+    var live = false
+    var recognitionCalls: [(String, UUID, String, [String: Any])] = []
+    var requests: [URLRequest] = []
+    var onClose: (() -> Void)?
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+      guard !closed else { throw ComputerFailure.offline }
+      requests.append(request)
+      let object: [String: Any] = request.url?.path.hasSuffix("/status") == true
+        ? ["schema_version": 1, "computer_id": computerID.uuidString, "computer_name": "Fixture PC", "ready": true, "live_recognition": live] : [:]
+      return (try JSONSerialization.data(withJSONObject: object),
+        HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    func recognition(_ action: String, operationID: UUID, token: String, body: [String: Any]) async throws -> (Data, Int) {
+      recognitionCalls.append((action, operationID, token, body))
+      let reply: [String: Any]
+      switch action {
+      case "start": reply = ["started": true, "format": "pcm16_mono_16000", "max_frame_bytes": 2560]
+      case "feed":
+        let frames = body["frames"] as! [[String: Any]]
+        var feedReply: [String: Any] = ["accepted": frames.last!["sequence"]!]
+        if recognitionCalls.filter({ $0.0 == "feed" }).count == 1 { feedReply["partial"] = "hello" }
+        reply = feedReply
+      case "finish": reply = ["operation_id": operationID.uuidString, "transcript": "hello", "text": "hello", "rewritten": false, "successful": true]
+      default: throw ComputerFailure.invalidResponse
+      }
+      return (try JSONSerialization.data(withJSONObject: reply), 200)
+    }
+    func close() { guard !closed else { return }; closed = true; onClose?() }
+  }
+  @MainActor func testDisconnectRevokesThroughRetainedPeerBeforeClosingIt() async throws {
+    let f = Fixture(paired: true), peer = RTCPeer()
+    let closed = expectation(description: "old peer drained and closed")
+    peer.onClose = { closed.fulfill() }
+    try f.connection.configureWebRTC(peer)
+    try await f.connection.refresh()
+    f.connection.disconnect()
+    XCTAssertFalse(f.connection.configured)
+    await fulfillment(of: [closed], timeout: 2)
+    XCTAssertEqual(peer.requests.map { $0.url!.path }, ["/v1/computer/status", "/v1/computer/session"])
+    XCTAssertEqual(peer.requests.last?.httpMethod, "DELETE")
+    XCTAssertTrue(f.requests.isEmpty)
+  }
+  @MainActor func testStatusReplacesAgingPeerBeforeNewWorkWithoutReplayingProcessing() async throws {
+    let f = Fixture(paired: true), peer = RTCPeer()
+    try f.connection.configureWebRTC(peer)
+    try await f.connection.refresh()
+    peer.canStartOperation = false
+    try await f.connection.refresh()
+    XCTAssertTrue(peer.closed)
+    XCTAssertEqual(f.requests.map { $0.url!.path }, ["/v1/computer/status"])
+    XCTAssertEqual(peer.requests.map { $0.httpMethod }, ["GET"])
+  }
+  @MainActor func testLiveUsesOneClaimAndFinalWithoutWAVUpload() async throws {
+    let f = Fixture(paired: true), peer = RTCPeer()
+    peer.live = true
+    try f.connection.configureWebRTC(peer); try await f.connection.refresh()
+    let id = UUID().uuidString
+    var partial = ""
+    let capture = try XCTUnwrap(f.connection.prepareLive(id, preferences: OutputPreferences(), policy: .legacy) { partial = $0 })
+    for _ in 0..<9 { try capture.append(Data(repeating: 0, count: 2560)) }; capture.end()
+    let result = try await capture.result()
+    XCTAssertEqual(result.transcript, "hello"); XCTAssertEqual(partial, "hello")
+    XCTAssertEqual(peer.recognitionCalls.map { $0.0 }, ["start", "feed", "feed", "finish"])
+    XCTAssertEqual(Set(peer.recognitionCalls.map { $0.1 }).count, 1)
+    XCTAssertTrue(peer.recognitionCalls.allSatisfy { $0.2 == Self.token })
+    XCTAssertEqual(peer.requests.map { $0.url!.path }, ["/v1/computer/status"])
+    XCTAssertTrue(f.requests.isEmpty)
+    XCTAssertThrowsError(try f.connection.prepareLive(id, preferences: OutputPreferences(), policy: .legacy) { _ in })
+  }
+  @MainActor func testLiveRequiresReadyRTCAndRetiresCaptureOnSuspend() async throws {
+    let f = Fixture(paired: true)
+    try await f.connection.refresh()
+    XCTAssertNil(try f.connection.prepareLive(UUID().uuidString, preferences: OutputPreferences(), policy: .legacy) { _ in })
+    let peer = RTCPeer(); peer.live = true
+    try f.connection.configureWebRTC(peer); try await f.connection.refresh()
+    let capture = try XCTUnwrap(f.connection.prepareLive(UUID().uuidString, preferences: OutputPreferences(), policy: .legacy) { _ in })
+    f.connection.suspend()
+    XCTAssertThrowsError(try capture.append(Data(repeating: 0, count: 2)))
+    do { _ = try await capture.result(); XCTFail("Expected cancellation") } catch {}
+    XCTAssertTrue(peer.recognitionCalls.isEmpty)
+  }
   private func temporaryDefaults() -> UserDefaults {
     let suite = "ClarifyTests.\(UUID().uuidString)"
     let defaults = UserDefaults(suiteName: suite)!
@@ -610,29 +695,6 @@ final class ComputerTests: XCTestCase {
     XCTAssertEqual(f.requests.filter { $0.httpMethod == "POST" }.count, 2)
   }
 
-  @MainActor func testAccountSelectedTextNeverUsesThePairedComputerOrFallsBackAfterFailure() async throws {
-    let defaults = temporaryDefaults()
-    var state = CloudAccountState(); state.endpoint = "https://account.test"; state.userID = UUID().uuidString
-    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
-    let f = Fixture()
-    var requests: [URLRequest] = [], status = 200
-    let account = CloudAccount(defaults: defaults, transport: { request in
-      requests.append(request)
-      let json = status == 200 ? ["text": "Translated"] : ["code": "allowance_exhausted"]
-      return (try JSONSerialization.data(withJSONObject: json),
-        HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
-    }, readCredential: { "fixture" }, saveCredential: { _ in })
-    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
-    XCTAssertFalse(destination.computerMode)
-    let result = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "translate", language: "pt", savedAction: nil, preferences: OutputPreferences()), text: "Original")
-    XCTAssertEqual(result.text, "Translated"); XCTAssertTrue(result.successful)
-    XCTAssertEqual(requests.first?.url?.path, "/v1/text"); XCTAssertTrue(f.requests.isEmpty)
-    status = 429
-    do { _ = try await destination.processText(UUID().uuidString, prepared: PreparedTextOperation(owner: destination.captureHistory(), action: "rewrite", language: "auto", savedAction: nil, preferences: OutputPreferences()), text: "Original"); XCTFail("Account failure accepted") }
-    catch let error as ClarifyError { XCTAssertEqual(error.code, "allowance_exhausted") }
-    XCTAssertEqual(requests.count, 2); XCTAssertTrue(f.requests.isEmpty, "Account errors must not use computer credentials")
-  }
-
   @MainActor func testTextStartRefreshesRequestedActionAndRejectsLostReadinessOrStaleOwner() async throws {
     let defaults = temporaryDefaults()
     let f = Fixture()
@@ -647,7 +709,7 @@ final class ComputerTests: XCTestCase {
     do { _ = try await destination.prepareText("rewrite", language: "auto", context: destination.historyContext, preferences: OutputPreferences()); started += 1; XCTFail("Stale readiness accepted") }
     catch { XCTAssertEqual(error as? ComputerFailure, .notReady) }
     let context = destination.historyContext
-    try destination.select("hosted"); try destination.select("computer")
+    try destination.select("computer")
     let count = f.requests.count
     do { _ = try await destination.prepareText("translate", language: "auto", context: context, preferences: OutputPreferences()); started += 1; XCTFail("Stale context accepted") } catch {}
     XCTAssertEqual(f.requests.count, count)
@@ -679,6 +741,75 @@ final class ComputerTests: XCTestCase {
     do { try await task.value; XCTFail("Cancelled refresh started text") } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
     XCTAssertFalse(started); XCTAssertEqual(f.idsCreated, 0)
     XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
+  }
+  @MainActor func testTextPreparationWaitsOnlyForOwnedAutomaticStatus() async throws {
+    for change in ["none", "cancel", "suspend", "account", "manual"] {
+      let defaults = temporaryDefaults()
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let library = try LocalLibrary(root: root), f = Fixture()
+      var token: String?
+      let account = CloudAccount(defaults: defaults, transport: { _ in
+        XCTFail("Hosted fallback"); throw ComputerFailure.offline
+      }, readCredential: { token }, saveCredential: { token = $0 })
+      let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+      let context = destination.historyContext
+      f.pauseStatus = true
+      let status = expectation(description: "status held")
+      f.onStatus = { status.fulfill() }
+      let automatic = Task { @MainActor in
+        if change == "manual" { try await f.connection.refresh() }
+        else { _ = try await destination.automaticRefresh(library) }
+      }
+      await fulfillment(of: [status], timeout: 2)
+      XCTAssertEqual(destination.textStartBlocked, change == "manual")
+      let entered = expectation(description: "text preparation entered")
+      var finished = false
+      let operationID = UUID().uuidString
+      let text = Task { @MainActor in
+        entered.fulfill()
+        defer { finished = true }
+        let prepared = try await destination.prepareText("rewrite", language: "auto", context: context,
+          preferences: OutputPreferences())
+        return try await destination.processText(operationID, prepared: prepared, text: "Original")
+      }
+      await fulfillment(of: [entered], timeout: 2)
+      if change == "manual" {
+        do { _ = try await text.value; XCTFail("Manual refresh admitted text") }
+        catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+      } else {
+        XCTAssertFalse(finished, "Text must wait for the owned status response")
+      }
+      switch change {
+      case "cancel": text.cancel()
+      case "suspend": f.connection.suspend()
+      case "account": token = "another-session"
+      default: break
+      }
+      if ["cancel", "suspend", "account"].contains(change) {
+        do { _ = try await text.value; XCTFail("Stale or cancelled preparation continued") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertTrue(finished, "Text owner must finish before the timer is released")
+      }
+      XCTAssertTrue(f.connection.busy, "Text must leave the timer's request and cleanup active")
+      XCTAssertEqual(f.requests.count, 1); XCTAssertEqual(f.idsCreated, 0)
+      XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
+      f.pauseStatus = false; f.onProcessing = { f.resume() }; f.resume()
+      if change == "suspend" { _ = try? await automatic.value }
+      else { try await automatic.value }
+      if change == "none" {
+        let result = try await text.value
+        XCTAssertTrue(result.successful)
+        XCTAssertEqual(f.requests.map { $0.url!.path },
+          ["/v1/computer/status", "/v1/computer/status", "/v1/computer/text"])
+        XCTAssertEqual(try f.postedIDs().count, 1); XCTAssertEqual(f.idsCreated, 1)
+        XCTAssertEqual(destination.historyContext, context)
+      } else {
+        XCTAssertEqual(f.requests.count, 1)
+        XCTAssertTrue(f.requests.allSatisfy { $0.httpMethod == "GET" })
+      }
+      XCTAssertFalse(f.connection.busy)
+    }
   }
   @MainActor func testPairDeviceLimitPreservesExistingTrustWithoutRetryOrRevocation() async throws {
     let f = Fixture(); try await f.connection.refresh()
@@ -905,6 +1036,134 @@ final class ComputerTests: XCTestCase {
     try library.clearHistory(scope: scope, includeLocal: false)
     XCTAssertEqual(try library.history().entries, [guest])
   }
+  @MainActor func testAccountLoginWaitsOnlyForOwnedAutomaticComputerStatus() async throws {
+    for change in ["none", "offline", "cancel", "social-cancel", "suspend", "account", "manual"] {
+      let defaults = temporaryDefaults()
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let library = try LocalLibrary(root: root), f = Fixture()
+      var state = CloudAccountState(); state.endpoint = "https://account.example.com"
+      defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+      var requests: [URLRequest] = [], token: String?
+      let account = CloudAccount(defaults: defaults, transport: { request in
+        requests.append(request)
+        return (Data("{}".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+      }, readCredential: { token }, saveCredential: { token = $0 })
+      let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+      let owner = destination.captureHistory()
+      f.pauseStatus = true
+      let status = expectation(description: "status held")
+      f.onStatus = { status.fulfill() }
+      let automatic = Task { @MainActor in
+        if change == "manual" { try await f.connection.refresh() }
+        else { _ = try await destination.automaticRefresh(library) }
+      }
+      await fulfillment(of: [status], timeout: 2)
+      let started = expectation(description: "login entered")
+      var finished = false
+      let login = Task { @MainActor in
+        started.fulfill()
+        defer { finished = true }
+        try await destination.authorizeComputerConnection(change == "social-cancel" ? "social" : "login",
+          value: change == "social-cancel" ? "google" : "fixture@example.com", library: library)
+      }
+      await fulfillment(of: [started], timeout: 2)
+      XCTAssertTrue(requests.isEmpty)
+      if change == "manual" {
+        do { try await login.value; XCTFail("Manual busy accepted") }
+        catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+      } else {
+        XCTAssertFalse(finished, "Login must wait for the owned status response")
+        XCTAssertTrue(destination.textStartBlocked, "Explicit reservation must exclude text during automatic status")
+        do {
+          _ = try await destination.prepareText("rewrite", language: "auto", context: destination.historyContext,
+            preferences: OutputPreferences())
+          XCTFail("Explicit account reservation admitted text")
+        } catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+        do {
+          try await destination.authorizeComputerConnection("login", value: "duplicate@example.com", library: library)
+          XCTFail("Duplicate login accepted")
+        } catch { XCTAssertEqual(error as? ComputerFailure, .busy) }
+      }
+      switch change {
+      case "offline": f.failureAfterStatusPause = ComputerFailure.offline
+      case "cancel":
+        login.cancel()
+        do { try await login.value; XCTFail("Cancelled waiter submitted login") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      case "social-cancel":
+        try await destination.authorizeComputerConnection("cancel-social", value: "", library: library)
+        do { try await login.value; XCTFail("Social cancellation waited for the unrelated status response") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+      case "suspend": f.connection.suspend()
+      case "account": token = "another-session"
+      default: break
+      }
+      XCTAssertTrue(f.connection.busy, "Waiting login must not take status cleanup ownership")
+      f.resume()
+      _ = try? await automatic.value
+      if ["none", "offline"].contains(change) {
+        try await login.value
+        XCTAssertEqual(requests.map { $0.url!.path }, ["/_allauth/app/v1/auth/continue"])
+        XCTAssertEqual(destination.captureHistory(), owner)
+        XCTAssertTrue(f.connection.configured)
+      } else if change != "manual" {
+        do { try await login.value; XCTFail("Stale or cancelled login submitted") }
+        catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertTrue(requests.isEmpty)
+      }
+      XCTAssertFalse(f.connection.busy)
+    }
+  }
+
+  @MainActor func testAccountConfirmationExcludesAutomaticRefreshThroughRemoteRegistration() async throws {
+    guard #available(iOS 17.0, macOS 14.0, *) else { throw XCTSkip("HPKE unavailable") }
+    let defaults = temporaryDefaults()
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let library = try LocalLibrary(root: root), f = Fixture()
+    f.cloudflare = Self.cloudflare; f.statusRemoteRegistration = Self.registration
+    try await f.connection.refresh()
+    XCTAssertEqual(f.connection.remoteStatus, "authorization_required")
+    let owner = f.connection.generation
+    var state = CloudAccountState(); state.endpoint = "https://account.example.com"; state.pending = "login"
+    defaults.set(try JSONEncoder().encode(state), forKey: "clarify.account.metadata")
+    let user = UUID().uuidString
+    var token: String? = "pending-fixture", requests: [String] = []
+    var confirmation: CheckedContinuation<Void, Never>?
+    let confirming = expectation(description: "confirmation held")
+    let account = CloudAccount(defaults: defaults, transport: { request in
+      let path = request.url!.path; requests.append(path)
+      let json: [String: Any]
+      if path == "/_allauth/app/v1/auth/code/confirm" {
+        await withCheckedContinuation { confirmation = $0; confirming.fulfill() }
+        json = ["meta": ["is_authenticated": true, "session_token": "authenticated-fixture"]]
+      } else {
+        XCTAssertEqual(path, "/v1/account")
+        json = ["id": user, "email": "fixture@example.com"]
+      }
+      return (try JSONSerialization.data(withJSONObject: json),
+        HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }, readCredential: { token }, saveCredential: { token = $0 })
+    let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
+    let command = Task { try await destination.authorizeComputerConnection("confirm", value: "123456", library: library) }
+    await fulfillment(of: [confirming], timeout: 2)
+    _ = try await destination.automaticRefresh(library)
+    XCTAssertEqual(f.requests.count, 1, "Timer cannot start status during confirmation")
+    let registering = expectation(description: "remote grant held after account confirmation")
+    f.pauseGrant = true; f.onRemote = { registering.fulfill() }
+    confirmation?.resume(); confirmation = nil
+    await fulfillment(of: [registering], timeout: 2)
+    XCTAssertFalse(account.isBusy)
+    _ = try await destination.automaticRefresh(library)
+    XCTAssertEqual(requests, ["/_allauth/app/v1/auth/code/confirm", "/v1/account"])
+    f.resume(); try await command.value
+    XCTAssertEqual(f.connection.remoteStatus, "registered"); XCTAssertEqual(f.grantsRequested, 1)
+    XCTAssertEqual(f.connection.generation, owner)
+    XCTAssertEqual(f.requests.map { $0.url!.path }, ["/v1/computer/status", "/v1/computer/status", "/v1/computer/remote"])
+    XCTAssertEqual(f.saved?.deviceID, Self.device); XCTAssertEqual(f.saved?.sessionToken, Self.token)
+  }
+
   @MainActor func testComputerKeyboardActivationAllowsTextWithoutEnablingDictation() async throws {
     let defaults = temporaryDefaults()
     let f = Fixture(); f.dictationReady = false
@@ -953,20 +1212,20 @@ final class ComputerTests: XCTestCase {
     let destination = ProcessingDestination(defaults: defaults, computer: f.connection, account: account)
     try destination.select("computer")
     let signedIn = destination.snapshot()["signedIn"] as? Bool
-    XCTAssertEqual(signedIn, true); XCTAssertEqual(destination.snapshot()["syncEnabled"] as? Bool, false)
+    XCTAssertEqual(signedIn, true); XCTAssertEqual(destination.snapshot()["syncEnabled"] as? Bool, true)
     XCTAssertEqual(destination.historyScope, Self.credential.scope)
     let capture = destination.captureHistory()
     try library.record(HistoryEntry(id: UUID().uuidString, createdAt: 1, transcript: "PC only", text: "PC only", rewritten: false), scope: capture.scope)
     _ = try await destination.automaticRefresh(library)
     let synchronized = await destination.syncHistory(library, force: true)
-    XCTAssertFalse(synchronized); XCTAssertTrue(hostedRequests.isEmpty)
+    XCTAssertFalse(synchronized); XCTAssertFalse(hostedRequests.contains { ["/v1/text", "/v1/text-actions/execute", "/v1/dictations"].contains($0.url!.path) })
     XCTAssertEqual(try library.dictionary(scope: user).map(\.term), ["Hosted word"])
     XCTAssertTrue(try library.historyBatch(scope: account.historyScope!).upserts.isEmpty)
     f.failure = ComputerFailure.offline
     do { _ = try await destination.automaticRefresh(library); XCTFail("Offline computer accepted") } catch {}
-    XCTAssertTrue(hostedRequests.isEmpty); XCTAssertTrue(destination.computerMode)
+    XCTAssertFalse(hostedRequests.contains { ["/v1/text", "/v1/text-actions/execute", "/v1/dictations"].contains($0.url!.path) }); XCTAssertTrue(destination.computerMode)
     XCTAssertFalse(f.connection.ready)
-    try destination.select("hosted")
+    try destination.select("computer")
     XCTAssertFalse(destination.acceptsHistory(capture)); XCTAssertTrue(account.configured)
   }
   func testWAVEnforcesPCM16Mono16kHzAndDurationBeforeUpload() throws {

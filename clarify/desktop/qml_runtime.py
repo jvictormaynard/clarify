@@ -7,7 +7,6 @@ legacy frontend or any Tk/CustomTkinter module.
 
 from __future__ import annotations
 
-import math
 import io
 import os
 import platform
@@ -24,6 +23,7 @@ from typing import Any, BinaryIO, Callable
 from clarify_account import AccountService, AccountDictionaryRepository
 from account_history import AccountHistory
 from cloud_defaults import DEFAULT_CLOUD_URL
+from recording_recovery import RecordingRecovery
 from experimental_audio_history import archive_audio, prune_audio_history
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, Qt, Signal, Slot
@@ -65,7 +65,6 @@ try:
     from audio_file_batch import (
         AudioFileBatchService,
         FileTranscriptionSelection,
-        SoxAudioConverter,
     )
     from dictionary_snippets import (
         DictionarySnippetService,
@@ -107,7 +106,6 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     from ...audio_file_batch import (  # type: ignore[no-redef]
         AudioFileBatchService,
         FileTranscriptionSelection,
-        SoxAudioConverter,
     )
     from ...dictionary_snippets import (  # type: ignore[no-redef]
         DictionarySnippetService,
@@ -147,9 +145,11 @@ except ImportError:  # PyInstaller analyzes this file as a standalone entry poin
     )
 
 try:
+    from .core_audio import CoreAudioCapture, pcm_level
     from .qml_clipboard import QmlClipboardGateway
     from .dictation_sounds import DictationCuePlayer
 except ImportError:  # PyInstaller analyzes this module as top-level source.
+    from core_audio import CoreAudioCapture, pcm_level
     from qml_clipboard import QmlClipboardGateway
     from dictation_sounds import DictationCuePlayer
 
@@ -288,12 +288,15 @@ def _data_directory() -> Path:
     return path
 
 
-def create_runtime_repositories() -> ApplicationRepositories:
+def create_runtime_repositories(*, hotkey_defaults=None) -> ApplicationRepositories:
     data_dir = _data_directory()
+    defaults = environment_defaults()
+    if hotkey_defaults is not None:
+        defaults["hotkeys"] = hotkey_defaults.to_mapping()
     return ApplicationRepositories(
         config=LocalConfigRepository(
             data_dir / "config.json",
-            defaults=environment_defaults(),
+            defaults=defaults,
         ),
         usage_stats=LocalUsageStatsRepository(data_dir / "usage_stats.json"),
     )
@@ -316,12 +319,6 @@ class QtWorkflowConfig:
         return self.current().dictation_writing_style
 
     def recording_usage_context(self, mode: str) -> dict[str, Any]:
-        if self.account is not None and self.account.hosted:
-            return {
-                "provider": "clarify",
-                "model": "whisper-large-v3-turbo",
-                "mode": str(mode),
-            }
         route = self.current().workflow(WorkflowScope.TRANSCRIPTION)
         return {
             "provider": route.provider_id,
@@ -370,8 +367,6 @@ class QtProviderGateway(WorkflowProviderService):
     def prepare_dictation(self, recording) -> None:
         """Best-effort local preparation; never contact a cloud provider."""
         try:
-            if self.account is not None and self.account.managed:
-                return
             with recording._lock:
                 if recording.preparation_done.is_set():
                     return
@@ -383,6 +378,26 @@ class QtProviderGateway(WorkflowProviderService):
             backend = adapter.select_backend(
                 route.model_id, self.config.current().local_asr_device
             )
+            if getattr(backend, "native_streaming", False) is True:
+                from local_asr_live import CaptureStream
+
+                stream = CaptureStream(
+                    recording.audio_path,
+                    backend,
+                    route.model_id,
+                    str(getattr(recording, "transcription_language", "auto") or "auto"),
+                    preparation_token,
+                )
+                with recording._lock:
+                    if not recording.preparation_done.is_set():
+                        recording.local_stream = stream
+                        recording.recorder._live_source = (recording.audio_path, stream)
+                        recording.attach_worker(stream.worker)
+                        stream.on_finished = lambda: recording.detach_worker(
+                            stream.worker
+                        )
+                        stream.start()
+                return
             if self.config.current().local_asr_streaming and getattr(
                 backend, "compute_device", "cpu"
             ).startswith("cuda:"):
@@ -499,22 +514,24 @@ def _open_readiness_file(path: Path) -> BinaryIO:
 
 @dataclass(eq=False)
 class _RecorderCapture:
-    """Identity and worker signals for one authoritative SoX capture."""
+    """Identity and worker signals for one recording."""
 
     path: Path
     cancel_event: threading.Event
     stopped: threading.Event = field(default_factory=threading.Event)
     ready: threading.Event = field(default_factory=threading.Event)
+    pcm_received: threading.Event = field(default_factory=threading.Event)
     meter_ready: threading.Event = field(default_factory=threading.Event)
     meter_finished: threading.Event = field(default_factory=threading.Event)
     process: Any = None
+    core_audio: CoreAudioCapture | None = None
     meter_device: Any = None
     started: bool = False
     cue_started: bool = False
 
 
 class QtRecorder:
-    """Minimal SoX owner for the Qt recording session."""
+    """Own the input and readiness for the Qt recording session."""
 
     def __init__(
         self,
@@ -546,9 +563,11 @@ class QtRecorder:
         self.mic_stream: Any | None = None
         self.mic_level = 0.0
         self._capture: _RecorderCapture | None = None
+        self._live_source = None
         self._readiness_worker: threading.Thread | None = None
         self._meter_worker: threading.Thread | None = None
         self._lock = threading.RLock()
+        self._core_audio_input = threading.Lock()
         self._cue_player = cue_player
         self._cue_lock = threading.Lock()
 
@@ -559,6 +578,18 @@ class QtRecorder:
             except Exception:
                 # Output failure must not prevent microphone use or cleanup.
                 pass
+
+    @property
+    def live_transcript(self) -> str:
+        capture, source = self._capture, self._live_source
+        if (
+            capture is None
+            or source is None
+            or capture.path != source[0]
+            or not self.capture_active
+        ):
+            return ""
+        return str(getattr(source[1], "latest_text", ""))
 
     @property
     def capture_active(self) -> bool:
@@ -595,24 +626,29 @@ class QtRecorder:
                 if capture is None:
                     self._readiness_worker = None
                     return
-            process = capture.process
-            active = process is not None and process.poll() is None
+                native_capture = capture.core_audio
+            active = self._capture_is_live(capture)
             ready = active and (
-                capture.ready.is_set() or self._has_pcm_frames(capture.path)
+                capture.pcm_received.is_set()
+                if native_capture is not None
+                else capture.ready.is_set() or self._has_pcm_frames(capture.path)
             )
             # A device can exit while the readiness reader holds the WAV.
-            ready = ready and process.poll() is None
+            if ready:
+                active = self._capture_is_live(capture)
+                ready = active
             with self._lock:
                 if self._capture is capture and not capture.stopped.is_set():
                     if ready:
                         capture.ready.set()
                     else:
                         capture.ready.clear()
+                        if native_capture is not None and not active:
+                            self.mic_level = 0.0
             if ready:
-                # PCM from the authoritative capture, rather than command
-                # acceptance or the optional level meter, confirms recording.
+                # PCM from the recording WAV confirms capture.
                 with self._cue_lock:
-                    live = process.poll() is None
+                    live = self._capture_is_live(capture)
                     with self._lock:
                         announce = (
                             live
@@ -626,6 +662,21 @@ class QtRecorder:
                     if announce:
                         self._play_cue(True)
             capture.stopped.wait(0.016)
+
+    @staticmethod
+    def _capture_is_live(capture: _RecorderCapture) -> bool:
+        if capture.core_audio is not None:
+            return capture.core_audio.active
+        return capture.process is not None and capture.process.poll() is None
+
+    def _ensure_readiness_worker(self) -> None:
+        if self._readiness_worker is None:
+            self._readiness_worker = threading.Thread(
+                target=self._monitor_capture,
+                name="ClarifyCaptureReadiness",
+                daemon=True,
+            )
+            self._readiness_worker.start()
 
     def _microphone_input_name(self, system: str, capture: _RecorderCapture) -> str:
         selected_id = None
@@ -646,7 +697,7 @@ class QtRecorder:
             raise MicrophoneUnavailableError(
                 "Selected microphone has no unambiguous backend name"
             )
-        if system not in {"Windows", "Darwin"}:
+        if system != "Windows":
             is_default = device.is_default or inventory.default_id == device.stable_id
             if not is_default:
                 raise MicrophoneUnavailableError(
@@ -681,20 +732,9 @@ class QtRecorder:
             return
 
         def callback(indata, _frames, _time_info, _status):
-            raw_samples = memoryview(indata)
-            samples = (
-                raw_samples
-                if raw_samples.format in {"h", "<h", "=h", "@h"}
-                and raw_samples.ndim == 1
-                else memoryview(raw_samples.tobytes()).cast("h")
-            )
-            if not samples:
+            if not memoryview(indata).nbytes:
                 return
-            mean_square = sum(sample * sample for sample in samples) / len(samples)
-            level = min(
-                1.0,
-                math.sqrt(mean_square) / 32768.0 * 16,
-            )
+            level = pcm_level(indata)
             with self._lock:
                 if (
                     self._capture is capture
@@ -782,19 +822,26 @@ class QtRecorder:
 
     @staticmethod
     def supports_explicit_microphone_selection(system: str | None = None) -> bool:
-        """Return whether the active SoX driver can honor an input name."""
+        """Return whether the recording backend can honor an explicit input."""
 
         return (system or platform.system()) in {"Windows", "Darwin"}
 
     def selectable_microphone_devices(self, inventory: Any) -> tuple[Any, ...]:
-        """Expose only endpoint names the active SoX route can disambiguate."""
+        """Expose only endpoints the recording backend can open safely."""
 
-        if not self.supports_explicit_microphone_selection():
+        system = platform.system()
+        if system == "Darwin":
+            return tuple(
+                device
+                for device in inventory.available_devices
+                if device.backend_index is not None
+            )
+        if not self.supports_explicit_microphone_selection(system):
             return ()
         return tuple(
             device
             for device in inventory.available_devices
-            if _sox_microphone_name_is_unambiguous(inventory, device, platform.system())
+            if _sox_microphone_name_is_unambiguous(inventory, device, system)
         )
 
     def test_microphone(
@@ -847,18 +894,8 @@ class QtRecorder:
             nonlocal peak, last_level_at
             if cancel_event is not None and cancel_event.is_set():
                 return
-            raw_samples = memoryview(indata)
-            samples = (
-                raw_samples
-                if raw_samples.format in {"h", "<h", "=h", "@h"}
-                and raw_samples.ndim == 1
-                else memoryview(raw_samples.tobytes()).cast("h")
-            )
-            if samples:
-                rms = math.sqrt(
-                    sum(sample * sample for sample in samples) / len(samples)
-                )
-                level = min(1.0, rms / 32768.0 * 16)
+            if memoryview(indata).nbytes:
+                level = pcm_level(indata)
                 peak = max(peak, level)
                 now = time.monotonic()
                 if on_level is not None and now - last_level_at >= 0.04:
@@ -913,16 +950,17 @@ class QtRecorder:
             raise
 
     def _start_capture(self, capture: _RecorderCapture) -> None:
+        system = platform.system()
+        if system == "Darwin":
+            self._start_core_audio(capture)
+            return
         if not self.sox:
             raise QtRuntimeError("SoX was not found in the Clarify runtime")
         if capture.cancel_event.is_set() or capture.stopped.is_set():
             raise RuntimeError("Recording cancelled before startup")
-        system = platform.system()
         microphone_input_name = self._microphone_input_name(system, capture)
         if system == "Windows":
             source = ["-t", "waveaudio", microphone_input_name]
-        elif system == "Darwin":
-            source = ["-t", "coreaudio", microphone_input_name]
         else:
             source = ["-t", "pulseaudio", microphone_input_name]
         args = [
@@ -967,13 +1005,7 @@ class QtRecorder:
             capture.started = True
             # At most one readiness reader and one native meter owner per
             # recorder. A slow old open/close cannot create unbounded workers.
-            if self._readiness_worker is None:
-                self._readiness_worker = threading.Thread(
-                    target=self._monitor_capture,
-                    name="ClarifyCaptureReadiness",
-                    daemon=True,
-                )
-                self._readiness_worker.start()
+            self._ensure_readiness_worker()
             if self._meter_worker is None:
                 self._meter_worker = threading.Thread(
                     target=self._run_level_meter,
@@ -983,18 +1015,87 @@ class QtRecorder:
                 )
                 self._meter_worker.start()
 
-    def stop(self) -> None:
+    def _start_core_audio(self, capture: _RecorderCapture) -> None:
+        def check_cancelled() -> None:
+            if capture.cancel_event.is_set() or capture.stopped.is_set():
+                raise RuntimeError("Recording cancelled during startup")
+
+        def receive_level(level: float) -> None:
+            with self._lock:
+                if (
+                    self._capture is capture
+                    and not capture.stopped.is_set()
+                    and not capture.cancel_event.is_set()
+                ):
+                    self.mic_level = level
+                    capture.pcm_received.set()
+
+        check_cancelled()
+        # Cancellation can detach the capture while native input is opening.
+        # Keep input reserved until the old stream has closed.
+        while not self._core_audio_input.acquire(timeout=0.05):
+            check_cancelled()
+        native = None
+        try:
+            check_cancelled()
+            backend = _load_sounddevice()
+            if backend is None:
+                raise MicrophoneUnavailableError("CoreAudio input is unavailable")
+            device_index = self._core_audio_device_index()
+            check_cancelled()
+            try:
+                native = CoreAudioCapture(
+                    backend, capture.path, device_index, receive_level
+                )
+                check_cancelled()
+                native.start()
+            except backend.PortAudioError as error:
+                raise MicrophoneUnavailableError(
+                    "Could not open CoreAudio input"
+                ) from error
+            if not native.active:
+                raise MicrophoneUnavailableError("No active microphone")
+            with self._lock:
+                check_cancelled()
+                self._ensure_readiness_worker()
+                capture.core_audio = native
+        except Exception:
+            try:
+                if native is not None:
+                    native.close()
+            finally:
+                self._core_audio_input.release()
+            raise
+
+    def _core_audio_device_index(self) -> int | None:
+        if self.config is None:
+            return None
+        selected_id = self.config.current().microphone.selected_id
+        if not selected_id:
+            return None
+        selection = self.microphone_inventory().resolve(selected_id)
+        if not selection.can_record:
+            raise MicrophoneUnavailableError("The configured microphone is unavailable")
+        if selection.state is not MicrophoneSelectionState.SELECTED:
+            return None
+        device = selection.device
+        if device is None or device.backend_index is None:
+            raise MicrophoneUnavailableError(
+                "Selected microphone has no CoreAudio input"
+            )
+        return device.backend_index
+
+    def stop(self) -> bool:
         with self._lock:
             capture = self._capture
-        if capture is not None:
-            self._stop_capture(capture)
+        return self._stop_capture(capture) if capture is not None else False
 
-    def _stop_capture(self, capture: _RecorderCapture) -> None:
+    def _stop_capture(self, capture: _RecorderCapture) -> bool:
         with self._lock:
             capture.stopped.set()
             capture.ready.clear()
             if self._capture is not capture:
-                return
+                return False
             self._capture = None
             # The meter worker retains sole close ownership. Do not wait for
             # optional native open/start/stop/close during audio finalization.
@@ -1002,11 +1103,18 @@ class QtRecorder:
             self.mic_level = 0.0
             process = capture.process
             self.process = None
-        self._terminate_process(process)
+        if capture.core_audio is None:
+            self._terminate_process(process)
+        else:
+            try:
+                capture.core_audio.close()
+            finally:
+                self._core_audio_input.release()
         with self._cue_lock:
             if capture.cue_started:
                 capture.cue_started = False
                 self._play_cue(False)
+        return capture.core_audio is not None and capture.core_audio.interrupted
 
     @staticmethod
     def _terminate_process(process: Any) -> None:
@@ -1043,6 +1151,7 @@ class QtRecordingSession(RecordingSessionGateway):
         )
         os.close(descriptor)
         self.audio_path = Path(raw_path)
+        RecordingRecovery.active(self.audio_path, True)
         self.audio_path.unlink(missing_ok=True)
         self.cancel_event = threading.Event()
         self.provider_cancel_token = CancellationToken()
@@ -1051,9 +1160,14 @@ class QtRecordingSession(RecordingSessionGateway):
         self._shutdown_callbacks: list[Callable[[], None]] = []
         self._workers: set[threading.Thread] = set()
         self._lock = threading.RLock()
+        self.before_recording: Callable[[threading.Event], None] | None = None
         self._started = False
         self._started_at: float | None = None
         self._experimental_audio_saved = False
+        self._recovery_saved = False
+        self.recovery_id = None
+        self._retain_working_audio = False
+        self._recovered_audio = None
         self._terminal = False
         self._error: Exception | None = None
         self._boundary_callback: Callable[[Any], None] | None = None
@@ -1168,6 +1282,8 @@ class QtRecordingSession(RecordingSessionGateway):
 
     def start(self) -> None:
         try:
+            if self.before_recording is not None:
+                self.before_recording(self.cancel_event)
             controls = self._prepare_boundary_policy()
             self.recorder.start(self.audio_path, self.cancel_event)
             with self._lock:
@@ -1210,7 +1326,14 @@ class QtRecordingSession(RecordingSessionGateway):
         self.wait_until_started()
         self._stop_boundary_monitor()
         stopped_at = time.monotonic()
-        self.recorder.stop()
+        if self._recovered_audio is not None:
+            return self._recovered_audio
+        if self.recorder.stop() is True and finalize_stream:
+            error = MicrophoneUnavailableError(
+                "Microphone recording stopped unexpectedly"
+            )
+            self.fail(error)
+            raise error
         try:
             audio_bytes = self.audio_path.read_bytes()
         except OSError as error:
@@ -1224,6 +1347,12 @@ class QtRecordingSession(RecordingSessionGateway):
         duration_seconds = (
             max(0.0, stopped_at - started_at) if started_at is not None else 0.0
         )
+        if finalize_stream:
+            self.persist_audio(
+                RecordingSnapshot(
+                    self.audio_path, audio_bytes, duration_seconds=duration_seconds
+                )
+            )
         if finalize_stream and not self._experimental_audio_saved:
             self._experimental_audio_saved = True
             try:
@@ -1249,6 +1378,42 @@ class QtRecordingSession(RecordingSessionGateway):
             ),
         )
 
+    def persist_audio(self, snapshot: RecordingSnapshot) -> None:
+        """Retain before provider work, including an explicitly accepted Undo."""
+        if self._recovery_saved or self._recovered_audio is not None:
+            return
+        RecordingRecovery.active(self.audio_path, True)
+        self._retain_working_audio = True
+        try:
+            self.recovery_id = RecordingRecovery(self.audio_path.parent).save(
+                snapshot.audio_bytes
+            )
+            self._update_recovery(duration=snapshot.duration_seconds or 0)
+        except (OSError, ValueError):
+            # Keep the working WAV and let usable audio continue to processing.
+            if not self.audio_path.exists():
+                try:
+                    self.audio_path.write_bytes(snapshot.audio_bytes)
+                except OSError:
+                    pass
+            if self.audio_path.exists():
+                self.recovery_id = self.audio_path.name
+        else:
+            self._recovery_saved = True
+            self._retain_working_audio = False
+
+    def _update_recovery(self, **changes) -> None:
+        if self.recovery_id:
+            try:
+                RecordingRecovery(self.audio_path.parent).update(
+                    self.recovery_id, **changes
+                )
+            except (OSError, ValueError):
+                pass
+
+    def begin_processing(self) -> None:
+        self._update_recovery(status="processing")
+
     def cancel(self) -> None:
         self.cancel_event.set()
         self.provider_cancel_token.cancel()
@@ -1258,6 +1423,7 @@ class QtRecordingSession(RecordingSessionGateway):
         self._mark_terminal()
 
     def complete(self) -> bool:
+        self._update_recovery(status="complete")
         self._stop_boundary_monitor()
         self._cleanup()
         self._mark_terminal()
@@ -1267,6 +1433,15 @@ class QtRecordingSession(RecordingSessionGateway):
         with self._lock:
             self._error = error
         self._stop_boundary_monitor()
+        if not self._recovery_saved and self._recovered_audio is None:
+            try:
+                if self.audio_path.is_file() and self.audio_path.stat().st_size >= 1000:
+                    self.persist_audio(
+                        RecordingSnapshot(self.audio_path, self.audio_path.read_bytes())
+                    )
+            except OSError:
+                self._retain_working_audio = True
+        self._update_recovery(status="failed")
         self._cleanup()
         self._mark_terminal()
 
@@ -1274,9 +1449,19 @@ class QtRecordingSession(RecordingSessionGateway):
         stream = getattr(self, "local_stream", None)
         if stream is not None:
             stream.cancel()
-        self.audio_path.unlink(missing_ok=True)
+        if not self._retain_working_audio:
+            self.audio_path.unlink(missing_ok=True)
 
     def _mark_terminal(self) -> None:
+        if self.recovery_id:
+            try:
+                recovery = RecordingRecovery(self.audio_path.parent)
+                recovery.release_processing(self.recovery_id)
+                if recovery.metadata(self.recovery_id).get("status") == "processing":
+                    recovery.update(self.recovery_id, status="saved")
+            except (OSError, ValueError):
+                pass
+        RecordingRecovery.active(self.audio_path, False)
         callbacks = []
         with self._lock:
             self._terminal = True
@@ -1297,6 +1482,7 @@ class QtRecordingAudioGateway:
         self.config = (
             config if config is not None else getattr(recorder, "config", None)
         )
+        self.before_recording: Callable[[threading.Event], None] | None = None
         self._active: QtRecordingSession | None = None
         self._lock = threading.Lock()
 
@@ -1309,6 +1495,8 @@ class QtRecordingAudioGateway:
             )
 
     def microphone_available(self) -> bool | None:
+        if platform.system() == "Darwin":
+            return None  # CoreAudio is checked by the recording worker.
         return bool(self.recorder.sox)
 
     def create_session(self) -> QtRecordingSession | None:
@@ -1319,7 +1507,37 @@ class QtRecordingAudioGateway:
             if self._active is not None and not self._active.shutdown_complete.is_set():
                 return None
             self._active = QtRecordingSession(self.recorder, self.config)
+            self._active.before_recording = self.before_recording
             return self._active
+
+    def create_recovery_session(self, path: Path) -> QtRecordingSession | None:
+        session = self.create_session()
+        if session is None:
+            return None
+        try:
+            import io
+            import wave
+
+            audio = path.read_bytes()
+            with wave.open(io.BytesIO(audio), "rb") as stream:
+                duration = len(stream.readframes(stream.getnframes())) / (
+                    stream.getframerate()
+                    * stream.getnchannels()
+                    * stream.getsampwidth()
+                )
+            session.audio_path.write_bytes(audio)
+            session.recovery_id = path.name
+            session._recovered_audio = RecordingSnapshot(
+                session.audio_path,
+                audio,
+                cancel_token=session.provider_cancel_token,
+                duration_seconds=duration,
+            )
+            session.start_finished.set()
+            return session
+        except Exception as error:
+            session.fail(error)
+            raise
 
     def wait_for_shutdown(self, timeout_seconds: float) -> bool:
         """Wait for the active recording owner to release its workers."""
@@ -1739,10 +1957,16 @@ class QtHistoryRecorder:
                     if owner is not None and self.account.history.append(
                         record, owner, final_text=state.result_text
                     ):
+                        self._bind_recording(state, record.id)
                         self.account.history.sync_safely(force=True)
                 elif self.account is None or not self.account.managed:
-                    self.store.append(record)
+                    if self.store.append(record) is not None:
+                        self._bind_recording(state, record.id)
             else:
+                # The retained audio is the failed History item. Do not add a
+                # second empty text entry for the same failed recording.
+                if getattr(state, "recording_id", None):
+                    return
                 if (
                     managed
                     or owner is not None
@@ -1761,6 +1985,16 @@ class QtHistoryRecorder:
         except (HistoryStoreError, OSError, ValueError):
             # History is explicitly opt-in and must never change workflow UX.
             return
+
+    def _bind_recording(self, state, record_id):
+        token = getattr(state, "recording_id", None)
+        if token:
+            try:
+                RecordingRecovery(Path(self.repositories.config.path).parent).update(
+                    token, history_id=record_id, status="complete"
+                )
+            except (OSError, ValueError):
+                pass
 
 
 class QtWorkflowRuntime:
@@ -1831,22 +2065,13 @@ class QtWorkflowRuntime:
         if self.repositories is None:
             raise QtRuntimeError("The QML audio import route requires repositories")
         current = self.repositories.config.load()
-        if self.account is not None and self.account.managed:
-            return FileTranscriptionSelection(
-                provider_id="clarify",
-                model="whisper-large-v3-turbo",
-                language=str(language or current.ui.language or "auto"),
-            )
         route = current.workflow(WorkflowScope.TRANSCRIPTION)
         if not route.enabled:
             raise RuntimeError("transcription workflow is disabled")
         selected_provider = str(provider_id or route.provider_id).strip().lower()
         selected_model = str(model or route.model_id).strip()
-        selected_language = (
-            str(language or getattr(current.ui, "language", "en") or "en")
-            .strip()
-            .lower()
-        )
+        selected_language = str(current.recognition_language or "auto").strip().lower()
+        output_language = str(language or current.ui.language or "auto").strip().lower()
         custom_endpoint = (
             route.custom_endpoint if selected_provider == route.provider_id else ""
         )
@@ -1856,7 +2081,7 @@ class QtWorkflowRuntime:
             registry=self.provider_registry,
             custom_endpoint=custom_endpoint,
         )
-        language_label = language_display_name(selected_language)
+        language_label = language_display_name(output_language)
         instruction = PROMPT_INSTRUCTION.format(lang=language_label)
         return FileTranscriptionSelection(
             provider_id=selected_provider,
@@ -1950,10 +2175,7 @@ def create_real_workflow_runtime(
     )
     account.desktop_text_actions = provider.text_actions
     audio_batch_gateway = QtAudioFileGateway(provider)
-    audio_batch_service = AudioFileBatchService(
-        audio_batch_gateway,
-        SoxAudioConverter(),
-    )
+    audio_batch_service = AudioFileBatchService(audio_batch_gateway)
     history_recorder = QtHistoryRecorder(active, scheduler, account=account)
     account.history = AccountHistory(account, history_recorder.store)
     service = WorkflowService(

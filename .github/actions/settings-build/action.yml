@@ -36,7 +36,7 @@ runs:
       if: ${{ (inputs.audit == 'true') }}
       shell: pwsh
       working-directory: desktop
-      run: npm audit --include=dev --audit-level=high
+      run: '& "${{ inputs.python }}" ../scripts/javascript_dependency_audit.py --component desktop'
     - name: Type-check and build frontend
       if: inputs.test != 'true' && inputs.native != 'true'
       shell: pwsh

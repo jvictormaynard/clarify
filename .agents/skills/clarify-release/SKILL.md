@@ -84,8 +84,8 @@ Do not repackage, re-sign or mutate that candidate after acceptance.
 
 ## Accept and publish the existing bytes
 
-Perform Windows manual acceptance on the actual stable artifact after packaging.
-Verify the artifact digest and executable checksum first. Cover the affected
+Perform manual acceptance on each platform in the actual stable artifact after
+packaging. Verify the artifact digest and platform checksums first. Cover the affected
 native contracts. Record results and limits in a fresh canonical maintainer
 report with the exact `clarify-candidate-acceptance` block from the automation
 guide. Both source SHA and candidate digest must match. CI, compilation and a
@@ -111,7 +111,7 @@ retry an uncertain upload automatically, or use a rebuild to hide a gap.
 
 Verify the exact tag/source, release state, candidate identity, downloaded hashes,
 checksums, ZIP licenses, Qt/SoX sources, signed stable update metadata and
-provenance for every asset. Stable must be latest after its publication. Preview
+provenance for every asset. Check the macOS ZIP and checksum when included. Stable must be latest after its publication. Preview
 must remain a prerelease without updater metadata or a stable-feed change.
 Download into a temporary directory; replacing a user's installed app requires
 its own authorization.

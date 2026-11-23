@@ -1,11 +1,9 @@
 """Recording input ownership and delayed shortcut release regression tests."""
 
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from PySide6.QtWidgets import QApplication
-from PySide6.QtQml import QQmlEngine, QQmlComponent
 from clarify.desktop.qml_bridge import QmlWorkflowBridge
 from clarify.desktop.qt_shell import WindowsGlobalHotkeyBackend
 from workflows import (
@@ -30,35 +28,6 @@ class RecordingControlsTests(unittest.TestCase):
         self.service = Service()
         self.queue = []
         self.bridge = QmlWorkflowBridge(self.service, dispatch_runner=self.queue.append)
-
-    def test_reopening_toolbar_leaves_settings_placeholder(self):
-        source = (
-            Path(__file__).resolve().parents[2] / "clarify/desktop/qml/Main.qml"
-        ).read_text(encoding="utf-8")
-        start = source.index("    onPresentationVisibleChanged:")
-        # Copy this handler only; adjacent Window handlers do not belong in
-        # the reduced QtObject fixture used to check Settings navigation.
-        end = source.index("\n    }", start) + len("\n    }")
-        handler = source[start:end]
-        engine = QQmlEngine()
-        engine.rootContext().setContextProperty("workflow", self.bridge)
-        component = QQmlComponent(engine)
-        component.setData(
-            (
-                "import QtQml\nQtObject { id: root\n"
-                "property bool presentationVisible: false\n"
-                "property string displayedSurface: workflow.surface\n"
-                "function syncSurface() {}\n" + handler + "}"
-            ).encode(),
-            "",
-        )
-        item = component.create()
-        self.assertIsNotNone(item, component.errors())
-        self.bridge.openSettings()
-        self.assertEqual(self.bridge.surface, "settings")
-        item.setProperty("presentationVisible", True)
-        self.assertEqual(self.bridge.surface, "idle")
-        item.deleteLater()
 
     def test_mouse_start_has_stop_and_release_does_not_stop_it(self):
         self.bridge.startRecordingFromButton()

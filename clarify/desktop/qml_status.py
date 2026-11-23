@@ -277,54 +277,8 @@ def _icon_data_url(icon: QIcon, size: int = 64) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-def _raise_status_pill(window: Any) -> None:
-    """Restore native topmost order without changing the focused application."""
-
-    if sys.platform == "win32":
-        set_window_pos = ctypes.windll.user32.SetWindowPos
-        set_window_pos.argtypes = [
-            wintypes.HWND,
-            wintypes.HWND,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int,
-            wintypes.UINT,
-        ]
-        set_window_pos.restype = wintypes.BOOL
-        # HWND_TOPMOST; SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE |
-        # SWP_NOOWNERZORDER. Visibility remains owned by the QML fade.
-        if not set_window_pos(int(window.winId()), -1, 0, 0, 0, 0, 0x0213):
-            window.raise_()
-    else:
-        window.raise_()
-
-
-class QmlStatusPillWindow(QObject):
-    """Reassert stacking after a native show and each workflow transition."""
-
-    def __init__(self, window: Any, bridge: Any, *, raise_window=None, parent=None):
-        super().__init__(parent)
-        self._window = window
-        self._raise_window = raise_window or _raise_status_pill
-        self._raise_timer = QTimer(self)
-        self._raise_timer.setSingleShot(True)
-        self._raise_timer.timeout.connect(self._raise_if_requested)
-        window.visibleChanged.connect(self._schedule_raise)
-        bridge.surfaceChanged.connect(self._schedule_raise)
-        self._schedule_raise()
-
-    def _schedule_raise(self, *_args) -> None:
-        # Native show and QML bindings must settle before adjusting the order.
-        self._raise_timer.start(0)
-
-    def _raise_if_requested(self) -> None:
-        if self._window.isVisible() and self._window.property("requestedVisible"):
-            self._raise_window(self._window)
-
-
 class QmlStatusPillController(QObject):
-    """Expose the live input level and target application icon to QML.
+    """Expose live input level, readiness and target icon to Electron.
 
     SoX remains the authoritative audio recorder.  The optional PortAudio
     stream owned by ``QtRecorder`` is sampled only for presentation, matching
@@ -334,6 +288,7 @@ class QmlStatusPillController(QObject):
     audioLevelChanged = Signal()
     recordingReadyChanged = Signal()
     targetIconChanged = Signal()
+    liveTranscriptChanged = Signal()
 
     def __init__(
         self,
@@ -349,6 +304,7 @@ class QmlStatusPillController(QObject):
         self._recorder = recorder
         self._audio_level = 0.0
         self._recording_ready = False
+        self._live_transcript = ""
         self._fallback_icon = fallback_icon
         self._file_icons = QFileIconProvider()
         self._icon_resolver = icon_resolver or self._resolve_icon
@@ -398,6 +354,11 @@ class QmlStatusPillController(QObject):
         self.audioLevelChanged.emit()
 
     def _sample_level(self) -> None:
+        self._set_live_transcript(
+            str(getattr(self._recorder, "live_transcript", "") or "")
+            if self._bridge.recording
+            else ""
+        )
         self._set_recording_ready(
             bool(
                 self._bridge.recording
@@ -417,8 +378,18 @@ class QmlStatusPillController(QObject):
                 self._level_timer.start()
             return
         self._level_timer.stop()
+        self._set_live_transcript("")
         self._set_recording_ready(False)
         self._set_audio_level(0.0)
+
+    @Property(str, notify=liveTranscriptChanged)
+    def liveTranscript(self) -> str:
+        return self._live_transcript
+
+    def _set_live_transcript(self, text: str) -> None:
+        if text != self._live_transcript:
+            self._live_transcript = text
+            self.liveTranscriptChanged.emit()
 
     def _sync_target_icon(self) -> None:
         resolved = self._icon_resolver(str(self._bridge.targetExecutable or ""))
@@ -428,4 +399,4 @@ class QmlStatusPillController(QObject):
         self.targetIconChanged.emit()
 
 
-__all__ = ["QmlStatusPillController", "QmlStatusPillWindow"]
+__all__ = ["QmlStatusPillController"]

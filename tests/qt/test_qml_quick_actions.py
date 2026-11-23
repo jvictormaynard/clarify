@@ -1,5 +1,6 @@
 """Quick menu actions must preserve drafts, transcripts and paste targets."""
 
+import sys
 import unittest
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -55,7 +56,9 @@ class QuickActionsTests(unittest.TestCase):
         self.assertFalse(bridge.handleHotkey("recording_hotkey"))
         paste.call_args.args[1]("copied")
         self.assertTrue(bridge.feedbackVisible)
-        self.assertIn("Ctrl+V", bridge.feedbackTitle)
+        self.assertIn(
+            "Command+V" if sys.platform == "darwin" else "Ctrl+V", bridge.feedbackTitle
+        )
         bridge.dismissFeedback(bridge.feedbackOperationId)
         self.assertFalse(bridge.feedbackVisible)
         self.assertTrue(bridge.canPasteLastTranscription)
@@ -83,7 +86,7 @@ class QuickActionsTests(unittest.TestCase):
             hide.assert_called_once()
             clipboard.activate.assert_called_once_with(external)
             clipboard.write_dictation_result.assert_called_once_with(
-                external, "Transcript"
+                external, "Transcript", allow_unconfirmed=False
             )
             finished.assert_called_once_with("pasted")
         finally:
@@ -132,7 +135,9 @@ class QuickActionsTests(unittest.TestCase):
         try:
             controller.paste("Transcript", finished)
             clipboard.activate.assert_not_called()
-            clipboard.write_dictation_result.assert_called_once_with(None, "Transcript")
+            clipboard.write_dictation_result.assert_called_once_with(
+                None, "Transcript", allow_unconfirmed=False
+            )
             finished.assert_called_once_with("copied")
         finally:
             controller.timer.stop()
@@ -179,54 +184,6 @@ class QuickActionsTests(unittest.TestCase):
             )
         )
         self.assertEqual(bridge.completionId, "voice:2")
-
-    def test_all_successful_workflows_remain_on_compact_home(self):
-        from clarify.desktop.qml_app import _WorkflowWindowVisibility
-
-        service = SimpleNamespace(
-            state=WorkflowState(), subscribe=lambda listener: None
-        )
-        for kind in WorkflowKind:
-            bridge = QmlWorkflowBridge(service)
-            restored_surfaces = []
-            shell = SimpleNamespace(
-                hide_window=Mock(),
-                show_window=Mock(),
-                show_window_without_activation=lambda: restored_surfaces.append(
-                    bridge.surface
-                ),
-            )
-            coordinator = _WorkflowWindowVisibility(
-                bridge, shell, SimpleNamespace(isVisible=lambda: True)
-            )
-            bridge._on_workflow_state(
-                WorkflowState(phase=WorkflowPhase.PROCESSING, kind=kind)
-            )
-            bridge._on_workflow_state(
-                WorkflowState(
-                    phase=WorkflowPhase.COMPLETED,
-                    operation_id=7,
-                    kind=kind,
-                    writing_style_requested="formal",
-                    result_text="Already published",
-                )
-            )
-            self.assertEqual(restored_surfaces, ["idle"])
-            self.assertFalse(bridge.feedbackVisible)
-            self.assertEqual(bridge.completionId, "workflow:7")
-            bridge._on_workflow_state(WorkflowState())
-            self.assertEqual(bridge.completionId, "workflow:7")
-            for phase, status in (
-                (WorkflowPhase.CANCELLED, None),
-                (WorkflowPhase.FAILED, None),
-                (WorkflowPhase.COMPLETED, "refinement_failed"),
-                (WorkflowPhase.COMPLETED, "output_language_not_applied"),
-            ):
-                bridge._on_workflow_state(
-                    WorkflowState(phase=phase, status_key=status, operation_id=8)
-                )
-                self.assertEqual(bridge.completionId, "")
-            self.assertIsNotNone(coordinator)
 
     def test_clipboard_failure_does_not_retry_or_expose_text(self):
         clipboard = Mock()

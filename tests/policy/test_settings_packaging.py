@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -84,15 +85,19 @@ class SettingsPackagingTests(unittest.TestCase):
             script = (ROOT / "scripts" / name).read_text()
             with self.subTest(script=name):
                 self.assertIn(
-                    "if (-not $SettingsExecutable -and -not $DesktopShellDirectory)",
+                    "if (-not $DesktopShellDirectory)",
                     script,
                 )
                 self.assertIn("'build-desktop.ps1'", script)
+                self.assertNotIn("$SettingsExecutable", script)
                 self.assertIn('"${DesktopShellDirectory};desktop-shell"', script)
-                normalized = script.index(
-                    "$SettingsExecutable = (Resolve-Path -LiteralPath $SettingsExecutable).ProviderPath"
+                normalized = re.search(
+                    r"\$DesktopShellDirectory = \(Resolve-Path -LiteralPath "
+                    r"\$DesktopShellDirectory(?: -ErrorAction Stop)?\)\.ProviderPath",
+                    script,
                 )
-                self.assertLess(normalized, script.index("'--add-binary'"))
+                self.assertIsNotNone(normalized)
+                self.assertLess(normalized.start(), script.index("'--add-data'"))
         self.assertIn(
             "check_settings_payload.py", (ROOT / "scripts/build.ps1").read_text()
         )

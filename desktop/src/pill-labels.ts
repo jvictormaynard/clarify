@@ -21,5 +21,5 @@ const labels: Record<string, {en: string; es: string}> = {
 };
 export function pillText(source: string) {
   const label = labels[source];
-  return label ? uiLanguage === 'pt' ? source : label[uiLanguage] : t(source);
+  return label ? uiLanguage === 'pt' ? source : label[uiLanguage === 'es' ? 'es' : 'en'] : t(source);
 }

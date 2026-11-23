@@ -1,6 +1,6 @@
 # Desktop responsiveness
 
-This work covers the React/Tauri Settings window and the Python/Qt desktop
+This work covers the React/Electron Settings window and the Python/Qt desktop
 runtime. The Settings window uses dark neutral surfaces and action controls,
 preserving the pill layout, passive focus behavior,
 workflow commands and saved data. Choice controls save their preference directly;
@@ -17,7 +17,7 @@ outside this work.
 - Each poll patch publishes one state update. Saves, account changes, recording
   transitions and errors retain their ordering and validation.
 - Audio backend initialization is deferred to its worker. Hidden Settings
-  windows pause periodic refreshes. The production host remains Tauri/WebView2;
+  windows pause periodic refreshes. The production host uses Electron;
   Python and Qt retain workflow and audio ownership.
 
 ## Confirmed mechanisms

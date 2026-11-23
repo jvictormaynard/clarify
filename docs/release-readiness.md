@@ -13,8 +13,9 @@ creation, acceptance and publication. Test the exact packaged executable;
 source tests alone do not establish Windows acceptance. Preview candidates do
 not affect the stable updater. Stable publication is a separate action.
 
-The default desktop presentation is Electron. Qt owns the engine, native input
-and recovery views. WebView2 is relevant only to the legacy Tauri alternative.
+Electron owns desktop presentation. Qt owns the engine, native input, file-import
+panel and minimal interface-failure dialog. Renderer recovery uses bounded
+restart attempts; it does not switch to another presenter.
 The community portable updater authenticates Ed25519 metadata; the separate MSI
 and Authenticode channel remain staged under [Windows distribution](windows-distribution.md).
 

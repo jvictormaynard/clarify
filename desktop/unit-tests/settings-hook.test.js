@@ -136,16 +136,16 @@ test('account submission is guarded while its own queued operation is pending', 
 });
 
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
-test('clean close waits for a preference accepted behind a poll', async () => {
- const h=await setup();let c=h.render();const gate=h.pause('poll');const poll=h.poll();await gate.started;
+test('clean close waits for a preference accepted behind a snapshot read', async () => {
+ const h=await setup();let c=h.render();const gate=h.pause('snapshot');const read=h.snapshot();await gate.started;
  const writing=c.run('setLanguage','pt');assert.equal(h.close(),true);c=h.render();await flush();assert.equal(h.nativeCloses,0);
- gate.release();await Promise.all([poll,writing]);await flush();assert.equal(h.persisted.language,'pt');assert.equal(h.nativeCloses,1);
+ gate.release();await Promise.all([read,writing]);await flush();assert.equal(h.persisted.language,'pt');assert.equal(h.nativeCloses,1);
 });
 
-for (const action of ['confirm','undo']) test(`clean close waits for history correction ${action} accepted behind a poll`, async () => {
- const h=await setup();let c=h.render();const gate=h.pause('poll');const poll=h.poll();await gate.started;
+for (const action of ['confirm','undo']) test(`clean close waits for history correction ${action} accepted behind a snapshot read`, async () => {
+ const h=await setup();let c=h.render();const gate=h.pause('snapshot');const read=h.snapshot();await gate.started;
  const writing=c.runHistoryCorrection(action,{token:'isolated-token'});assert.equal(h.close(),true);c=h.render();await flush();assert.equal(h.nativeCloses,0);
- gate.release();await Promise.all([poll,writing]);await flush();assert.equal(h.records.filter(x=>x.method==='historyCorrection').length,1);assert.equal(h.nativeCloses,1);
+ gate.release();await Promise.all([read,writing]);await flush();assert.equal(h.records.filter(x=>x.method==='historyCorrection').length,1);assert.equal(h.nativeCloses,1);
 });
 
 test('failed accepted preference keeps close open until acknowledged', async () => {
@@ -458,4 +458,14 @@ test('dictionary flag queued during Save follows a casefold-equivalent server sp
  gate.release();await Promise.all([saving,flag]);c=h.render();
  assert.equal(c.error,'');assert.equal(h.persisted.dictionaryEntries[0].enabled,false);
  assert.equal(h.persisted.dictionaryEntries[0].term,'STRASSE');
+});
+
+for (const library of ['dictionary','snippets']) test(`${library} Save keeps its captured draft when staged state is pushed`, async () => {
+ const h=await setup();let c=h.render();await c.navigate(library);c=h.render();
+ if(library==='dictionary')c.setDictionary([...c.state.dictionaryEntries,{term:'new term',pronunciation:'',aliases:[],enabled:true}]);
+ else c.setSnippets([...c.state.snippets,{trigger:'new phrase',replacement:'new replacement',enabled:true,case_sensitive:false}]);
+ c=h.render();const gate=h.pause('save');const saving=c.save();await gate.started;
+ h.publish();c=h.render();gate.release();assert.equal(await saving,true);c=h.render();
+ assert.equal(c.error,'');assert.equal(c.dirty,false);assert.equal(c.pageDirty,false);
+ assert.equal(h.persisted[library==='dictionary'?'dictionaryEntries':'snippets'].length,2);
 });

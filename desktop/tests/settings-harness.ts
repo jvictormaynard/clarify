@@ -35,10 +35,20 @@ async function startFixture(page: Page, language: string, signedIn: boolean) {
     catch (error) { if (!closed) await route.fulfill({ json: { error: String(error) } }); else await route.abort().catch(() => {}); }
   });
   await page.addInitScript(() => {
-    (window as any).__TAURI_INTERNALS__ = { invoke: async (_command: string, request: unknown) => {
+    const listeners = new Set<(message: any) => void>();
+        (window as any).__testSettings = async (request: unknown) => {
       const response = await fetch("/__test_rpc", { method: "POST", body: JSON.stringify(request) });
       const reply = await response.json(); if (reply.error) throw reply.error; return reply.result;
-    } };
+        };
+        (window as any).clarifyDesktop = {
+          call: async (_channel: string, method: string, args: unknown[]) => (window as any).__testSettings({ method, args }),
+          subscribe: (listener: (message: any) => void) => { listeners.add(listener); return () => listeners.delete(listener); },
+          onWindow: () => () => {}, ready: async () => {}, window: async () => {},
+        };
+        setInterval(() => {
+          if (listeners.size) void (window as any).__testSettings({method:'poll',args:[]})
+            .then((state: unknown) => listeners.forEach(listener => listener({event:'settings',state}))).catch(() => {});
+        }, 150);
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: language === "en" ? "Welcome back" : language === "es" ? "Bienvenido de nuevo" : "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });

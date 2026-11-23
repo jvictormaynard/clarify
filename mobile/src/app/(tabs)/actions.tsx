@@ -7,7 +7,7 @@ import { t } from '../../i18n';
 
 export default function Actions() {
   const c = usePalette();
-  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+  return <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: c.background }}>
     <WorkspaceHeader title={t('Ações')} accessory={<FeatureInfo kind="actions" />} /><KeyboardPage><ComputerText /></KeyboardPage>
   </SafeAreaView>;
 }

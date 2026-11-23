@@ -14,14 +14,14 @@ The release SBOM records cryptography and its statically linked OpenSSL.
 | --- | --- | --- |
 | SoX 14.4.2 and its bundled codecs | Audio conversion | GPL-2.0-or-later; vendored text at `extra/sox-14.4.2/LICENSE.GPL.txt` |
 | Python | Runtime | Python Software Foundation License |
-| PySide6 / Qt | Desktop engine and QML pill | PySide6 metadata: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only; Qt module and distribution terms must be reviewed for the release |
+| PySide6 / Qt | Desktop engine and native file import | PySide6 metadata: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only; Qt module and distribution terms must be reviewed for the release |
 | React / React DOM | Settings interface | MIT; Meta Platforms, Inc. and affiliates |
 | Base UI | Settings controls | MIT; Material-UI SAS |
 | t3code | Adapted Settings controls | MIT; T3 Tools Inc.; preserved in `desktop/licenses/t3code-MIT.txt` |
 | Inter Variable | Desktop interface typography | OFL-1.1; preserved in `desktop/licenses/Inter-OFL-1.1.txt` |
 | Google Sans | Google sign-in button typography | OFL-1.1; preserved in `desktop/licenses/Google-Sans-OFL-1.1.txt` |
 | Lucide | Settings icons | ISC, with Feather portions under MIT; see the package LICENSE |
-| Tauri | Native Settings child window | MIT OR Apache-2.0; transitive crate terms also apply |
+| Electron | Desktop presentation host | MIT; Chromium, Node.js and bundled third-party notices are included in its runtime inventory |
 | Pillow | Image rendering | HPND |
 | python-qrcode 8.2 | Local pairing QR generation | BSD-3-Clause, with inherited MIT attribution; preserved in `licenses/qrcode-BSD.txt` |
 | Requests | HTTP client | Apache-2.0 |
@@ -58,6 +58,17 @@ The upstream Windows README names the codec and runtime projects used in that
 distribution and is preserved at `extra/sox-14.4.2/README.win32.txt` and inside
 the portable package.
 
+## Bundled in the macOS app
+
+The Apple Silicon app uses the Python, Qt, Electron, and Settings components
+listed above. It also includes PyObjC (MIT) for native Accessibility and pasteboard
+access, and PortAudio (MIT) for Core Audio input. The PortAudio copyright and
+license text are available with the app and in the repository.
+[PortAudio license](licenses/portaudio-MIT.txt)
+
+The macOS ZIP contains the runtime SBOM and separate Qt, Python, crypto, and
+Settings license notices. Both platforms use the same pinned Qt source archive.
+
 ## Optional local-ASR assets (not bundled)
 
 The Local Whisper provider can download the following assets after explicit
@@ -78,6 +89,23 @@ maintainer harness copies them beside an isolated installation. The upstream
 warning not to run the example HTTP server with administrative privileges
 applies; Clarify binds it only to loopback.
 
+Meetings can download the [Sortformer 2.1 Q8_0 GGUF weights](https://huggingface.co/handy-computer/diar_streaming_sortformer_4spk-v2.1-gguf/tree/60ebab3ef7cae9869be0abcde13360347e96ba03).
+Handy Computer converted and quantized NVIDIA's published model for
+transcribe.cpp. The publisher's NVIDIA Open Model License accompanies the
+download reference in `local_asr_manifests/sortformer21-LICENSE.txt`.
+
+Mac overlap recovery can download the [ipsilondev MossFormer2 INT8 ONNX conversion](https://huggingface.co/ipsilondev/MossFormer2-SS-16K-ONNX/tree/abd8b1268dfded6b0e972ddae4c2dd6a3faf4f8a)
+of [Alibaba Speech Lab's MossFormer2_SS_16K weights](https://huggingface.co/alibabasglab/MossFormer2_SS_16K/tree/407cb030cd66340918ebb6c8cc63b18f8592cdbe).
+The original and the conversion use Apache-2.0. The bundle includes
+`local_asr_manifests/mossformer2-LICENSE.txt`, the MIT license and third-party
+notices from the ONNX Runtime CPU wheel, and the NumPy BSD license.
+
+Optional speaker matching uses the [WeSpeaker VoxCeleb ResNet34 ONNX weights](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34/tree/ff1ac5bca8ef11e90662b879aa923979e0bd277b)
+from the WeSpeaker project. The model card lists Apache-2.0. The project's
+[pretrained model terms](https://github.com/wenet-e2e/wespeaker/blob/master/docs/pretrained.md#model-license)
+specify [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/)
+for the VoxCeleb weights. Clarify downloads the publisher's ONNX file unchanged.
+
 ## Flag assets
 
 The extracted flag-icons SVGs are covered by the upstream MIT notice retained
@@ -88,7 +116,7 @@ dependency is required.
 
 The table above is a component overview. `scripts/settings_inventory.py` also
 collects the license texts of installed npm production dependencies and the
-locked Cargo graph for Windows. Each Settings build produces
+packaged Electron runtime. Each Settings build produces
 `Clarify-settings-NOTICES.txt` and `Clarify-settings.sbom.json`. Both files are
 embedded beside the Settings child in the portable executable; the notices are
 also included in the release ZIP. The release SBOM merges Settings with the
@@ -97,17 +125,13 @@ existing Python and SoX inventory.
 Adapted frontend source is recorded in
 [`desktop/licenses/source-components.json`](desktop/licenses/source-components.json)
 with its source revision and preserved license. The Settings notices and SBOM
-include these components with the npm and Cargo dependencies.
+include these components with the npm dependencies and Electron runtime.
 
-The Settings SBOM records the child executable SHA-256, lockfile hashes, and
-pinned Rust toolchain. Cargo build-only crates are included with excluded scope
-for attribution; this source graph is not proof of binary linkage. Each crate
-includes a link to its exact-version source archive.
-
-Where upstream packages omit license texts, reviewed supplements are retained
-in `desktop/licenses/`, with version-specific mappings, source URLs, and SHA-256
-checks. A missing or changed supplement fails the build. See
-[supplement provenance](desktop/licenses/README.md).
+The Settings SBOM records the payload manifest, npm lock hash, Electron version
+and bundled runtime license texts. Copied-source notices retain source URLs and
+SHA-256 checks in `desktop/licenses/source-components.json`. Missing license
+texts or changed source notices fail the build. See
+[source notice provenance](desktop/licenses/README.md).
 
 Qt 6.11.2 and PySide/Shiboken source archives are supplied separately as
 `Clarify-qt-sources.zip`, with pinned upstream hashes. `Clarify-qt-NOTICES.txt`
@@ -123,12 +147,6 @@ default Qt plugin collection is restricted before distribution approval.
 The OpenAI, Gemini, and Groq marks under `assets/providers/` identify compatible
 API providers. The names and marks remain the property of their respective
 owners. Their presence does not imply endorsement or affiliation.
-
-## Legacy prototype
-
-The removed Electron prototype is retained in Git history, not in the current
-checkout or build. If it is revived, its npm dependency licenses must be
-reviewed and documented before distribution.
 
 Maintainers should update this file whenever a distributed dependency or
 third-party asset changes.

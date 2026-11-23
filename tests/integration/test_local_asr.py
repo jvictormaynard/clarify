@@ -1203,6 +1203,26 @@ class LocalASRSidecarTests(LocalASRSidecarFixture, unittest.TestCase):
             self.assertEqual(factory.processes[0].terminate_calls, 1)
             self.assertFalse(installer.process_record_path.exists())
 
+    def test_cancel_after_startup_health_cleans_process_and_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager, installer, _session, factory = self._manager(directory)
+            cancelled = threading.Event()
+
+            def health(expected_process=None):
+                if expected_process is None:
+                    return False
+                cancelled.set()
+                return True
+
+            with (
+                patch.object(manager, "_health", side_effect=health),
+                self.assertRaises(local_asr.LocalASRCancelledError),
+            ):
+                manager.start(cancel_event=cancelled)
+
+            self.assertEqual(factory.processes[0].terminate_calls, 1)
+            self.assertFalse(installer.process_record_path.exists())
+
     def test_cancel_during_audio_snapshot_is_observed_before_startup(self):
         with tempfile.TemporaryDirectory() as directory:
             manager, installer, _session, factory = self._manager(directory)
