@@ -2033,15 +2033,15 @@ class WebSettingsTests(unittest.TestCase):
         config = self.settings._config
         workflows = config.workflows.with_route(
             "transcription", WorkflowRoute("local_asr", "ggml-medium")
-        ).with_route(
-            "local_asr_refinement", WorkflowRoute("apple_clarity", MODEL_ID)
-        )
+        ).with_route("local_asr_refinement", WorkflowRoute("apple_clarity", MODEL_ID))
         self.settings._config = replace(config, workflows=workflows)
         generation = self.settings._model_generation
         apple = ("apple_clarity", "", "")
         self.settings._finish_model_discovery(generation, apple, None)
         self.settings._invalidate_chatgpt_models()
-        with patch.object(self.settings._text_actions, "projection", side_effect=RuntimeError):
+        with patch.object(
+            self.settings._text_actions, "projection", side_effect=RuntimeError
+        ):
             state = self.request("snapshot")["result"]
         self.assertEqual(state["dictationReviewStatus"], "unavailable")
         self.assertEqual(state["textActionDictationContext"], "local_asr")
@@ -2050,7 +2050,9 @@ class WebSettingsTests(unittest.TestCase):
         self.settings._finish_model_discovery(
             generation, apple, ModelCatalog(text_models=(MODEL_ID,))
         )
-        self.assertEqual(self.request("snapshot")["result"]["dictationReviewStatus"], "ready")
+        self.assertEqual(
+            self.request("snapshot")["result"]["dictationReviewStatus"], "ready"
+        )
 
     def test_cached_or_unconfigured_catalog_is_not_an_rpc_error(self):
         self.assertIn("result", self.request("loadRouteModels"))

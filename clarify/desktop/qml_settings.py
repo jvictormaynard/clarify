@@ -2476,7 +2476,9 @@ class QmlSettingsController(QObject):
         ).allows_refinement(permitted)
 
     def _dictation_review_route(self) -> tuple[str, WorkflowRoute]:
-        local = self._config.workflow("transcription").provider_id == LOCAL_ASR_PROVIDER_ID
+        local = (
+            self._config.workflow("transcription").provider_id == LOCAL_ASR_PROVIDER_ID
+        )
         scope = "local_asr_refinement" if local else "refinement"
         return scope, self._config.workflow(scope)
 
@@ -3568,7 +3570,9 @@ class QmlSettingsController(QObject):
         self._model_loading_key = None
         self._model_token = None
         if key[0] == APPLE_CLARITY_PROVIDER_ID:
-            self._apple_clarity_available = catalog is not None and bool(catalog.text_models)
+            self._apple_clarity_available = catalog is not None and bool(
+                catalog.text_models
+            )
         if catalog is None:
             self._model_error_key = key
         else:
