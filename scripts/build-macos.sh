@@ -27,6 +27,16 @@ xcrun clang -dynamiclib -mmacosx-version-min=13.0 -fobjc-arc -fvisibility=hidden
     -framework Foundation -framework CoreAudio \
     "$repo/clarify/desktop/native/meeting_audio.m" -o "$meeting_audio"
 
+native_binaries=(--add-binary "$meeting_audio:.")
+macos_sdk=$(xcrun --sdk macosx --show-sdk-version)
+if [[ $arch == arm64 && ${macos_sdk%%.*} -ge 26 ]]; then
+    apple_clarity="$work/clarify-apple-clarity"
+    xcrun --sdk macosx swiftc -target arm64-apple-macos14.0 -O -parse-as-library \
+        -Xlinker -weak_framework -Xlinker FoundationModels \
+        "$repo/clarify/desktop/native/apple_clarity.swift" -o "$apple_clarity"
+    native_binaries+=(--add-binary "$apple_clarity:.")
+fi
+
 "$python" -m PyInstaller --noconfirm --clean --onedir --windowed \
     --name Clarify --osx-bundle-identifier com.clarify.desktop \
     --icon "$repo/assets/branding/clarify.ico" \
@@ -37,7 +47,7 @@ xcrun clang -dynamiclib -mmacosx-version-min=13.0 -fobjc-arc -fvisibility=hidden
     --exclude-module lark --exclude-module lxml --exclude-module packaging \
     --exclude-module setuptools --exclude-module tomli --exclude-module typing_extensions \
     --exclude-module wheel \
-    --add-binary "$meeting_audio:." \
+    "${native_binaries[@]}" \
     --add-data "$repo/clarify/desktop/qml:qml" \
     --add-data "$repo/assets:assets" \
     --add-data "$repo/shared:shared" \

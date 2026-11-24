@@ -17,6 +17,7 @@ PROPERTIES = (
     "textActionProviders",
     "textActionContext",
     "textActionsRevision",
+    "afterDictationActionPaused",
     "afterDictationTextActionId",
     "afterDictationTextActionLanguage",
     "textActionDictationContext",

@@ -864,7 +864,9 @@ export function useSettings() {
     const targetScope = current.current?.selectedScope;
     return execute(async call => {
       if (targetScope && targetScope !== current.current?.selectedScope) await call("selectWorkflow", targetScope);
-      if (targetScope === "local_asr_refinement") await call("savePreference", "setLocalAsrCloudRefinement", [enabled]);
+      if (targetScope === "local_asr_refinement" && current.current?.routeProviderId !== "apple_clarity") {
+        await call("savePreference", "setLocalAsrCloudRefinement", [enabled]);
+      }
       return call("savePreference", "setRouteEnabled", [enabled]);
     });
   };

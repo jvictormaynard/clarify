@@ -73,8 +73,10 @@ outcome. Clients require confirmation for explicit text-language choices; an old
 service cannot silently report source-language text as an applied choice. This
 metadata distinguishes applied editing from a recoverable original. Exact
 standalone snippets bypass editing.
-The existing cleanup policy and Local ASR cloud-refinement permission still
-control whether refinement can run.
+The cleanup policy and saved review setting control whether refinement runs.
+On supported Macs, Apple Intelligence is an opt-in dictation review provider
+for local or cloud transcription. Only its text rewrite runs on the Mac.
+If Apple Intelligence is unavailable, Clarify keeps the recognized text.
 
 The versioned processing contract owns supported choices, wire limits and error
 recovery categories for both clients. Its generated Python, Swift and TypeScript

@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
 from provider_registry import PROVIDER_REGISTRY
 from provider_types import ProviderCapability, ProviderError
 
@@ -31,6 +32,10 @@ class WorkflowScope(str, Enum):
 
 
 WORKFLOW_SCOPES = tuple(scope.value for scope in WorkflowScope)
+APPLE_CLARITY_SCOPES = frozenset(
+    {WorkflowScope.REFINEMENT.value, WorkflowScope.LOCAL_ASR_REFINEMENT.value}
+)
+
 _WORKFLOW_SCOPE_ALIASES = {
     "dictation": WorkflowScope.TRANSCRIPTION.value,
     "cleanup": WorkflowScope.REFINEMENT.value,
@@ -450,6 +455,17 @@ def validate_workflow_route(
             capability=capability,
             field="provider_id",
         ) from error
+    if (
+        provider == APPLE_CLARITY_PROVIDER_ID
+        and normalized_scope not in APPLE_CLARITY_SCOPES
+    ):
+        raise WorkflowConfigurationError(
+            normalized_scope,
+            "Apple Intelligence is available for dictation review.",
+            provider_id=provider,
+            capability=capability,
+            field="provider_id",
+        )
     if not metadata.supports(capability):
         raise WorkflowConfigurationError(
             normalized_scope,
@@ -470,6 +486,14 @@ def validate_workflow_route(
         raise WorkflowConfigurationError(
             normalized_scope,
             f"{metadata.display_name} has no default model for this workflow.",
+            provider_id=provider,
+            capability=capability,
+            field="model_id",
+        )
+    if provider == APPLE_CLARITY_PROVIDER_ID and model != metadata.default_text_model:
+        raise WorkflowConfigurationError(
+            normalized_scope,
+            "Choose the Apple on-device model.",
             provider_id=provider,
             capability=capability,
             field="model_id",

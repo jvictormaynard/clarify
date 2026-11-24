@@ -85,6 +85,7 @@ SETTINGS_INPUTS = {
     "local_asr_product.py",
     "microphone_controls.py",
     "provider_registry.py",
+    "apple_clarity_provider.py",
     "provider_types.py",
     "repositories.py",
     "secret_store.py",

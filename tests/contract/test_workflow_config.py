@@ -987,6 +987,15 @@ class WorkflowConfigurationTests(unittest.TestCase):
                     **current.to_mapping(),
                     "workflows": {
                         **current.workflows.to_mapping(),
+                        "refinement": {
+                            "provider_id": "apple_clarity",
+                            "model_id": "apple-on-device",
+                        },
+                        "local_asr_refinement": {
+                            "provider_id": "apple_clarity",
+                            "model_id": "apple-on-device",
+                            "enabled": True,
+                        },
                         "rewrite": {
                             "provider_id": "groq",
                             "model_id": "llama-3.3-70b-versatile",
@@ -1004,10 +1013,30 @@ class WorkflowConfigurationTests(unittest.TestCase):
             reset = repository.reset_workflow("rewrite")
             self.assertEqual(reset.workflow("rewrite").provider_id, "openai")
             self.assertNotEqual(reset.workflow("rewrite").prompt, "custom rewrite")
+            self.assertEqual(reset.workflow("refinement").provider_id, "apple_clarity")
+            self.assertEqual(
+                repository.reset_workflow("translation")
+                .workflow("translation")
+                .provider_id,
+                "openai",
+            )
             self.assertEqual(
                 repository.load().workflow("translation").provider_id,
                 "openai",
             )
+            repository.reset_workflow("refinement")
+            repository.save(
+                {
+                    "refinement_provider": "groq",
+                    "refinement_model": "llama-3.3-70b-versatile",
+                }
+            )
+            persisted = repository.load()
+            self.assertEqual(
+                persisted.workflow("local_asr_refinement").provider_id, "apple_clarity"
+            )
+            self.assertTrue(persisted.workflow("local_asr_refinement").enabled)
+            self.assertFalse(persisted.local_asr_cloud_refinement)
 
 
 if __name__ == "__main__":

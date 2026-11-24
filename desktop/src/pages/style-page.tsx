@@ -37,10 +37,11 @@ export function StylePage({ controller: c }: SettingsPageProps) {
               onChange={scope => void c.navigate("style", scope)} />
           </Row>
           <Toggle title={t("Ativar revisão por IA")}
-            hint={c.state.selectedScope === "local_asr_refinement"
+            hint={c.state.selectedScope === "local_asr_refinement" && c.state.routeProviderId !== "apple_clarity"
               ? t("Após a transcrição local, envie o texto ao serviço de revisão configurado.")
               : t("Melhore o texto do ditado com o serviço configurado.")}
-            checked={c.state.routeEnabled && (c.state.selectedScope !== "local_asr_refinement" || c.state.localAsrCloudRefinement)}
+            checked={c.state.routeEnabled && (c.state.selectedScope !== "local_asr_refinement"
+              || c.state.routeProviderId === "apple_clarity" || c.state.localAsrCloudRefinement)}
             onChange={value => void c.setTextRouteEnabled(value)} />
           <WorkflowRoute controller={c} />
           <Row title={t("Instruções")}><TextArea aria-label={t("Instruções")} className="prompt min-h-35"

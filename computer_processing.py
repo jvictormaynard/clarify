@@ -15,13 +15,19 @@ import tempfile
 from typing import Any, cast
 import unicodedata
 
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
 from dictionary_snippets import (
     DictionarySnippetService,
     InMemoryDictionarySnippetsRepository,
 )
 from provider_http import CancellationToken
 from provider_registry import PROVIDER_REGISTRY, ProviderRegistry
-from provider_types import ProviderError, ProviderCapability, TranscriptionResult
+from provider_types import (
+    ProviderCapability,
+    ProviderConnection,
+    ProviderError,
+    TranscriptionResult,
+)
 from repositories import AppConfig
 from shared.dictation_policy import cleanup_level as parse_cleanup_level
 from shared.output_preferences import (
@@ -196,14 +202,16 @@ class ComputerProcessor:
                 return unavailable
             route = current.workflow(WorkflowScope.TRANSCRIPTION)
             local = route.provider_id == "local_asr"
-            if local and not current.local_asr_cloud_refinement:
-                return unavailable
             scope = (
                 WorkflowScope.LOCAL_ASR_REFINEMENT
                 if local
                 else WorkflowScope.REFINEMENT
             )
-            clarity = self._route_ready(current, current.workflow(scope), scope)
+            review = current.workflow(scope)
+            local_apple = local and review.provider_id == APPLE_CLARITY_PROVIDER_ID
+            if local and not local_apple and not current.local_asr_cloud_refinement:
+                return unavailable
+            clarity = self._route_ready(current, review, scope)
             inline = self.registry.supports(
                 route.provider_id, ProviderCapability.MULTIMODAL_AUDIO
             ) and not any(
@@ -230,7 +238,7 @@ class ComputerProcessor:
                 "legacy": legacy,
                 "natural": natural,
                 "clarity": clarity,
-                "action": True,
+                "action": not local_apple,
                 "legacy_translated": legacy_translated,
                 "natural_translated": clarity,
             }
@@ -299,6 +307,9 @@ class ComputerProcessor:
             if route.provider_id == "local_asr":
                 return True
             metadata = self.registry.describe(route.provider_id)
+            if metadata.authentication == "on_device":
+                self.registry.validate(route.provider_id, ProviderConnection("", ""))
+                return True
             provider = getattr(current, route.provider_id)
             if metadata.authentication == "oauth":
                 # Read only the bound profile's local session state. credential()
@@ -497,11 +508,14 @@ class ComputerProcessor:
             )
             if not self._action_ready(current, text_action_id):
                 raise ComputerActionNotReady("Computer action is not configured")
-            if (
-                current.workflow(WorkflowScope.TRANSCRIPTION).provider_id == "local_asr"
-                and not current.local_asr_cloud_refinement
+            if current.workflow(
+                WorkflowScope.TRANSCRIPTION
+            ).provider_id == "local_asr" and (
+                not current.local_asr_cloud_refinement
+                or current.workflow(WorkflowScope.LOCAL_ASR_REFINEMENT).provider_id
+                == APPLE_CLARITY_PROVIDER_ID
             ):
-                raise ComputerActionNotReady("Local ASR review is not enabled")
+                raise ComputerActionNotReady("Local ASR cloud review is not enabled")
             selected = service.snapshot_text_action(text_action_id)
             if selected.action.kind == "translation" and language == "auto":
                 raise ValueError("Select a translation language")

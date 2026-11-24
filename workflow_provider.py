@@ -36,6 +36,7 @@ from contextlib import contextmanager, nullcontext
 import time
 from typing import Protocol
 
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
 from shared.dictation_policy import (
     DictationCleanupPolicy,
     cleanup_level as parse_cleanup_level,
@@ -322,11 +323,30 @@ class WorkflowProviderService:
         if selection is None and str(language or "auto").lower() == "auto":
             language = getattr(current, "recognition_language", "auto")
         metadata = self.registry.describe(provider)
+        refinement_scope = (
+            WorkflowScope.LOCAL_ASR_REFINEMENT
+            if provider == LOCAL_ASR_PROVIDER_ID
+            else WorkflowScope.REFINEMENT
+        )
+        refinement_route = current.workflow(refinement_scope)
+        apple_review = (
+            refinement_route.provider_id == APPLE_CLARITY_PROVIDER_ID
+            and refinement_route.enabled
+            and policy.allows_refinement(True)
+        )
+        if (
+            provider == LOCAL_ASR_PROVIDER_ID
+            and refinement_route.provider_id == APPLE_CLARITY_PROVIDER_ID
+        ):
+            # The local provider and the saved cloud action have separate consent.
+            after_action = None
+            after_action_error = ""
         # A multimodal model normally edits in its audio request. With active
         # snippets, keep recognition separate so standalone saved text bypasses
         # editing, and inline saved content is present before optional cleanup.
         snippet_two_stage = metadata.supports(ProviderCapability.MULTIMODAL_AUDIO) and (
             after_action is not None
+            or apple_review
             or target not in (None, "auto")
             or policy.separate_recognition
             or any(item.enabled for item in self.dictionary_service.state.snippets)
@@ -340,7 +360,9 @@ class WorkflowProviderService:
         provider_language = (
             "" if language in {"", "auto"} else language.split("-", 1)[0]
         )
-        recognition_only = policy.separate_recognition or target not in (None, "auto")
+        recognition_only = (
+            policy.separate_recognition or apple_review or target not in (None, "auto")
+        )
         instruction = (
             RECOGNITION_INSTRUCTION
             if recognition_only
@@ -413,12 +435,6 @@ class WorkflowProviderService:
         )
         timings["text_cleanup_ms"] = (time.perf_counter() - cleanup_started) * 1000
         refinement_source = transcript
-        refinement_scope = (
-            WorkflowScope.LOCAL_ASR_REFINEMENT
-            if provider == "local_asr"
-            else WorkflowScope.REFINEMENT
-        )
-        refinement_route = current.workflow(refinement_scope)
         refinement_requested = (
             policy.allows_refinement(True)
             and standalone_snippet is None
@@ -428,7 +444,9 @@ class WorkflowProviderService:
             )
             and refinement_route.enabled
             and (
-                provider != LOCAL_ASR_PROVIDER_ID or current.local_asr_cloud_refinement
+                provider != LOCAL_ASR_PROVIDER_ID
+                or apple_review
+                or current.local_asr_cloud_refinement
             )
         )
         refinement_used = False
@@ -582,12 +600,31 @@ class WorkflowProviderService:
             refinement_route.prompt,
         )
         target = parse_output_language(output_language)
+        apple_preserves_source = (
+            refinement_route.provider_id == APPLE_CLARITY_PROVIDER_ID
+            and target in (None, "auto")
+        )
         refinement_instruction = rewrite_instruction(
             refinement_instruction,
             writing_style=writing_style,
-            output_language=target,
+            output_language="auto" if apple_preserves_source else target,
             legacy_language=language_label,
         )
+        if apple_preserves_source:
+            refinement_instruction += (
+                "\n\nKeep the source's language mix. Copy technical terms, loanwords, "
+                "and interface names verbatim, even when a translation is common "
+                "or the term appears in a local dictionary. For example, keep "
+                "performance, feedback, and release candidate as written in "
+                "Portuguese dictation. Edit the surrounding sentence in its main "
+                "language. Check that borrowed terms and technical phrases remain unchanged."
+            )
+        elif refinement_route.provider_id == APPLE_CLARITY_PROVIDER_ID:
+            refinement_instruction += (
+                "\n\nKeep the same dates and weekdays when translating, including "
+                "weekday shorthand. In Portuguese scheduling, 'para segunda' "
+                "means 'for Monday' and 'para terça' means 'for Tuesday'."
+            )
         refinement_request = RewriteRequest(
             text=raw_transcript,
             model=refinement_route.model_id,

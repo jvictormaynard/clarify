@@ -26,6 +26,7 @@ from provider_types import (
     UnsupportedCapabilityError,
 )
 from local_asr import LocalASRProviderAdapter
+import apple_clarity_provider
 from chatgpt_provider import ChatGPTPlanAdapter
 from opencode_provider import OpenCodeAdapter
 
@@ -358,6 +359,7 @@ def build_provider_registry(
     registry.register(local_asr_adapter or LocalASRProviderAdapter())
     registry.register(ChatGPTPlanAdapter(http, session=chatgpt_session))
     registry.register(OpenCodeAdapter(http))
+    registry.register(apple_clarity_provider.AppleClarityAdapter(http))
     return registry
 
 
