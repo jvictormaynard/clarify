@@ -1,5 +1,4 @@
 import { DictationPermissions } from "./dictation-permissions";
-import { InputMonitoringButton } from "./input-monitoring-button";
 import { shortcutKeyName } from "../settings/display-labels";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Check, Keyboard, Languages, Mail, Mic, Smartphone } from "lucide-react";
@@ -184,10 +183,6 @@ export function DictationPractice({ controller }: SettingsPageProps) {
               if (guided && !await run("practiceCommand", "leave-shortcut")) return;
               setCapture("recording_hotkey", opener);
             }}>{t("Alterar atalho")}</Button></div>
-            {(state.inputMonitoringStatus === "request" || state.inputMonitoringStatus === "settings") && <>
-              <p className="hint">{t("Reconhece seu atalho mesmo quando outro app está aberto.")}</p>
-              <InputMonitoringButton controller={controller} disabled={busy} />
-            </>}
             <p className="hint">{t(state.hotkeyActivationMode === "push_to_talk" ? "Segure para falar. Solte para concluir." : "Pressione para falar. Pressione novamente para concluir.")}</p>
             {phase === "shortcut" && (shortcutUnavailable || listeningForShortcut) &&
               <p className="hint" role="status">{t(shortcutUnavailable

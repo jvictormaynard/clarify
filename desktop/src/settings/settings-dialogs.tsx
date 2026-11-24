@@ -1,4 +1,3 @@
-import { InputMonitoringButton } from "../components/input-monitoring-button";
 import { t } from "../i18n";
 import { isMacDesktop } from "../platform";
 import { Button, Confirm, Input } from "../components/ui";
@@ -90,7 +89,6 @@ export function SettingsDialogs({
           onMouseUp={(event) => void c.captureMouseHotkey(event)}
           onAuxClick={(event) => event.preventDefault()}
         />
-        <InputMonitoringButton controller={c} />
       </Confirm>
     </>
   );
