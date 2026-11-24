@@ -274,6 +274,7 @@ Copy-Item (Join-Path $repoQmlPython "dictation_sounds.py") $sourceQmlPython -For
 Copy-Item (Join-Path $repoQmlPython "practice_local_model.py") $sourceQmlPython -Force
 foreach ($backendModule in @(
     "account_history.py",
+    "apple_clarity_provider.py",
     "audio_file_batch.py",
     "audio_file_batch_ui.py",
     "chatgpt_auth.py",
