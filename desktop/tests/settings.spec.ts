@@ -686,10 +686,11 @@ test("Mac dictation setup reacts to a grant without window focus and offers a na
   await page.screenshot({ path: testInfo.outputPath("permissions-floating-guide.png") });
 });
 
-test("dictation setup requests Input Monitoring and offers its System Settings pane", async ({ page }) => {
+test("onboarding permissions request Input Monitoring alongside microphone and Accessibility", async ({ page }) => {
   await page.evaluate(() => {
     const desktop = window.clarifyDesktop!;
     const call = desktop.call.bind(desktop);
+    const dictationPermissions = { accessibility: "settings", microphone: "allowed" };
     let status = "request";
     const testWindow = window as any;
     testWindow.__inputMonitoringRequests = [];
@@ -697,27 +698,30 @@ test("dictation setup requests Input Monitoring and offers its System Settings p
       if (channel !== "settings") return call(channel, method, args);
       if (method !== "inputMonitoringCommand") {
         const result = await call<object>(channel, method, args);
-        return result && "inputMonitoringStatus" in result ? { ...result, inputMonitoringStatus: status } as any : result as any;
+        return result && "inputMonitoringStatus" in result ? { ...result, dictationPermissions, inputMonitoringStatus: status } as any : result as any;
       }
       const [action] = args;
       testWindow.__inputMonitoringRequests.push(action);
       if (action === "request") status = "settings";
       if (action === "check") status = "allowed";
-      return { ...await call<object>("settings", "snapshot", []), inputMonitoringStatus: status } as any;
+      return { ...await call<object>("settings", "snapshot", []), dictationPermissions, inputMonitoringStatus: status } as any;
     };
-    testWindow.__testDesktop.state({ event: "settings", state: { inputMonitoringStatus: status } });
+    testWindow.__testDesktop.state({ event: "settings", state: { dictationPermissions, inputMonitoringStatus: status } });
   });
   await navigate(page, "Geral");
   await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Permissões para ditar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Abrir Ajustes de Acessibilidade" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Captar sua voz" })).toBeVisible();
   const request = page.getByRole("button", { name: "Permitir atalhos globais" });
   await expect(request).toBeVisible();
   await request.click();
-  const open = page.getByRole("button", { name: "Abrir Monitoramento de Entrada" });
-  await open.click();
+  await page.getByRole("button", { name: "Abrir Ajustes do Monitoramento de Entrada" }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__inputMonitoringRequests)).toEqual(["request", "open"]);
+  await expect(page.getByRole("button", { name: "Reabrir Ajustes" })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(open).toBeHidden();
-  await expect(page.getByRole("button", { name: "Alterar atalho" })).toBeVisible();
+  const shortcuts = page.locator(".permission-card").filter({ has: page.getByRole("heading", { name: "Ditar com atalhos em outros apps" }) });
+  await expect(shortcuts.getByRole("status")).toHaveText("Acesso permitido");
 });
 
 test("modifier and side mouse shortcuts can be captured and saved", async ({ page }) => {
@@ -763,11 +767,9 @@ test("macOS accepts a native Fn shortcut from the focused capture field", async 
   await page.evaluate(() => (window as any).__testDesktop.state({
     event: "settings", state: { inputMonitoringStatus: "request" },
   }));
-  const permission = page.getByRole("button", { name: "Permitir atalhos globais" });
-  await expect(permission).toBeVisible();
-  await page.keyboard.press("Tab");
-  await expect(permission).toBeFocused();
-  await page.keyboard.press("Shift+Tab");
+  const dialog = page.getByRole("dialog", { name: "Definir atalho" });
+  await expect(dialog.getByText("O macOS precisa da sua autorização para atalhos com Fn ou só modificadores.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Permitir atalhos globais" })).toHaveCount(0);
   await expect(field).toBeFocused();
   await page.evaluate(() => (window as any).__testDesktop.state({
     event: "settings", state: { inputMonitoringStatus: "allowed", nativeHotkeyCapture: { active: true } },
