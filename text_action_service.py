@@ -21,6 +21,7 @@ from text_actions import (
     settings_for,
     validate_library,
 )
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
 from workflow_config import DEFAULT_WORKFLOW_PROMPTS, validate_workflow_route
 from shared.dictation_policy import DictationCleanupPolicy, cleanup_level
 from provider_types import ProviderCapability, ProviderConnection
@@ -334,6 +335,7 @@ class TextActionService:
                         config.hotkeys.to_mapping(),
                     ]
                 ),
+                "afterDictationActionPaused": self.automatic_action_paused(config),
                 "afterDictationTextActionId": after.get("id", ""),
                 "afterDictationTextActionLanguage": after.get("language", "auto"),
                 "textActionDictationContext": self.dictation_context(config),
@@ -861,6 +863,13 @@ class TextActionService:
             and is_keyless_loopback_url(route.custom_endpoint or provider.base_url)
         )
 
+    def automatic_action_paused(self, config) -> bool:
+        return (
+            self.dictation_context(config) == "local_asr"
+            and config.workflow("local_asr_refinement").provider_id
+            == APPLE_CLARITY_PROVIDER_ID
+        )
+
     def set_after(self, action_id, language, context, revision, *, config_change=None):
         from text_actions import TEXT_LANGUAGES
 
@@ -872,6 +881,11 @@ class TextActionService:
             raise ValueError("Invalid post-dictation action")
 
         def mutate(settings, actions):
+            config = self.repository.load()
+            if action_id and self.automatic_action_paused(config):
+                raise ValueError(
+                    "Automatic actions are paused during Apple Intelligence review."
+                )
             action = next((a for a in actions if a.id == action_id and a.enabled), None)
             if action_id and action is None:
                 raise ValueError("Unknown or disabled text action")
@@ -884,9 +898,10 @@ class TextActionService:
             after = {
                 key: dict(value) for key, value in settings.after_dictation.items()
             }
-            after.setdefault(self._device_key(), {})[
-                self.dictation_context(self.repository.load())
-            ] = {"id": action_id, "language": language}
+            after.setdefault(self._device_key(), {})[self.dictation_context(config)] = {
+                "id": action_id,
+                "language": language,
+            }
             return replace(settings, after_dictation=after), actions
 
         return self._transaction(mutate, context, revision, config_change=config_change)
@@ -965,9 +980,14 @@ class TextActionService:
             )
             local = config.workflow("transcription").provider_id == "local_asr"
             scope = "local_asr_refinement" if local else "refinement"
+            review = config.workflow(scope)
+            local_cloud_allowed = (
+                local
+                and config.local_asr_cloud_refinement
+                and (review.provider_id != APPLE_CLARITY_PROVIDER_ID)
+            )
             permitted = self.managed() or (
-                config.workflow(scope).enabled
-                and (not local or config.local_asr_cloud_refinement)
+                review.enabled and (not local or local_cloud_allowed)
             )
             if not policy.allows_refinement(permitted):
                 return DictationTextActionSnapshot(None, "auto", context, owner, config)

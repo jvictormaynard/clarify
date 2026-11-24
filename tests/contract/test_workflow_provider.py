@@ -121,6 +121,40 @@ class WorkflowProviderTests(WorkflowProviderFixture, unittest.TestCase):
         self.registry.transcribe.assert_called_once()
         self.registry.rewrite.assert_called_once()
 
+    def test_apple_clarity_refines_streaming_text_without_translating_mixed_terms(self):
+        self.current = replace(
+            self.current,
+            local_asr_cloud_refinement=False,
+            workflows=replace(
+                self.current.workflows,
+                transcription=WorkflowRoute("local_asr", "nemotron-3.5-streaming"),
+                local_asr_refinement=WorkflowRoute("apple_clarity", "apple-on-device"),
+            ),
+        )
+        audio = replace(
+            self.audio,
+            pretranscribed=TranscriptionResult(
+                "Esse é o melhor performance?", "local_asr", "nemotron-3.5-streaming"
+            ),
+        )
+        self.registry.rewrite.return_value = RewriteResult(
+            "Esse é o melhor performance?", "apple_clarity", "apple-on-device"
+        )
+
+        result = self.service.transcribe(
+            audio, "prompt", "pt-BR", cleanup_level="clarity"
+        )
+
+        self.registry.transcribe.assert_not_called()
+        provider, request, connection, _ = self.registry.rewrite.call_args.args
+        self.assertEqual(provider, "apple_clarity")
+        self.assertEqual(connection, ProviderConnection("", ""))
+        self.assertIn("Copy technical terms, loanwords", request.instruction)
+        self.assertNotIn("Output MUST be in Brazilian Portuguese", request.instruction)
+        self.assertIn("performance?", request.source_message)
+        self.assertEqual(result.cleanup_level_applied, "clarity")
+        self.assertEqual(result.refinement_provider_id, "apple_clarity")
+
     def test_preserve_bypasses_review_but_keeps_expansion_and_original(self):
         self.set_cleanup("preserve")
         result = self.service.transcribe(self.audio, "prompt", "pt")

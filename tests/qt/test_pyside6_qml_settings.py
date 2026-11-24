@@ -1704,6 +1704,46 @@ class QmlSettingsControllerTests(unittest.TestCase):
             self.assertFalse(controller.setHistoryRetentionDays(-1))
             self.assertIn("cannot be negative", controller.lastError)
 
+    def test_apple_intelligence_is_opt_in_for_dictation_review(self):
+        provider = "apple_clarity"
+        with TemporaryDirectory() as directory:
+            controller = self._preference_controller(directory)
+            with patch.object(
+                qml_settings, "supports_apple_clarity", return_value=True
+            ):
+                self.assertNotIn(provider, controller.providerIds)
+                self.assertNotIn(provider, controller.providersForScope("rewrite"))
+                self.assertNotIn(
+                    provider, controller.providersForScope("transcription")
+                )
+                self.assertIn(provider, controller.providersForScope("refinement"))
+                self.assertIn(
+                    provider, controller.providersForScope("local_asr_refinement")
+                )
+                self.assertTrue(controller.selectWorkflow("local_asr_refinement"))
+                self.assertTrue(controller.setRouteProviderId(provider))
+                self.assertEqual(controller.routeModelId, "apple-on-device")
+                self.assertFalse(controller.routeEnabled)
+                self.assertEqual(controller.routeModelStatus, "idle")
+                self.assertTrue(
+                    controller.savePreference("setRouteProviderId", [provider])
+                )
+                self.assertTrue(controller.savePreference("setRouteEnabled", [True]))
+                self.assertTrue(controller.routeEnabled)
+                self.assertFalse(controller.localAsrCloudRefinement)
+                self.assertFalse(controller.afterDictationActionPaused)
+                self.assertTrue(controller.savePreference("useLocalAsr", []))
+                self.assertTrue(controller.afterDictationActionPaused)
+                self.assertTrue(controller.selectWorkflow("local_asr_refinement"))
+
+            self.assertIn(
+                provider, controller.providersForScope("local_asr_refinement")
+            )
+            self.assertTrue(controller.savePreference("setRouteProviderId", ["openai"]))
+            self.assertFalse(controller.routeEnabled)
+            self.assertFalse(controller.localAsrCloudRefinement)
+            self.assertFalse(controller.afterDictationActionPaused)
+
     def test_every_route_edit_marks_the_route_independent(self):
         edit_cases = (
             ("setRouteProviderId", ("groq",)),

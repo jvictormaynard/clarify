@@ -34,6 +34,7 @@ from secret_store import (
     SecretStoreUnavailableError,
     create_secret_store,
 )
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
 from workflow_config import (
     DEFAULT_WORKFLOW_PROMPTS,
     WORKFLOW_SCOPES,
@@ -193,6 +194,7 @@ class AppConfig:
     groq: ProviderConfig = field(default_factory=ProviderConfig)
     local_asr: ProviderConfig = field(default_factory=ProviderConfig)
     opencode: ProviderConfig = field(default_factory=ProviderConfig)
+    apple_clarity: ProviderConfig = field(default_factory=ProviderConfig)
     chatgpt: ProviderConfig = field(
         default_factory=lambda: ProviderConfig(base_url="https://api.openai.com/v1")
     )
@@ -288,7 +290,7 @@ class AppConfig:
         def provider_config(name: str) -> ProviderConfig:
             metadata = PROVIDER_REGISTRY.describe(name)
             defaults_for_provider = provider_defaults[name]
-            if name in {"chatgpt", "opencode"}:
+            if name in {"chatgpt", "opencode", "apple_clarity"}:
                 return ProviderConfig(
                     base_url=metadata.default_base_url,
                     text_model=string(metadata.text_model_key),
@@ -527,7 +529,9 @@ class AppConfig:
             if "refinement" in workflow_mapping
             else refinement_model
         )
-        if "local_asr_refinement" in workflow_mapping and isinstance(
+        if workflows.local_asr_refinement.provider_id == APPLE_CLARITY_PROVIDER_ID:
+            local_asr_cloud_refinement = False
+        elif "local_asr_refinement" in workflow_mapping and isinstance(
             workflows.local_asr_refinement.enabled, bool
         ):
             local_asr_cloud_refinement = workflows.local_asr_refinement.enabled
@@ -561,6 +565,7 @@ class AppConfig:
             local_asr=provider_configs["local_asr"],
             chatgpt=provider_configs["chatgpt"],
             opencode=provider_configs["opencode"],
+            apple_clarity=provider_configs["apple_clarity"],
             ui=UIPreferences(mode, language),
             startup=StartupSettings(autostart),
             local_asr_cloud_refinement=local_asr_cloud_refinement,
@@ -616,6 +621,7 @@ class AppConfig:
             # Text-only providers retain an empty compatibility field.
             "chatgpt_audio_model": "",
             "opencode_audio_model": "",
+            "apple_clarity_audio_model": "",
             "opencode_text_model": self.opencode.text_model,
             "local_asr_model": self.local_asr.audio_model,
             "local_asr_cloud_refinement": self.local_asr_cloud_refinement,
@@ -782,7 +788,8 @@ class AppConfig:
                     # compatibility behavior; it is not one of the legacy
                     # rewrite/translation clones addressed by this marker.
                     if (
-                        current.provider_id != previous_shared.provider_id
+                        current.provider_id == APPLE_CLARITY_PROVIDER_ID
+                        or current.provider_id != previous_shared.provider_id
                         or current.model_id != previous_shared.model_id
                         or current.custom_endpoint
                     ):
@@ -802,7 +809,10 @@ class AppConfig:
                         custom_endpoint=endpoint,
                     ),
                 )
-        if "local_asr_cloud_refinement" in changed_keys:
+        if (
+            "local_asr_cloud_refinement" in changed_keys
+            and workflows.local_asr_refinement.provider_id != APPLE_CLARITY_PROVIDER_ID
+        ):
             workflows = workflows.with_route(
                 WorkflowScope.LOCAL_ASR_REFINEMENT,
                 replace(
@@ -816,7 +826,10 @@ class AppConfig:
             workflows=workflows,
             **provider_updates,
             local_asr_cloud_refinement=(
-                legacy_config.local_asr_cloud_refinement
+                False
+                if workflows.local_asr_refinement.provider_id
+                == APPLE_CLARITY_PROVIDER_ID
+                else legacy_config.local_asr_cloud_refinement
                 if "local_asr_cloud_refinement" in changed_keys
                 else self.local_asr_cloud_refinement
             ),
@@ -857,6 +870,11 @@ class AppConfig:
             )
         else:
             provider_id = selection.refinement_provider
+            if provider_id == APPLE_CLARITY_PROVIDER_ID and normalized in {
+                WorkflowScope.REWRITE.value,
+                WorkflowScope.TRANSLATION.value,
+            }:
+                provider_id = "openai"
             metadata = registry.describe(provider_id)
             route = WorkflowRoute(
                 provider_id=provider_id,

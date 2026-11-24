@@ -54,6 +54,8 @@ from hotkey_config import (
     HotkeySettingsController,
     HotkeyValidationError,
 )
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
+from apple_clarity_provider import supported_platform as supports_apple_clarity
 from local_asr import PROVIDER_ID as LOCAL_ASR_PROVIDER_ID
 from local_asr_product import (
     LocalASRProductController,
@@ -85,6 +87,7 @@ from repositories import (
     SUPPORTED_UI_MODES,
 )
 from workflow_config import (
+    APPLE_CLARITY_SCOPES,
     WORKFLOW_CAPABILITIES,
     WORKFLOW_SCOPES,
     WorkflowRoute,
@@ -942,6 +945,7 @@ class QmlSettingsController(QObject):
                 "textActionProfiles": [],
                 "textActionContext": "",
                 "textActionsRevision": "",
+                "afterDictationActionPaused": False,
                 "afterDictationTextActionId": "",
                 "afterDictationTextActionLanguage": "auto",
                 "textActionDictationContext": "cloud",
@@ -967,7 +971,8 @@ class QmlSettingsController(QObject):
                 ),
             }
             for metadata in PROVIDER_REGISTRY.metadata
-            if metadata.supports(ProviderCapability.TEXT_GENERATION)
+            if metadata.provider_id != APPLE_CLARITY_PROVIDER_ID
+            and metadata.supports(ProviderCapability.TEXT_GENERATION)
         ]
 
     @Property(str, notify=textActionsChanged)
@@ -977,6 +982,10 @@ class QmlSettingsController(QObject):
     @Property(str, notify=textActionsChanged)
     def textActionsRevision(self):
         return self.text_action_snapshot()["textActionsRevision"]
+
+    @Property(bool, notify=configChanged)
+    def afterDictationActionPaused(self):
+        return self.text_action_snapshot()["afterDictationActionPaused"]
 
     @Property(str, notify=textActionsChanged)
     def afterDictationTextActionId(self):
@@ -1926,7 +1935,11 @@ class QmlSettingsController(QObject):
 
     @Property("QStringList", constant=True)
     def providerIds(self) -> list[str]:
-        return list(PROVIDER_REGISTRY.provider_ids)
+        return [
+            provider_id
+            for provider_id in PROVIDER_REGISTRY.provider_ids
+            if provider_id != APPLE_CLARITY_PROVIDER_ID
+        ]
 
     @Property("QVariantList", notify=hotkeyChanged)
     def hotkeyActions(self) -> list[dict[str, Any]]:
@@ -2133,7 +2146,7 @@ class QmlSettingsController(QObject):
     def providerStates(self) -> dict[str, dict[str, Any]]:
         return {
             provider_id: self._provider_state(provider_id)
-            for provider_id in PROVIDER_REGISTRY.provider_ids
+            for provider_id in self.providerIds
         }
 
     @Property(str, notify=providerStateChanged)
@@ -2463,8 +2476,11 @@ class QmlSettingsController(QObject):
     def dictationCleanupRefinementAllowed(self) -> bool:
         local = self._config.workflow("transcription").provider_id == "local_asr"
         scope = "local_asr_refinement" if local else "refinement"
-        return self._config.workflow(scope).enabled and (
-            not local or self._config.local_asr_cloud_refinement
+        route = self._config.workflow(scope)
+        return route.enabled and (
+            not local
+            or route.provider_id == APPLE_CLARITY_PROVIDER_ID
+            or self._config.local_asr_cloud_refinement
         )
 
     @Property(bool, notify=configChanged)
@@ -3366,6 +3382,11 @@ class QmlSettingsController(QObject):
                 model_id=metadata.default_audio_model
                 if audio
                 else metadata.default_text_model,
+                enabled=route.enabled
+                and not (
+                    self._selected_scope == WorkflowScope.LOCAL_ASR_REFINEMENT.value
+                    and APPLE_CLARITY_PROVIDER_ID in {route.provider_id, provider_id}
+                ),
             )
         )
 
@@ -3376,7 +3397,7 @@ class QmlSettingsController(QObject):
             return (provider, state["accountId"], str(state["generation"]))
         if provider == LOCAL_ASR_PROVIDER_ID:
             return (provider, self._config.local_asr_device, "")
-        if provider == "opencode":
+        if provider in {"opencode", APPLE_CLARITY_PROVIDER_ID}:
             return (provider, "", "")
         config = self._provider_config(provider)
         return (
@@ -3389,7 +3410,13 @@ class QmlSettingsController(QObject):
     def routeModelStatus(self) -> str:
         key = self._model_connection_key()
         if (key[0] == "chatgpt" and not self._chatgpt_ready()) or (
-            key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt", "opencode"}
+            key[0]
+            not in {
+                LOCAL_ASR_PROVIDER_ID,
+                "chatgpt",
+                "opencode",
+                APPLE_CLARITY_PROVIDER_ID,
+            }
             and not key[2]
             and not (key[0] == "openai" and self._personal_local_endpoint(key[1]))
         ):
@@ -3445,7 +3472,13 @@ class QmlSettingsController(QObject):
         if (
             (key[0] == "chatgpt" and not self._chatgpt_ready())
             or (
-                key[0] not in {LOCAL_ASR_PROVIDER_ID, "chatgpt", "opencode"}
+                key[0]
+                not in {
+                    LOCAL_ASR_PROVIDER_ID,
+                    "chatgpt",
+                    "opencode",
+                    APPLE_CLARITY_PROVIDER_ID,
+                }
                 and not key[2]
                 and not (key[0] == "openai" and self._personal_local_endpoint(key[1]))
             )
@@ -3774,7 +3807,7 @@ class QmlSettingsController(QObject):
 
     @Slot(str, result=bool)
     def setRouteCustomEndpoint(self, value: str) -> bool:
-        if self.routeProviderId == "chatgpt" and value:
+        if value and self.routeProviderId in {"chatgpt", APPLE_CLARITY_PROVIDER_ID}:
             return False
         return self._update_selected_route(
             lambda route: replace(route, custom_endpoint=str(value or "").strip())
@@ -3809,12 +3842,21 @@ class QmlSettingsController(QObject):
             metadata.provider_id
             for metadata in PROVIDER_REGISTRY.metadata
             if metadata.supports(capability)
+            and (
+                metadata.provider_id != APPLE_CLARITY_PROVIDER_ID
+                or normalized in APPLE_CLARITY_SCOPES
+                and (
+                    supports_apple_clarity()
+                    or self._config.workflow(normalized).provider_id
+                    == APPLE_CLARITY_PROVIDER_ID
+                )
+            )
         ]
 
     @Slot(str, result=bool)
     def selectProvider(self, provider_id: str) -> bool:
         normalized = str(provider_id or "").strip().lower()
-        if normalized not in PROVIDER_REGISTRY.provider_ids:
+        if normalized not in self.providerIds:
             self._set_error(ValueError(f"Unknown provider: {normalized or '<empty>'}"))
             return False
         if normalized == self._selected_provider_id:
@@ -5414,17 +5456,21 @@ class QmlSettingsController(QObject):
             )
         if method in bool_fields:
             if method == "setLocalAsrCloudRefinement":
-                return lambda config: replace(
-                    config,
-                    local_asr_cloud_refinement=args[0],
-                    workflows=config.workflows.with_route(
-                        "local_asr_refinement",
-                        replace(
-                            config.workflow("local_asr_refinement"),
-                            enabled=args[0],
+
+                def change_local_cloud_permission(config):
+                    scope = WorkflowScope.LOCAL_ASR_REFINEMENT
+                    route = config.workflow(scope)
+                    if route.provider_id == APPLE_CLARITY_PROVIDER_ID:
+                        return replace(config, local_asr_cloud_refinement=False)
+                    return replace(
+                        config,
+                        local_asr_cloud_refinement=args[0],
+                        workflows=config.workflows.with_route(
+                            scope, replace(route, enabled=args[0])
                         ),
-                    ),
-                )
+                    )
+
+                return change_local_cloud_permission
             return lambda config: replace(config, **{bool_fields[method]: args[0]})
         if method == "setAutostart":
             return lambda config: replace(
@@ -5510,7 +5556,14 @@ class QmlSettingsController(QObject):
                     current,
                     provider_id="opencode",
                     model_id=model,
-                    enabled=current.enabled or scope == WorkflowScope.REWRITE.value,
+                    enabled=scope == WorkflowScope.REWRITE.value
+                    or (
+                        current.enabled
+                        and not (
+                            scope == WorkflowScope.LOCAL_ASR_REFINEMENT.value
+                            and current.provider_id == APPLE_CLARITY_PROVIDER_ID
+                        )
+                    ),
                     independent=True,
                     custom_endpoint="",
                     account_id="",
@@ -5541,6 +5594,11 @@ class QmlSettingsController(QObject):
                 )
                 fields["custom_endpoint"] = ""
                 fields["account_id"] = ""
+                if (
+                    scope == WorkflowScope.LOCAL_ASR_REFINEMENT.value
+                    and APPLE_CLARITY_PROVIDER_ID in {provider, old_route.provider_id}
+                ):
+                    fields["enabled"] = False
         elif method == "setRouteModelId":
             metadata = PROVIDER_REGISTRY.describe(old_route.provider_id)
             audio = (
@@ -5616,7 +5674,12 @@ class QmlSettingsController(QObject):
                     ),
                 )
             elif scope == "local_asr_refinement":
-                config = replace(config, local_asr_cloud_refinement=route.enabled)
+                config = replace(
+                    config,
+                    local_asr_cloud_refinement=(
+                        route.enabled and route.provider_id != APPLE_CLARITY_PROVIDER_ID
+                    ),
+                )
             if method == "useLocalAsr":
                 config = replace(config, local_asr_device=self._local_device)
             return config

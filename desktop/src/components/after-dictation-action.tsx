@@ -13,7 +13,7 @@ type EditingMode = "natural" | "preserve" | "light" | "clarity" | "action";
 function editingMode(state: SettingsPageProps["controller"]["state"]): EditingMode {
   const level = state.dictationCleanupLevel;
   if (level === "preserve" || level === "light") return level;
-  if (state.afterDictationTextActionId) return "action";
+  if (state.afterDictationTextActionId && !state.afterDictationActionPaused) return "action";
   return level === "clarity" ? "clarity" : "natural";
 }
 
@@ -80,6 +80,11 @@ export function AutomaticSavedAction({ controller: c }: SettingsPageProps) {
     }
     await save(id);
   };
+  if (c.state.afterDictationActionPaused) {
+    return <Section title={t("Ação automática salva")}>
+      <p className="hint" role="status">{t("apple_clarity_actions_paused")}</p>
+    </Section>;
+  }
   return <>
     <Section title={t("Ação automática salva")}>
       <Row title={t("Ação após o ditado")}>

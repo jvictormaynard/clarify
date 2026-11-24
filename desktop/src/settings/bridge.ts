@@ -74,6 +74,7 @@ export interface Settings {
   textActionsRevision?: string;
   textActionsBusy?: boolean;
   textActionsError?: string;
+  afterDictationActionPaused?: boolean;
   afterDictationTextActionId?: string;
   afterDictationTextActionLanguage?: string;
   textActionDictationContext?: "cloud" | "local_asr";

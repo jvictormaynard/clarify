@@ -1266,19 +1266,21 @@ class ComputerHost:
     def _status(self):
         with self._lock:
             self._require_started()
+            generation = self._generation
         refresh = getattr(self.processor, "refresh_live_readiness", None)
         if callable(refresh):
             refresh()
+        contract = processing_capabilities(
+            "computer",
+            dictation_editing=getattr(self.processor, "dictation_editing", None),
+        )
         with self._lock:
             self._require_started()
+            if generation is not self._generation:
+                raise _APIError(503, "host_stopped")
             actions = self.processor.action_readiness
             result = {
-                "processing_contract": processing_capabilities(
-                    "computer",
-                    dictation_editing=getattr(
-                        self.processor, "dictation_editing", None
-                    ),
-                ),
+                "processing_contract": contract,
                 "schema_version": 1,
                 "computer_id": self._identity["computer_id"],
                 "computer_name": self.computer_name,

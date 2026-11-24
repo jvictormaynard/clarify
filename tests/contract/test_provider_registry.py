@@ -287,7 +287,15 @@ class ProviderRegistryContractTests(ProviderRegistryFixture, unittest.TestCase):
 
         self.assertEqual(
             registry.provider_ids,
-            ("gemini", "openai", "groq", "local_asr", "chatgpt", "opencode"),
+            (
+                "gemini",
+                "openai",
+                "groq",
+                "local_asr",
+                "chatgpt",
+                "opencode",
+                "apple_clarity",
+            ),
         )
         self.assertEqual(registry.describe("openai").display_name, "OpenAI")
         self.assertEqual(registry.describe("groq").audio_model_key, "groq_audio_model")

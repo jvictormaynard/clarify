@@ -16,6 +16,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
   const [openCodeDraftScope, setOpenCodeDraftScope] = useState<string>();
   const pendingOpenCode = openCodeDraftScope === state.selectedScope && state.routeProviderId !== "opencode";
   const openCode = state.personalSetupState?.textOptions.find(option => option.id === "opencode");
+  const appleClarity = !pendingOpenCode && state.routeProviderId === "apple_clarity";
   const loadOpenCode = () => run("personalSetupCommand", "connect_opencode", "{}");
   const chooseProvider = (provider: string) => {
     if (provider === "opencode" && state.routeProviderId !== provider) {
@@ -47,6 +48,12 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           </Button>
         </div>
       )}
+      {appleClarity && (
+        <p className="hint" role="status">
+          {t(["error", "empty"].includes(state.routeModelStatus)
+            ? "apple_clarity_unavailable" : "apple_clarity_local")}
+        </p>
+      )}
       <Row title={t("Modelo")}>
         <Picker
           label={t("Modelo")}
@@ -77,7 +84,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           {t("setup_install_opencode")}
         </Button>
       )}
-      {!pendingOpenCode && ["empty", "not_configured", "error"].includes(
+      {!pendingOpenCode && !appleClarity && ["empty", "not_configured", "error"].includes(
         state.routeModelStatus,
       ) && (
         <Button variant="text" onClick={() => void navigate("models")}>
@@ -87,7 +94,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
           <ArrowRight size={15} />
         </Button>
       )}
-      {!pendingOpenCode && !["local_asr", "chatgpt", "opencode"].includes(state.routeProviderId) && (
+      {!pendingOpenCode && !appleClarity && !["local_asr", "chatgpt", "opencode"].includes(state.routeProviderId) && (
         <SettingsDisclosure key={state.selectedScope} title={t("Modelo e endereço personalizados")}>
           <Field
             title={t("ID do modelo")}

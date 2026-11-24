@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from apple_clarity_provider import PROVIDER_ID as APPLE_CLARITY_PROVIDER_ID
 from provider_registry import PROVIDER_REGISTRY
 from repositories import (
     AppConfig,
@@ -107,7 +108,10 @@ class WorkflowSettingsController:
         )
         if not route.enabled:
             execution = "disabled"
-        elif route.provider_id == "local_asr":
+        elif (
+            route.provider_id == "local_asr"
+            or self.registry.describe(route.provider_id).authentication == "on_device"
+        ):
             execution = "local"
         else:
             execution = "cloud"
@@ -142,7 +146,7 @@ class WorkflowSettingsController:
             self._config,
             workflows=self.workflows.with_route(normalized, route),
             local_asr_cloud_refinement=(
-                route.enabled
+                (route.enabled and route.provider_id != APPLE_CLARITY_PROVIDER_ID)
                 if normalized == WorkflowScope.LOCAL_ASR_REFINEMENT.value
                 else self._config.local_asr_cloud_refinement
             ),

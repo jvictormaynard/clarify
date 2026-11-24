@@ -1924,6 +1924,21 @@
     "en": "Show original transcription",
     "es": "Mostrar transcripción original"
   },
+  "apple_clarity_actions_paused": {
+    "pt": "As ações automáticas ficam pausadas durante a revisão local com a Apple Intelligence.",
+    "en": "Automatic actions are paused during local review with Apple Intelligence.",
+    "es": "Las acciones automáticas están en pausa durante la revisión local con Apple Intelligence."
+  },
+  "apple_clarity_local": {
+    "pt": "Revise o texto neste Mac com a Apple Intelligence.",
+    "en": "Edit the transcript on this Mac with Apple Intelligence.",
+    "es": "Edita la transcripción en este Mac con Apple Intelligence."
+  },
+  "apple_clarity_unavailable": {
+    "pt": "A Apple Intelligence não está disponível. Verifique os Ajustes do Sistema e atualize a lista de modelos.",
+    "en": "Apple Intelligence is unavailable. Check System Settings and refresh the model list.",
+    "es": "Apple Intelligence no está disponible. Revisa los Ajustes del Sistema y actualiza la lista de modelos."
+  },
   "Nenhum modelo disponível. Verifique o serviço.": {
     "pt": "Nenhum modelo disponível. Verifique o serviço.",
     "en": "No models available. Check the service.",

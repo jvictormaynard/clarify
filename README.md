@@ -322,6 +322,12 @@ tokens locally, and text requests go directly to OpenAI through a fixed endpoint
 Clarify account mode keeps managed processing on desktop and mobile. See
 [ChatGPT setup and limits](docs/chatgpt-plan.md).
 
+On an Apple Silicon Mac with macOS 26 or later, you can use **Apple Intelligence**
+for dictation review. In **Style → More options → Review model and instructions**,
+choose the transcription context, select **Apple Intelligence**, and enable
+**AI review**. Turn on Apple Intelligence in System Settings first. The review
+runs on the Mac. If review fails, Clarify keeps the transcript.
+
 Custom endpoints must implement the corresponding provider-compatible routes.
 Unknown custom models work, but their cost is intentionally shown as unpriced
 instead of using an unreliable estimate.
