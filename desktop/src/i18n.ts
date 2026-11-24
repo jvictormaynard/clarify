@@ -1,4 +1,5 @@
 import { language, translate, type Language } from "../../shared/i18n";
+import navigationLocales from "./settings/navigation-locales.json";
 import onboardingLocales from "./onboarding-locales.json";
 
 function interfaceLanguage(value: string): Language | "de" | "ru" {
@@ -16,9 +17,10 @@ export function setUiLanguage(value?: string) {
 }
 
 export function t(source: string, values?: Record<string, string | number>) {
-  if (uiLanguage === "de" || uiLanguage === "ru") {
-    const localized = onboardingLocales[source as keyof typeof onboardingLocales]?.[uiLanguage];
-    return translate(localized ?? source, "en", values);
-  }
-  return translate(source, uiLanguage, values);
+  const locale = uiLanguage === "de" || uiLanguage === "ru" ? "en" : uiLanguage;
+  const navigation = navigationLocales[source as keyof typeof navigationLocales]?.[locale];
+  const onboarding = uiLanguage === "de" || uiLanguage === "ru"
+    ? onboardingLocales[source as keyof typeof onboardingLocales]?.[uiLanguage]
+    : undefined;
+  return translate(navigation ?? onboarding ?? source, locale, values);
 }

@@ -29,7 +29,7 @@ export function SettingsDialogs({
   const confirmation = c.confirmAction
     ? confirmations[c.confirmAction]
     : confirmations.resetAllHotkeys;
-  const waitingForDraftRoute = !c.closing && c.routeLoading && (c.page === "dictation" || c.page === "text");
+  const waitingForDraftRoute = !c.closing && c.routeLoading;
   return (
     <>
       <Confirm

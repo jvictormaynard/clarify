@@ -5,31 +5,31 @@ import { setup } from './support/settings-controller';
 const clone=x=>structuredClone(x);
 
 test('save captures its revision; typing and navigation stay responsive', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('save-me');c=h.render();
- const gate=h.pause('save');const saving=c.save();await gate.started;
- c=h.render();c.setPrompt('newer-text');const nav=c.navigate('dictionary');c=h.render();assert.equal(c.page,'dictionary');assert.equal(c.routeLoading,false);
- const back=c.navigate('text');c=h.render();assert.equal(c.page,'style');gate.release();await Promise.all([saving,nav,back]);c=h.render();
- assert.equal(h.persisted.routes.refinement.prompt,'save-me');assert.equal(c.prompt,'newer-text');assert.equal(c.dirty,true);assert.equal(c.pageDirty,true);
- await c.save();c=h.render();assert.equal(h.persisted.routes.refinement.prompt,'newer-text');assert.equal(c.dirty,false);
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setPrompt('save-me');c=h.render();
+ const gate=h.pause('save');const saving=c.saveSettings();await gate.started;
+ c=h.render();c.setPrompt('newer-text');const nav=c.navigate('privacy');c=h.render();assert.equal(c.page,'privacy');assert.equal(c.routeLoading,false);
+ const back=c.openModelsTab('review');c=h.render();assert.equal(c.page,'models');gate.release();await Promise.all([saving,nav,back]);c=h.render();
+ assert.equal(h.persisted.routes.refinement.prompt,'save-me');assert.equal(c.prompt,'newer-text');assert.equal(c.dirty,true);assert.equal(c.hasSettingsDrafts(),true);
+ await c.saveSettings();c=h.render();assert.equal(h.persisted.routes.refinement.prompt,'newer-text');assert.equal(c.dirty,false);
 
 });
 
 test('contextual save preserves drafts on other pages', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('keep route draft');c.setSnippets([{trigger:'draft',replacement:'pending',enabled:true,case_sensitive:false}]);await c.navigate('general');c=h.render();c.setRetention('30');c=h.render();await c.save();c=h.render();
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setPrompt('keep route draft');c.setSnippets([{trigger:'draft',replacement:'pending',enabled:true,case_sensitive:false}]);await c.navigate('general');c=h.render();c.setRetention('30');c=h.render();await c.save();c=h.render();
  assert.equal(h.persisted.historyRetentionDays,30);assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');assert.equal(h.persisted.snippets[0].trigger,'sig');assert.equal(c.snippets[0].trigger,'draft');assert.equal(c.pageDirty,false);assert.equal(c.dirty,true);
- await c.navigate('text');c=h.render();assert.equal(c.prompt,'keep route draft');
+ await c.openModelsTab('review');c=h.render();assert.equal(c.prompt,'keep route draft');
 
 });
 
 test('latest route wins and hidden microphone test stops', async () => {
  const h=await setup();let c=h.render();const gate=h.pause('testMicrophone');const test=c.run('testMicrophone');await gate.started;
- const one=c.navigate('text','rewrite');const two=c.navigate('dictionary');const three=c.navigate('text','refinement');c=h.render();assert.equal(c.page,'style');
+ const one=c.openModelsTab('review','local_asr_refinement');const two=c.navigate('dictionary');const three=c.openModelsTab('review','refinement');c=h.render();assert.equal(c.page,'models');
  gate.release();await Promise.all([test,one,two,three]);c=h.render();assert.equal(c.state.selectedScope,'refinement');assert.equal(c.state.microphoneTestBusy,false);assert.equal(c.routeLoading,false);assert.equal(h.records.some(x=>x.method==='save'),false);
 
 });
 
 test('library flag persists only the original saved row flag', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('must survive');await c.navigate('dictionary');c=h.render();c.setDictionary([{...c.state.dictionaryEntries[0],term:'edited draft'}]);c=h.render();
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setPrompt('must survive');await c.navigate('dictionary');c=h.render();c.setDictionary([{...c.state.dictionaryEntries[0],term:'edited draft'}]);c=h.render();
  await c.setLibraryPreference('dictionary',0,'enabled',false);c=h.render();assert.equal(h.persisted.dictionaryEntries[0].enabled,false);assert.equal(h.persisted.dictionaryEntries[0].term,'original');assert.equal(c.dictionary[0].term,'edited draft');assert.equal(c.dictionary[0].enabled,false);
  await c.save();c=h.render();assert.equal(h.persisted.dictionaryEntries[0].term,'edited draft');assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');
 
@@ -41,25 +41,25 @@ test('consecutive library preferences use updated saved identity', async () => {
 });
 
 test('failed staging cannot leak into another page save', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('failed prompt');c=h.render();h.fail('save',new Error('disk failure'));assert.equal(await c.save(),false);c=h.render();assert.equal(c.prompt,'failed prompt');assert.match(c.error,/disk failure/);
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setPrompt('failed prompt');c=h.render();h.fail('save',new Error('disk failure'));assert.equal(await c.save(),false);c=h.render();assert.equal(c.prompt,'failed prompt');assert.match(c.error,/disk failure/);
  await c.navigate('general');c=h.render();c.setRetention('40');c=h.render();await c.save();assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');assert.equal(h.persisted.historyRetentionDays,40);
 
 });
 
 test('contextual discard preserves drafts on other pages', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('keep me');await c.navigate('general');c=h.render();c.setRetention('30');c=h.render();await c.discardAndClose();c=h.render();assert.equal(c.retention,'');await c.navigate('text');c=h.render();assert.equal(c.prompt,'keep me');assert.equal(c.dirty,true);
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setPrompt('keep me');await c.navigate('general');c=h.render();c.setRetention('30');c=h.render();await c.discardAndClose();c=h.render();assert.equal(c.retention,'');await c.openModelsTab('review');c=h.render();assert.equal(c.prompt,'keep me');assert.equal(c.dirty,true);
 
 });
 
 test('save all captures drafts across pages and workflows', async () => {
  const h=await setup();let c=h.render();
- await c.navigate('text','refinement');c=h.render();c.setPrompt('Review draft');
- await c.navigate('text','rewrite');c=h.render();c.setPrompt('Rewrite draft');
+ await c.openModelsTab('review','refinement');c=h.render();c.setPrompt('Review draft');
+ await c.openModelsTab('review','local_asr_refinement');c=h.render();c.setPrompt('Local review draft');
  await c.navigate('general');c=h.render();c.setRetention('45');
  await c.navigate('snippets');c=h.render();c.setSnippets([{trigger:'all',replacement:'Saved together',enabled:true,case_sensitive:false}]);
  c=h.render();c.setClosing(true);c=h.render();await c.saveAndClose();c=h.render();
  assert.equal(h.persisted.routes.refinement.prompt,'Review draft');
- assert.equal(h.persisted.routes.rewrite.prompt,'Rewrite draft');
+ assert.equal(h.persisted.routes.local_asr_refinement.prompt,'Local review draft');
  assert.equal(h.persisted.historyRetentionDays,45);
  assert.equal(h.persisted.snippets[0].replacement,'Saved together');
  assert.equal(c.dirty,false);
@@ -75,7 +75,7 @@ test('provider removal rejects the provider captured when confirmation opened', 
 });
 
 test('page discard dialog saves only its page and dismisses after success', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setPrompt('other page');
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setPrompt('other page');
  await c.navigate('general');c=h.render();c.setRetention('30');c.setDiscarding(true);c=h.render();await c.saveAndClose();c=h.render();
  assert.equal(h.persisted.historyRetentionDays,30);assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');
  assert.equal(c.discarding,false);assert.equal(c.dirty,true);
@@ -111,8 +111,8 @@ test('persisted flag queued behind text Save uses its rebound identity', async (
 });
 
 test('endpoint-only draft does not restore an older automatic model choice', async () => {
- const h=await setup();let c=h.render();await c.navigate('text');c=h.render();c.setRouteOverride({endpoint:'https://example.test/v1'});c=h.render();
- await c.run('setRouteModelId','new-model');c=h.render();await c.save();c=h.render();
+ const h=await setup();let c=h.render();await c.openModelsTab('review');c=h.render();c.setRouteOverride({endpoint:'https://example.test/v1'});c=h.render();
+ await c.run('setRouteModelId','new-model');c=h.render();await c.saveSettings();c=h.render();
  assert.equal(h.persisted.routes.refinement.model,'new-model');assert.equal(h.persisted.routes.refinement.endpoint,'https://example.test/v1');assert.equal(c.error,'');
  assert.equal(h.records.some(x=>x.method==='setRouteModelId'),false);
 });
@@ -373,16 +373,20 @@ test('social cancellation accepts one request while its account operation is pen
 
 for (const action of ['save','discard']) test(`contextual ${action} waits for its requested workflow to load`, async () => {
  const h=await setup();let c=h.render();c.setPrompt('dictation draft');
- await c.navigate('text');c=h.render();c.setPrompt('text draft');c=h.render();
- const gate=h.pause('selectWorkflow');const navigation=c.navigate('dictation');await gate.started;c=h.render();
- assert.equal(c.page,'dictation');assert.equal(c.routeLoading,true);
- const operation=action==='save'?c.save():c.discardAndClose();
+ await c.openModelsTab('review');c=h.render();c.setPrompt('text draft');c=h.render();
+ const gate=h.pause('selectWorkflow');const navigation=c.openModelsTab('transcription');await gate.started;c=h.render();
+ assert.equal(c.page,'models');assert.equal(c.modelsView.tab,'transcription');assert.equal(c.routeLoading,true);
+ const operation=action==='save'?c.saveSettings():c.discardSettings();
  gate.release();await Promise.all([navigation,operation]);c=h.render();
  assert.equal(c.state.selectedScope,'transcription');assert.equal(c.prompt,'dictation draft');
  assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');
  assert.equal(h.persisted.routes.transcription.prompt,'saved-transcription');
- await c.save();c=h.render();assert.equal(h.persisted.routes.transcription.prompt,'dictation draft');
- await c.navigate('text');c=h.render();assert.equal(c.prompt,'text draft');
+ await c.openModelsTab('review');c=h.render();
+ const staging=h.pause('setRoutePrompt');const save=c.saveSettings();await staging.started;
+ h.publish();c=h.render();assert.equal(c.state.selectedScope,'refinement');assert.equal(c.prompt,'text draft');
+ staging.release();await save;
+ assert.equal(h.persisted.routes.transcription.prompt,'dictation draft');
+ assert.equal(h.persisted.routes.refinement.prompt,'text draft');
 });
 
 for (const [library,field,value] of [
@@ -406,33 +410,33 @@ for (const [library,field,value] of [
 });
 
 test('save all queued after navigation preserves the requested workflow', async () => {
- const h=await setup();let c=h.render();c.setPrompt('dictation draft');await c.navigate('text');c=h.render();c.setPrompt('text draft');c=h.render();
- const gate=h.pause('selectWorkflow');const navigation=c.navigate('dictation');await gate.started;c=h.render();const saving=c.save(true);
+ const h=await setup();let c=h.render();c.setPrompt('dictation draft');await c.openModelsTab('review');c=h.render();c.setPrompt('text draft');c=h.render();
+ const gate=h.pause('selectWorkflow');const navigation=c.openModelsTab('transcription');await gate.started;c=h.render();const saving=c.save(true);
  gate.release();await Promise.all([navigation,saving]);c=h.render();
- assert.equal(c.page,'dictation');assert.equal(c.state.selectedScope,'transcription');assert.equal(c.routeLoading,false);
+ assert.equal(c.page,'models');assert.equal(c.modelsView.tab,'transcription');assert.equal(c.state.selectedScope,'transcription');assert.equal(c.routeLoading,false);
  assert.equal(h.persisted.routes.transcription.prompt,'dictation draft');assert.equal(h.persisted.routes.refinement.prompt,'text draft');
 });
 
 test('settings dialog preserves its main destination and local review context', async () => {
- const h=await setup();let c=h.render();await c.navigate('style','local_asr_refinement');c=h.render();
+ const h=await setup();let c=h.render();await c.navigate('style');await c.openModelsTab('review','local_asr_refinement');c=h.render();
  await c.navigate('general');c=h.render();assert.equal(c.mainPage,'style');assert.equal(c.settingsOpen,true);assert.equal(c.settingsSection,'general');
  c.requestCloseSettings();await Promise.resolve();c=h.render();assert.equal(c.settingsOpen,false);assert.equal(c.page,'style');assert.equal(c.state.selectedScope,'local_asr_refinement');
 });
 
 test('settings dialog saves dictation setup and excludes workspace drafts', async () => {
- const h=await setup();let c=h.render();await c.navigate('style');c=h.render();c.setPrompt('keep the style draft');
+ const h=await setup();let c=h.render();await c.navigate('style');await c.openModelsTab('review');c=h.render();c.setPrompt('save review instructions');
  c.setSnippets([{trigger:'draft',replacement:'pending',enabled:true,case_sensitive:false}]);
- await c.navigate('dictation');c=h.render();assert.equal(c.settingsOpen,true);assert.equal(c.mainPage,'style');
+ await c.openModelsTab('transcription');c=h.render();assert.equal(c.settingsOpen,true);assert.equal(c.mainPage,'style');
  c.setPrompt('saved dictation instructions');c.setRecording({maximum:'90',warning:'5',enabled:false,threshold:'0.05',speech:'0.1',silence:'0.5'});
  await c.navigate('privacy');c=h.render();c.setRetention('30');c=h.render();c.requestCloseSettings();c=h.render();
  assert.equal(c.settingsDismissRequested,true);await c.saveSettings(true);c=h.render();assert.equal(c.settingsOpen,false);
  assert.equal(h.persisted.historyRetentionDays,30);assert.equal(h.persisted.routes.transcription.prompt,'saved dictation instructions');
- assert.equal(h.persisted.recordingControls.max_duration_seconds,90);assert.equal(h.persisted.routes.refinement.prompt,'saved-refinement');
+ assert.equal(h.persisted.recordingControls.max_duration_seconds,90);assert.equal(h.persisted.routes.refinement.prompt,'save review instructions');
  assert.equal(h.persisted.snippets[0].trigger,'sig');assert.equal(c.hasSettingsDrafts(),false);assert.equal(c.dirty,true);
- await c.navigate('dictation');c=h.render();c.setPrompt('discard dictation instructions');c=h.render();
+ await c.openModelsTab('transcription');c=h.render();c.setPrompt('discard dictation instructions');c=h.render();
  await c.discardSettings(true);c=h.render();assert.equal(c.settingsOpen,false);
- await vi.waitFor(()=>assert.equal(h.render().prompt,'keep the style draft'));c=h.render();assert.equal(c.page,'style');
- await c.navigate('dictation');c=h.render();assert.equal(c.prompt,'saved dictation instructions');
+ assert.equal(c.page,'style');
+ await c.openModelsTab('transcription');c=h.render();assert.equal(c.prompt,'saved dictation instructions');
  for (const [operation,method] of [['saveSettings','save'],['discardSettings','load']]) {
   c.setPrompt('captured '+operation);c=h.render();c.requestCloseSettings();c=h.render();
   const gate=h.pause(method);const completing=c[operation](true);await gate.started;

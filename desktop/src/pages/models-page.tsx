@@ -1,4 +1,3 @@
-import { useRef } from "react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import {
@@ -15,10 +14,10 @@ import {
 } from "../components/ui";
 import { Check, LoaderCircle, Download } from "lucide-react";
 import { ChatGPTPlan } from "../components/chatgpt-plan";
+import { DictationModelSettings } from "../components/dictation-model-settings";
 import { profileName } from "../settings/display-labels";
 
 export function ModelsPage({ controller }: SettingsPageProps) {
-  const tabRevision = useRef(0);
   const {
     state,
     run,
@@ -78,15 +77,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
               </Button>
             </div>
             {!!openCodeOption?.models?.length && (
-              <Row title={t("setup_rewriting_model")}>
-                <Picker
-                  label={t("setup_rewriting_model")}
-                  value={openCodeOption.rewriteModelId ?? ""}
-                  options={openCodeOption.models}
-                  disabled={state.providerBusy || validatingProvider || selectingProvider}
-                  onChange={(model) => void run("savePreference", "setOpenCodeRouteModel", ["rewrite", model])}
-                />
-              </Row>
+              <Button variant="text" onClick={() => void controller.openModelsTab("profiles")}>{t("Abrir modelos das ações")}</Button>
             )}
           </>
         ) : state.selectedProviderId !== "local_asr" && (
@@ -196,10 +187,7 @@ export function ModelsPage({ controller }: SettingsPageProps) {
               <Button
                 variant="primary"
                 disabled={state.localAsrBusy || state.localBenchmarkBusy}
-                onClick={() => {
-                  const revision = tabRevision.current;
-                  void useLocalModel(() => revision === tabRevision.current);
-                }}
+                onClick={() => void useLocalModel()}
               >{t("Usar este modelo")}</Button>
             )}
             {state.localAsrBusy ? (
@@ -267,17 +255,25 @@ export function ModelsPage({ controller }: SettingsPageProps) {
         </SettingsDisclosure>
       </Section>
   );
-  const localFirst = state.selectedScope === "transcription" && state.routeProviderId === "local_asr";
+  const localFirst = state.textActionDictationContext === "local_asr";
   return (
     <SettingsPage.Root>
-      <SettingsTabs.Root defaultValue="services" onValueChange={() => { tabRevision.current++; }}>
+      <SettingsTabs.Root value={controller.modelsView.tab} onValueChange={tab => void controller.openModelsTab(tab)}>
         <SettingsTabs.List aria-label={t("Modelos e serviços")}>
           <SettingsTabs.Tab value="services">{t("Serviços e modelos locais")}</SettingsTabs.Tab>
-          <SettingsTabs.Tab value="profiles">{t("Processamento de texto")}</SettingsTabs.Tab>
+          <SettingsTabs.Tab value="transcription">{t("Transcrição de áudio")}</SettingsTabs.Tab>
+          <SettingsTabs.Tab value="review">{t("Revisão do ditado")}</SettingsTabs.Tab>
+          <SettingsTabs.Tab value="profiles">{t("Modelos das ações")}</SettingsTabs.Tab>
         </SettingsTabs.List>
         <SettingsTabs.Panel value="services">
           {localFirst ? localSection : cloudSection}
           {localFirst ? cloudSection : localSection}
+        </SettingsTabs.Panel>
+        <SettingsTabs.Panel value="transcription">
+          <DictationModelSettings controller={controller} />
+        </SettingsTabs.Panel>
+        <SettingsTabs.Panel value="review">
+          <DictationModelSettings controller={controller} />
         </SettingsTabs.Panel>
         <SettingsTabs.Panel value="profiles">
           <Section>
@@ -285,8 +281,10 @@ export function ModelsPage({ controller }: SettingsPageProps) {
             {(state.textActionProfiles ?? []).filter(profile => !profile.managed).map(profile => (
               <Row key={profile.id} title={profileName(profile.id)}
                 hint={`${state.textActionProviders?.find(provider => provider.id === profile.providerId)?.label ?? profile.providerId} · ${profile.modelId || t("Sem modelo")}`}>
-                <Button aria-label={t("Editar perfil de {name}", { name: profileName(profile.id) })}
-                  onClick={() => controller.textProfileEditor.open(profile)}>{t("Editar perfil")}</Button>
+                {profile.sourceScope === "refinement"
+                  ? <Button onClick={() => void controller.openModelsTab("review", "refinement")}>{t("Configurar revisão na nuvem")}</Button>
+                  : <Button aria-label={t("Editar perfil de {name}", { name: profileName(profile.id) })}
+                    onClick={() => controller.textProfileEditor.open(profile)}>{t("Editar perfil")}</Button>}
               </Row>
             ))}
           </Section>

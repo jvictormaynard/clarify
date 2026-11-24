@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { navigate, openSettings, openStyleReview } from "./settings-navigation";
+import { navigate, openSettings, openReviewSettings, openTranscriptionSettings } from "./settings-navigation";
 
 let child: ChildProcessWithoutNullStreams;
 let id = 0;
@@ -221,7 +221,7 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   await expect.poll(() => commands.filter(command => command.method === "validateProvider").length).toBe(validations + 1);
   await expect(page.getByRole("menu")).toHaveCount(0);
   await expect(menu).toBeEnabled();
-  await openStyleReview(page, "en");
+  await openReviewSettings(page, "en");
   await page.getByRole("combobox", { name: "Service", exact: true }).click();
   await page.getByRole("option", { name: "ChatGPT (subscription)", exact: true }).click();
   await page.getByRole("combobox", { name: "Model", exact: true }).click();
@@ -242,7 +242,7 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   expect((await snapshot(page)).chatgptState.planNoticeSeen).toBe(true);
   await page.getByRole("button", { name: "Manage usage in ChatGPT", exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("chatgpt-models-synthetic.png"), fullPage: true });
-  await openStyleReview(page, "en");
+  await openReviewSettings(page, "en");
   await expect(page.getByRole("combobox", { name: "Model", exact: true })).toContainText("Select");
   await page.getByRole("combobox", { name: "Model", exact: true }).click();
   await page.getByRole("option", { name: "First account model", exact: true }).click();
@@ -251,10 +251,10 @@ test("ChatGPT connects without API keys, refreshes account catalogs and persists
   await menu.click();
   await page.getByRole("menuitem", { name: "Sign out of ChatGPT", exact: true }).click();
   await expect(page.getByText("ChatGPT not connected", { exact: true })).toBeVisible();
-  await openStyleReview(page, "en");
+  await openReviewSettings(page, "en");
   expect((await snapshot(page)).routeModelOptions).toEqual([]);
   expect((await snapshot(page)).routeModelId).toBe("");
-  await navigate(page, "Dictation");
+  await openTranscriptionSettings(page, "en");
   await page.getByRole("combobox", { name: "Service", exact: true }).click();
   await expect(page.getByRole("option", { name: "ChatGPT (subscription)", exact: true })).toHaveCount(0);
 });
@@ -308,7 +308,7 @@ test("ChatGPT identity without plan permission does not enable text models", asy
   await expect(page.getByRole("menuitem", { name: "Refresh ChatGPT models", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   expect((await snapshot(page)).chatgptState.planEnabled).toBe(false);
-  await openStyleReview(page, "en");
+  await openReviewSettings(page, "en");
   await page.getByRole("combobox", { name: "Service", exact: true }).click();
   await page.getByRole("option", { name: "ChatGPT (subscription)", exact: true }).click();
   expect((await snapshot(page)).routeModelStatus).toBe("not_configured");
@@ -348,17 +348,17 @@ test("ChatGPT failed reconnection and cancellation preserve the saved account", 
   });
 });
 
-test("ChatGPT profile models stay available without changing the Style draft", async ({ page }, info) => {
+test("ChatGPT profile models stay available without changing the review draft", async ({ page }, info) => {
   await selectChatGPT(page);
   await page.getByRole("button", { name: "Continue with ChatGPT", exact: true }).click();
   await page.getByRole("dialog", { name: "You're using your ChatGPT plan", exact: true }).getByRole("button", { name: "Got it", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "You're using your ChatGPT plan", exact: true })).toBeHidden();
   await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
-  await openStyleReview(page, "en");
+  await openReviewSettings(page, "en");
   const prompt = page.getByRole("textbox", { name: "Instructions", exact: true });
-  await prompt.fill("Keep this Style draft.");
+  await prompt.fill("Keep this review draft.");
   const settings = await openSettings(page, "Models and services");
-  await settings.getByRole("tab", { name: "Text processing", exact: true }).click();
+  await settings.getByRole("tab", { name: "Action models", exact: true }).click();
   await settings.getByRole("button", { name: "Edit Rewriting profile", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Processing profile", exact: true });
   await editor.getByRole("combobox", { name: "Profile service", exact: true }).click();
@@ -372,8 +372,8 @@ test("ChatGPT profile models stay available without changing the Style draft", a
   await expect(editor).toBeHidden();
   const saved = await snapshot(page);
   expect(saved.selectedScope).toBe("refinement");
-  expect(saved.routePrompt).not.toBe("Keep this Style draft.");
+  expect(saved.routePrompt).not.toBe("Keep this review draft.");
   expect(saved.textActionProfiles.find(profile => profile.id === "legacy-rewrite").modelId).toBe("personal-a");
-  await openStyleReview(page, "en");
-  await expect(prompt).toHaveValue("Keep this Style draft.");
+  await openReviewSettings(page, "en");
+  await expect(prompt).toHaveValue("Keep this review draft.");
 });

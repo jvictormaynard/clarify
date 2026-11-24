@@ -8,7 +8,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
   const {
     state,
     run,
-    navigate,
+    openModelServices,
     routeOverride,
     setRouteOverride,
     selectRouteProvider,
@@ -87,7 +87,7 @@ export function WorkflowRoute({ controller }: SettingsPageProps) {
       {!pendingOpenCode && !appleClarity && ["empty", "not_configured", "error"].includes(
         state.routeModelStatus,
       ) && (
-        <Button variant="text" onClick={() => void navigate("models")}>
+        <Button variant="text" onClick={() => void openModelServices(state.routeProviderId)}>
           {state.routeModelStatus === "not_configured"
             ? t("Conectar serviço")
             : t("Gerenciar modelos e serviços")}{" "}

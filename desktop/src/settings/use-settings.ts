@@ -10,7 +10,7 @@ import {
   type SettingsMethod, type SettingsCall, type PreferenceMethod,
 } from "./bridge";
 import { recordingDraft, recordingValue, type RecordingDraft } from "./recording";
-import { defaultWorkflowScope, isSettingsSection, isWorkflowPage, workflowPage, type MainPageId, type SettingsSectionId, type PageId } from "./navigation";
+import { dictationModelScopes, isSettingsSection, type MainPageId, type ModelsTab, type ModelsView, type ReviewScope, type SettingsSectionId, type PageId } from "./navigation";
 import { useSettingsWindow } from "./use-settings-window";
 import { mergeSettings, settingsValuesEqual } from "./state";
 import { useDraft } from "./use-draft";
@@ -204,8 +204,7 @@ export function useSettings() {
     settingsCloseEpoch.current += 1;
     renderSettingsDismissRequested(value);
   };
-  const mainScope = useRef("transcription");
-  const reviewScope = useRef("refinement");
+  const [modelsView, setModelsView] = useState<ModelsView>({ tab: "services" });
   const [error, setError] = useState("");
   const [callBusy, setBusy] = useState(false);
   const busy = callBusy || !!state?.accountState?.busy;
@@ -261,12 +260,17 @@ export function useSettings() {
   const lifetime = useRef(0);
   const acceptState = useCallback((update: Partial<Settings>, fromPush = false) => {
     const previous = current.current;
-    if (fromPush && savingRef.current && (!update.snippetContext || update.snippetContext === previous?.snippetContext)) {
-      // Setters can publish staged lists before Save commits. The reserved
-      // transaction owns their terminal snapshot and any edits made meanwhile.
+    if (fromPush && savingRef.current) {
+      // Save temporarily selects each route and stages library changes. The
+      // transaction publishes the final state after it restores the route.
       update = { ...update };
-      delete update.dictionaryEntries;
-      delete update.snippets;
+      for (const key of Object.keys(update) as (keyof Settings)[]) {
+        if (key === "selectedScope" || key.startsWith("route")) delete update[key];
+      }
+      if (!update.snippetContext || update.snippetContext === previous?.snippetContext) {
+        delete update.dictionaryEntries;
+        delete update.snippets;
+      }
     }
     const next = previous ? mergeSettings(previous, update) : update as Settings;
     if (next === previous) return;
@@ -307,15 +311,12 @@ export function useSettings() {
       { ...draft, enabled: snapshot.recordingControls.vad.enabled }, recordingDraft(snapshot.recordingControls),
     );
   };
-  const recordingDirty = hasRecordingDraft();
   const retentionDirty = !!state && retention !== String(state.historyRetentionDays ?? "");
   const providerDirty = !!apiKey || (!!state && endpoint !== state.providerBaseUrl) || !!state?.providerDirty;
   const dirtyRef = useRef(false);
-  dirtyRef.current = !!state?.dirty || providerDirty || recordingDirty || retentionDirty ||
+  dirtyRef.current = !!state?.dirty || providerDirty || hasRecordingDraft() || retentionDirty ||
     Object.keys(routes).some(routeDirty) || snippetsDirty || dictionaryDirty;
   const pageDirty = !!state?.dirty || ({
-    dictation: routeDirty("transcription") || recordingDirty,
-    style: routeDirty(scope), text: routeDirty(scope), rewrite: routeDirty(scope), translation: routeDirty(scope), privacy: retentionDirty, general: retentionDirty, models: providerDirty,
     dictionary: dictionaryDirty, snippets: snippetsDirty,
   } as Partial<Record<PageId, boolean>>)[page] === true;
   const acceptedOperations = useRef(new Set<Promise<unknown>>());
@@ -475,10 +476,9 @@ export function useSettings() {
 
   const captureDrafts = (all = false, settingsOnly = false) => {
     const activePage = pageRef.current;
-    const activeScope = current.current?.selectedScope ?? "transcription";
-    const captureRoutes = settingsOnly ? (routesRef.current.transcription ? { transcription: routesRef.current.transcription } : {}) : all ? routesRef.current :
-      isWorkflowPage(activePage) && routesRef.current[activeScope]
-        ? { [activeScope]: routesRef.current[activeScope] } : {};
+    const captureRoutes = settingsOnly
+      ? Object.fromEntries(dictationModelScopes.filter(scope => routesRef.current[scope]).map(scope => [scope, routesRef.current[scope]]))
+      : all ? routesRef.current : {};
     return {
       dictionary: !settingsOnly && (all || activePage === "dictionary") ? dictionaryRef.current : null,
       snippets: !settingsOnly && (all || activePage === "snippets") ? snippetsRef.current : null,
@@ -492,7 +492,6 @@ export function useSettings() {
   const hasLocalDrafts = () => !!dictionaryRef.current || !!snippetsRef.current || !!recordingRef.current ||
     retentionRef.current !== null || endpointRef.current !== null || !!apiKeyRef.current ||
     Object.keys(routesRef.current).length > 0 || textActions.isDirty() || textProfileEditor.isDirty();
-  const waitingForDraftRoute = () => routeLoadingRef.current && isWorkflowPage(pageRef.current);
   const clearCapturedDrafts = (captured: ReturnType<typeof captureDrafts>) => {
     if (dictionaryRef.current === captured.dictionary) setDictionaryDraft(null);
     if (snippetsRef.current === captured.snippets) setSnippetDraft(null);
@@ -503,7 +502,7 @@ export function useSettings() {
     setRoutes(before => Object.fromEntries(Object.entries(before).filter(([key, value]) => captured.routes[key] !== value)));
   };
   const reset = async (all = false, settingsOnly = false) => {
-    if (resettingRef.current || savingRef.current || (!all && waitingForDraftRoute())) return false;
+    if (resettingRef.current || savingRef.current || (!all && routeLoadingRef.current)) return false;
     const captured = captureDrafts(all, settingsOnly);
     if (all) { if (!await textActions.close(true)) return false; }
     if (all || settingsOnly) textProfileEditor.close(true);
@@ -520,7 +519,7 @@ export function useSettings() {
   };
   const save = async (all = false, settingsOnly = false) => {
     const snapshot = current.current;
-    if (!snapshot || savingRef.current || resettingRef.current || validatingRef.current || (!all && waitingForDraftRoute())) return false;
+    if (!snapshot || savingRef.current || resettingRef.current || validatingRef.current || (!all && routeLoadingRef.current)) return false;
     const captured = captureDrafts(all, settingsOnly);
     const retained = captured.retention ?? String(snapshot.historyRetentionDays ?? "");
     if (retained !== "" && (!/^\d+$/.test(retained) || Number(retained) > 3650)) {
@@ -630,41 +629,37 @@ export function useSettings() {
       });
     } finally { setSaving(false); }
   };
-  const navigate = async (id: PageId, requestedScope?: string) => {
-    if (id === "shortcuts") id = "dictation";
+  const navigateTo = async (id: PageId, targetModels?: ModelsView) => {
     const snapshot = current.current;
     if (!snapshot) return;
-    const targetScope = requestedScope ?? (id === "style" || id === "text"
-      ? snapshot.selectedScope === "transcription" ? snapshot.routeProviderId === "local_asr" ? "local_asr_refinement" : "refinement" : reviewScope.current
-      : defaultWorkflowScope(id));
-    if (!requestedScope && isSettingsSection(id) && settingsOpenRef.current && pageRef.current === id && !routeLoadingRef.current) return true;
+    if (!targetModels && id !== "models" && isSettingsSection(id) && settingsOpenRef.current &&
+        pageRef.current === id && !routeLoadingRef.current) return true;
     const epoch = ++navigationEpoch.current;
-    const resolved = workflowPage(id, targetScope);
-    const destination = resolved === "text" ? "style" : resolved;
-    setPage(destination);
-    if (isSettingsSection(destination)) {
-      if (!settingsOpenRef.current) mainScope.current = snapshot.selectedScope;
-      setSettingsSection(destination);
+    setPage(id);
+    if (isSettingsSection(id)) {
+      setSettingsSection(id);
+      if (id === "models") setModelsView(targetModels ?? { tab: "services" });
       setSettingsOpen(true);
     } else {
       setSettingsOpen(false);
-      setMainPage((destination === "rewrite" || destination === "translation" ? "actions" : destination) as MainPageId);
-      if (destination === "style") reviewScope.current = targetScope;
+      setMainPage(id);
     }
     setSettingsDismissRequested(false);
     setSaved(false);
-    const needsRoute = isWorkflowPage(id) && (targetScope !== snapshot.selectedScope || pendingOperations.current > 0);
+    const targetScope = targetModels && "scope" in targetModels && !snapshot.accountState?.managed
+      ? targetModels.scope : undefined;
+    const needsRoute = targetScope !== undefined;
     setRouteLoading(needsRoute);
     // A local page transition has no snapshot to publish and needs no pipe call.
-    const needsProvider = id === "models" && snapshot.selectedProviderId === "local_asr";
+    const needsProvider = id === "models" && (!targetModels || targetModels.tab === "services") && snapshot.selectedProviderId === "local_asr";
     if (!needsRoute && !needsProvider && !snapshot.microphoneTestBusy && !pendingOperations.current) return;
     await execute(async call => {
       if (epoch !== navigationEpoch.current) return;
       let next: Settings | undefined;
       if (current.current?.microphoneTestBusy) next = await call("stopMicrophoneTest");
-      if (needsRoute) {
-        next = await call("selectWorkflow", targetScope);
-        next = await call("loadRouteModels");
+      if (targetScope) {
+        if (targetScope !== (next ?? current.current)?.selectedScope) next = await call("selectWorkflow", targetScope);
+        if (epoch === navigationEpoch.current) next = await call("loadRouteModels");
       }
       if (needsProvider) {
         const provider = (next ?? current.current)?.providers.find(provider => provider.id !== "local_asr");
@@ -675,25 +670,35 @@ export function useSettings() {
     if (epoch === navigationEpoch.current) setRouteLoading(false);
   };
 
+  const navigate = (id: PageId) => navigateTo(id);
+  const openModelsTab = (tab: ModelsTab, reviewScope?: ReviewScope) => {
+    if (tab === "transcription") return navigateTo("models", { tab, scope: "transcription" });
+    if (tab === "review") {
+      const scope = reviewScope ?? (current.current?.textActionDictationContext === "local_asr" ? "local_asr_refinement" : "refinement");
+      return navigateTo("models", { tab, scope });
+    }
+    return navigateTo("models", { tab });
+  };
+
   // Async dismissal must observe edits and baselines from the latest input event.
-  const hasSettingsDrafts = () => routeDirty("transcription") || hasRecordingDraft() || !!current.current?.providerDirty || !!apiKeyRef.current ||
+  const hasSettingsDrafts = () => dictationModelScopes.some(routeDirty) || hasRecordingDraft() || !!current.current?.providerDirty || !!apiKeyRef.current ||
     textProfileEditor.isDirty() ||
     (endpointRef.current !== null && endpointRef.current !== current.current?.providerBaseUrl) ||
     (retentionRef.current !== null && retentionRef.current !== String(current.current?.historyRetentionDays ?? ""));
   const requestCloseSettings = () => {
     if (hasSettingsDrafts()) setSettingsDismissRequested(true);
-    else void navigate(mainPage, mainScope.current);
+    else void navigate(mainPage);
   };
   const saveSettings = async (close = false) => {
     const dismissal = settingsCloseEpoch.current;
     if (!await save(false, true)) return false;
-    if (close && dismissal === settingsCloseEpoch.current && settingsOpenRef.current && !hasSettingsDrafts()) await navigate(mainPage, mainScope.current);
+    if (close && dismissal === settingsCloseEpoch.current && settingsOpenRef.current && !hasSettingsDrafts()) await navigate(mainPage);
     return true;
   };
   const discardSettings = async (close = false) => {
     const dismissal = settingsCloseEpoch.current;
     if (!await reset(false, true)) return false;
-    if (close && dismissal === settingsCloseEpoch.current && settingsOpenRef.current && !hasSettingsDrafts()) await navigate(mainPage, mainScope.current);
+    if (close && dismissal === settingsCloseEpoch.current && settingsOpenRef.current && !hasSettingsDrafts()) await navigate(mainPage);
     return true;
   };
 
@@ -833,6 +838,16 @@ export function useSettings() {
     try { await run("selectProvider", id); }
     finally { setSelectingProvider(false); }
   };
+  const openModelServices = async (provider: string) => {
+    const opening = openModelsTab("services");
+    const epoch = navigationEpoch.current;
+    await opening;
+    const snapshot = current.current;
+    if (epoch === navigationEpoch.current && provider !== "local_asr" &&
+        snapshot?.selectedProviderId !== provider && snapshot?.providers.some(item => item.id === provider)) {
+      await selectProvider(provider);
+    }
+  };
   const validateProvider = async () => {
     const snapshot = current.current;
     if (!snapshot || validatingRef.current || resettingRef.current || selectingProviderRef.current) return;
@@ -863,16 +878,16 @@ export function useSettings() {
   const setTextRouteEnabled = (enabled: boolean) => {
     const targetScope = current.current?.selectedScope;
     return execute(async call => {
-      if (targetScope && targetScope !== current.current?.selectedScope) await call("selectWorkflow", targetScope);
-      if (targetScope === "local_asr_refinement" && current.current?.routeProviderId !== "apple_clarity") {
-        await call("savePreference", "setLocalAsrCloudRefinement", [enabled]);
-      }
-      return call("savePreference", "setRouteEnabled", [enabled]);
+      const route = targetScope && targetScope !== current.current?.selectedScope
+        ? await call("selectWorkflow", targetScope) : current.current;
+      const preference = targetScope === "local_asr_refinement" && route?.routeProviderId !== "apple_clarity"
+        ? "setLocalAsrCloudRefinement" : "setRouteEnabled";
+      return call("savePreference", preference, [enabled]);
     });
   };
-  const useLocalModel = async (stillOnTab: () => boolean) => {
+  const useLocalModel = async () => {
     const epoch = navigationEpoch.current;
-    if (await run("useLocalAsr") && epoch === navigationEpoch.current && stillOnTab()) await navigate("dictation");
+    if (await run("useLocalAsr") && epoch === navigationEpoch.current) await openModelsTab("transcription");
   };
 
   const setLibraryPreference = async (library: "dictionary" | "snippets", index: number, field: "enabled" | "case_sensitive", value: boolean) => {
@@ -932,7 +947,7 @@ export function useSettings() {
   };
 
   return {
-    registerLibraryCloseGuard, state, page, mainPage, settingsOpen, settingsSection, settingsDismissRequested, setSettingsDismissRequested,
+    registerLibraryCloseGuard, state, page, mainPage, settingsOpen, settingsSection, modelsView, openModelsTab, settingsDismissRequested, setSettingsDismissRequested,
     requestCloseSettings, saveSettings, discardSettings, hasSettingsDrafts,
     error, busy, accountPending, navigating: routeLoading, routeLoading,
     saving, discardingDrafts, validatingProvider, selectingProvider, confirming, saved,
@@ -943,7 +958,7 @@ export function useSettings() {
     closing, setClosing, discarding, setDiscarding, capture: textActions.capturing ? undefined : capture, setCapture,
     confirmAction, setConfirmAction, setError, run, runHistoryCorrection, save, navigate,
     cancelDiscard, discardAndClose, saveAndClose, confirmMutation,
-    captureHotkey, captureMouseHotkey, captureOpener, selectProvider, validateProvider,
+    captureHotkey, captureMouseHotkey, captureOpener, selectProvider, validateProvider, openModelServices,
     selectRouteProvider, setTextRouteEnabled, useLocalModel,
     textActions, textProfileEditor,
   };

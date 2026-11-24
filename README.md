@@ -102,14 +102,15 @@ automatically. Text and numeric drafts use **Salvar alterações** (Save changes
 and **Descartar** (Discard) for the current page. Provider key and connection URL
 edits on **Modelos e serviços** (Models and services) require **Validar e salvar
 chave** (Validate and save key). Validate or discard those edits before saving
-other drafts. Closing Settings can save or discard drafts from all pages.
+other drafts. Closing Settings can save or discard its pending drafts.
 
-Use **Style** for dictation cleanup, an optional action after dictation and
-one general writing style. **Text actions** starts with Rewrite and Translation;
-create another action to use your own instructions. Action and processing-profile
-dialogs keep edits as drafts until **Save**. **Cancel**
-discards that dialog's edits. Previews use sample text and do not paste into
-another application. Local Whisper remains an audio transcription provider.
+Use **Style** to choose what happens after dictation, set the output language
+and choose a tone when editing is available. Use **Settings → Models and
+services** to configure audio transcription and dictation review. Use
+**Actions** to create or edit a saved action, its instructions and its shortcut.
+Action and processing profile dialogs keep edits as drafts until **Save**.
+**Cancel** discards the dialog's edits. Previews use sample text and do not paste
+into another application.
 
 ## Interface preview
 
@@ -323,8 +324,8 @@ Clarify account mode keeps managed processing on desktop and mobile. See
 [ChatGPT setup and limits](docs/chatgpt-plan.md).
 
 On an Apple Silicon Mac with macOS 26 or later, you can use **Apple Intelligence**
-for dictation review. In **Style → More options → Review model and instructions**,
-choose the transcription context, select **Apple Intelligence**, and enable
+for dictation review. Open **Settings → Models and services → Dictation cleanup**.
+Choose the transcription context, select **Apple Intelligence**, and enable
 **AI review**. Turn on Apple Intelligence in System Settings first. The review
 runs on the Mac. If review fails, Clarify keeps the transcript.
 

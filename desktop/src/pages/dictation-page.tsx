@@ -5,17 +5,12 @@ import {
   Picker,
   Row,
   Section,
-  SettingsDisclosure,
-  TextArea,
-  Toggle,
 } from "../components/ui";
-import { WorkflowRoute } from "../components/workflow-route";
 import { RecordingOptions } from "../components/recording-options";
 import { recordingDraft } from "../settings/recording";
 
 export function DictationPage({ controller }: SettingsPageProps) {
-  const { state, run, prompt, setPrompt, recording, setRecording } = controller;
-  const managedProcessing = state.accountState?.managed;
+  const { state, run, recording, setRecording } = controller;
   return (
     <>
       <Section title={t("Entrada de áudio")}>
@@ -84,23 +79,6 @@ export function DictationPage({ controller }: SettingsPageProps) {
           onEnabledChange={(enabled) => void run("setRecordingVadEnabled", enabled)}
         />
       </Section>
-      {managedProcessing && <p className="hint">{t("O Clarify gerencia os modelos de transcrição e reescrita da sua conta.")}</p>}
-      {!managedProcessing && <Section title={t("Transcrição")}>
-        <Toggle
-          title={t("Ativar ditado")}
-          checked={state.routeEnabled}
-          onChange={(v) => void run("setRouteEnabled", v)}
-        />
-        <WorkflowRoute controller={controller} />
-        <SettingsDisclosure title={t("Instruções da transcrição")}>
-          <TextArea
-            className="prompt"
-            aria-label={t("Instruções da transcrição")}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-        </SettingsDisclosure>
-      </Section>}
     </>
   );
 }

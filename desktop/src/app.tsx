@@ -22,7 +22,7 @@ import { StylePage } from "./pages/style-page";
 import { ActionsPage } from "./pages/actions-page";
 import { SnippetsPage } from "./pages/snippets-page";
 import { DictionaryPage } from "./pages/dictionary-page";
-import { getMainPages, isWorkflowPage } from "./settings/navigation";
+import { getMainPages } from "./settings/navigation";
 import { SettingsDialogs } from "./settings/settings-dialogs";
 import { useSettings } from "./settings/use-settings";
 
@@ -77,7 +77,7 @@ export function App() {
     media.addEventListener("change", change);
     return () => media.removeEventListener("change", change);
   }, []);
-  const { state, mainPage, settingsOpen, error, saved, routeLoading, saving, discardingDrafts } = controller;
+  const { state, mainPage, settingsOpen, error, saved, saving, discardingDrafts } = controller;
   useEffect(() => {
     if (state?.audioPlaybackStopRequest) void stopRecordingPlayback(state.audioPlaybackStopRequest).catch(() => {});
   }, [state?.audioPlaybackStopRequest]);
@@ -85,10 +85,8 @@ export function App() {
   const settingsButton = useRef<HTMLButtonElement>(null);
   const settingsOpener = useRef<HTMLButtonElement>(null);
   const background = useRef(controller);
-  const waitingForRoute = !settingsOpen && routeLoading && isWorkflowPage(mainPage);
-  const retainPage = background.current.mainPage === mainPage && !!background.current.state;
-  if (!settingsOpen && !waitingForRoute) background.current = controller;
-  const pageController = settingsOpen || (waitingForRoute && retainPage) ? background.current : controller;
+  if (!settingsOpen) background.current = controller;
+  const pageController = settingsOpen ? background.current : controller;
   const pageState = pageController.state;
   useLayoutEffect(() => {
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
@@ -129,16 +127,14 @@ export function App() {
               {!pageState ? (
                 <div className="connection" role="status">
                   <LoaderCircle className="spin" size={22} />{t("Conectando ao Clarify…")}</div>
-              ) : waitingForRoute && !retainPage ? (
-                <div className="connection" role="status"><LoaderCircle className="spin" size={22} />{t("Carregando…")}</div>
               ) : (
-                <div className="page-content" inert={waitingForRoute} aria-busy={waitingForRoute}>
+                <div className="page-content">
                   <Page key={mainPage === "snippets" || mainPage === "dictionary"
                     ? `${mainPage}:${pageState.snippetContext}` : mainPage} controller={{ ...pageController, state: pageState }}
                     meetingOpen={meetingOpen} acknowledgeMeetingOpen={acknowledgeMeetingOpen} />
                 </div>
               )}
-              {pageController.pageDirty && !waitingForRoute && <div className="draft-actions" role="group" aria-label={t("Alterações pendentes")}>
+              {pageController.pageDirty && <div className="draft-actions" role="group" aria-label={t("Alterações pendentes")}>
                 <span>{t("Alterações pendentes")}</span>
                 <Button variant="ghost" disabled={saving || discardingDrafts}
                   onClick={() => controller.setDiscarding(true)}>{t("Descartar")}</Button>
@@ -156,7 +152,7 @@ export function App() {
         </main>
       </div>}
       {state && <>
-        <SettingsDialog controller={{ ...controller, settingsOpen: settingsOpen && !state.practiceState?.open && !state.onboardingRequired, state }} returnFocus={settingsOpener.current?.isConnected ? settingsOpener : settingsButton} />
+        <SettingsDialog controller={{ ...controller, settingsOpen: settingsOpen && !state.practiceState?.open && !state.onboardingRequired, state }} returnFocus={() => settingsOpener.current?.isConnected ? settingsOpener.current : settingsButton.current} />
         <TextActionEditor controller={{ ...controller, state }} />
         <TextProfileEditor controller={{ ...controller, state }} />
       </>}

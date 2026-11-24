@@ -3,12 +3,12 @@ import { electron } from "../platform";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Row, Section } from "../components/ui";
-import { actionDisplayName, shortcutKeyName } from "../settings/display-labels";
+import { shortcutKeyName } from "../settings/display-labels";
 
 export function ShortcutsPage({ controller }: SettingsPageProps) {
   const { state, run, setCapture, setConfirmAction } = controller;
   return (
-    <><Section title={t("Ações rápidas")}>
+    <Section title={t("Atalhos do aplicativo")}>
       {!!state.hotkeyUnavailable?.length && <p className="hint" role="status">
         {t("Atalhos indisponíveis ({v0})", {v0: state.hotkeyUnavailable.map(item => item.split("+").map(shortcutKeyName).join("+")).join(", ")})}
       </p>}
@@ -30,11 +30,5 @@ export function ShortcutsPage({ controller }: SettingsPageProps) {
         onClick={() => setConfirmAction("resetAllHotkeys")}
       >{t("Restaurar atalhos padrão")}</Button>
     </Section>
-    <Section title={t("Atalhos das ações")}>
-      <p className="hint">{t("Edite o atalho junto com as instruções da ação. A mudança só vale após salvar.")}</p>
-      {(state.textActions ?? []).map(action => <Row key={action.id} title={actionDisplayName(action)}>
-        <ShortcutButton label={`${t("Atalho")}: ${actionDisplayName(action)}`} shortcut={action.shortcut} onClick={() => controller.textActions.open(action)} />
-      </Row>)}
-    </Section></>
   );
 }

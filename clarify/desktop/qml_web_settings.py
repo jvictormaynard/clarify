@@ -70,6 +70,7 @@ PROPERTIES = (
     "dictationWritingStyle",
     "writingStyleRefinementAllowed",
     "dictationCleanupRefinementAllowed",
+    "dictationReviewStatus",
     "selectedScope",
     "routeProviderId",
     "routeModelId",

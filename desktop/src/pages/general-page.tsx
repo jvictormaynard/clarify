@@ -3,15 +3,6 @@ import { isMacDesktop } from "../platform";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { Button, Picker, Row, Section, Toggle } from "../components/ui";
-const languageNames: Record<string, string> = {
-  auto: t("Idioma original"),
-  en: "English",
-  pt: "Portuguese",
-  es: "Spanish",
-  de: "German",
-  ru: "Russian",
-};
-
 export function GeneralPage({ controller }: SettingsPageProps) {
   const { state, run } = controller;
   const macDesktop = isMacDesktop();
@@ -64,23 +55,4 @@ export function GeneralPage({ controller }: SettingsPageProps) {
       )}
     </>
   );
-}
-
-export function TextLanguagePreferences({ controller }: SettingsPageProps) {
-  const { state, run } = controller;
-  return <>
-      <Section title={t("Preferências")}>
-        <Row title={t("Idioma do texto")}>
-          <Picker
-            label={t("Idioma")}
-            value={state.language}
-            options={state.languages.map((id) => ({
-              id,
-              label: languageNames[id] || id,
-            }))}
-            onChange={(v) => void run("setLanguage", v)}
-          />
-        </Row>
-      </Section>
-  </>;
 }

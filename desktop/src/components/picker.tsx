@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Ref } from "react";
 import { Check, RefreshCw } from "lucide-react";
 import type { Option } from "../settings/bridge";
 import { Button } from "./primitives/button";
@@ -11,7 +11,7 @@ import {
 
 export function Picker({
   label, value, options, onChange, onRefresh, busy, disabled, literalLabels = false,
-  empty = t("Nenhuma opção disponível."),
+  empty = t("Nenhuma opção disponível."), triggerRef,
 }: {
   label: string;
   value: string;
@@ -22,6 +22,7 @@ export function Picker({
   busy?: boolean;
   disabled?: boolean;
   empty?: string;
+  triggerRef?: Ref<HTMLButtonElement>;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -55,6 +56,7 @@ export function Picker({
       }}
     >
       <ComboboxTrigger
+        ref={triggerRef}
         role="combobox"
         aria-label={label}
         render={<SelectButton className="min-w-0" />}

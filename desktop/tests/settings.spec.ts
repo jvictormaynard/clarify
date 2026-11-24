@@ -1,7 +1,7 @@
 import type { Page, Request } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { test, expect, settingsScenario } from "./settings-fixture";
-import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure, settingsSectionLabel } from "./settings-navigation";
+import { navigate, openSettings, closeSettings, openReviewSettings, openTranscriptionSettings, settingsDialog, openDisclosure, settingsSectionLabel } from "./settings-navigation";
 import type { Meeting, MeetingState } from "../src/meetings/bridge";
 
 settingsScenario({ locale: "en" }, () => {
@@ -164,16 +164,16 @@ for (const method of ["testMicrophone", "stopMicrophoneTest", "refreshMicrophone
       if (method === "refreshMicrophones" && await page.getByRole("combobox", { name: "Microfone", exact: true }).getAttribute("aria-expanded") === "true") await page.keyboard.press("Escape");
       await expect(navigation).toBeEnabled();
       await expect(navigation).toHaveCSS("opacity", before);
-      await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toBeEnabled();
+      await expect(page.getByRole("combobox", { name: "Modo de gravação", exact: true })).toBeEnabled();
       await navigation.click();
       await expect(settingsDialog(page).getByRole("heading", { name: "Geral", exact: true })).toBeVisible();
-      await expect(page.getByRole("combobox", { name: "Idioma", exact: true })).toBeEnabled();
+      await expect(page.getByRole("combobox", { name: "Microfone", exact: true })).toBeEnabled();
     } finally { release(); }
   });
 }
 
 test("responsive operations: saving text allows navigation and preserves edits typed during the save", async ({ page }) => {
-  await openStyleReview(page);
+  await openReviewSettings(page);
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
   await prompt.fill("First text revision.");
   let release!: () => void;
@@ -189,22 +189,17 @@ test("responsive operations: saving text allows navigation and preserves edits t
     await entered;
     await expect(prompt).toBeEnabled();
     await prompt.fill("Newer unsaved revision.");
-    await navigate(page, "Dicionário");
-    await expect(page.getByRole("button", { name: "Adicionar novo", exact: true })).toBeVisible();
+    await navigate(page, "Privacidade");
+    await expect(page.getByRole("switch", { name: "Salvar histórico", exact: true })).toBeVisible();
   } finally { release(); }
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(prompt).toHaveValue("Newer unsaved revision.");
   await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeVisible();
 });
 
-test("contextual actions wait for the requested workflow before saving", async ({ page }) => {
-  await navigate(page, "Ditado");
-  await page.getByText("Instruções da transcrição", { exact: true }).click();
-  await page.getByRole("textbox", { name: "Instruções da transcrição", exact: true }).fill("Dictation draft");
-  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
-  await openStyleReview(page);
-  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Text draft");
+test("dictation model tabs wait for the correct route and save both instruction drafts", async ({ page }) => {
+  await openReviewSettings(page);
+  await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Review draft");
   let release!: () => void, started!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; });
   const entered = new Promise<void>(resolve => { started = resolve; });
@@ -214,31 +209,32 @@ test("contextual actions wait for the requested workflow before saving", async (
     await route.fallback();
   });
   try {
-    await navigate(page, "Ditado");
+    await openTranscriptionSettings(page);
     await entered;
-    await expect(page.getByRole("heading", { name: "Geral", exact: true })).toBeVisible();
-    await expect(page.getByRole("group", { name: "Alterações pendentes", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeDisabled();
     await expect(settingsDialog(page).getByRole("button", { name: "Geral", exact: true })).toBeEnabled();
   } finally { release(); }
-  await page.getByText("Instruções da transcrição", { exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Instruções da transcrição", exact: true })).toHaveValue("Dictation draft");
-  await page.getByRole("textbox", { name: "Instruções da transcrição", exact: true }).fill("Updated dictation draft");
+  await openDisclosure(page, "Instruções da transcrição");
+  await page.getByRole("textbox", { name: "Instruções da transcrição", exact: true }).fill("Transcription draft");
   await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeHidden();
-  await openStyleReview(page);
-  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Text draft");
-  const snapshot = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
-  expect(snapshot.routePrompt).not.toBe("Text draft");
+  await page.reload();
+  await openReviewSettings(page);
+  await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Review draft");
+  await openTranscriptionSettings(page);
+  await openDisclosure(page, "Instruções da transcrição");
+  await expect(page.getByRole("textbox", { name: "Instruções da transcrição", exact: true })).toHaveValue("Transcription draft");
 });
 
 test("automatic preferences: switches persist without committing a pending prompt", async ({ page }) => {
-  await openStyleReview(page);
+  await openReviewSettings(page);
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
   const original = await prompt.inputValue();
   const originalScope = await page.evaluate(async () => (window as any).__testSettings({ method: "snapshot", args: [] }).then((state: any) => state.selectedScope));
   await prompt.fill("Text draft must stay private until Save.");
-  await navigate(page, "Sistema");
-  const setting = page.getByRole("switch", { name: "Iniciar com o Windows", exact: true });
+  await navigate(page, "Privacidade");
+  const setting = page.getByRole("switch", { name: "Salvar histórico", exact: true });
   const checked = await setting.isChecked();
   const response = page.waitForResponse(response => response.url().endsWith("/__test_rpc") && response.request().postDataJSON().method === "savePreference");
   await setting.click();
@@ -248,9 +244,9 @@ test("automatic preferences: switches persist without committing a pending promp
     await invoke("selectWorkflow", [scope]);
     return invoke("load", []);
   }, originalScope);
-  expect(persisted.autostart).toBe(!checked);
+  expect(persisted.historyEnabled).toBe(!checked);
   expect(persisted.routePrompt).toBe(original);
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(prompt).toHaveValue("Text draft must stay private until Save.");
 });
 
@@ -307,22 +303,14 @@ test("settings organization: tasks and action editors replace workflow destinati
   await expect(page.getByRole("combobox", { name: "Modo de gravação", exact: true })).toBeVisible();
   const settings = await openSettings(page, "Atalhos");
   await expect(settings.getByRole("combobox", { name: "Modo de gravação", exact: true })).toBeVisible();
-  const actionShortcuts = settings.locator("section").filter({ has: page.getByRole("heading", { name: "Atalhos das ações", exact: true }) });
-  for (const name of ["Reescrita", "Tradução"]) {
-    await actionShortcuts.locator('[data-slot="settings-row"]').filter({ hasText: name }).getByRole("button").click();
-    const editor = page.getByRole("dialog", { name: "Editar ação", exact: true });
-    await expect(editor.getByRole("textbox", { name: "Nome da ação", exact: true })).toHaveValue(name);
-    await expect(editor.getByRole("textbox", { name: "Instruções da ação", exact: true })).toBeVisible();
-    await editor.getByRole("button", { name: "Concluído", exact: true }).click();
-  }
+  await expect(settings.getByRole("heading", { name: "Atalhos do aplicativo", exact: true })).toBeVisible();
+  await expect(settings.getByRole("button", { name: /^Atalho: (Reescrita|Tradução)$/ })).toHaveCount(0);
+  await expect(settings.getByRole("combobox", { name: "Serviço", exact: true })).toHaveCount(0);
   await navigate(page, "Ditado");
   await expect(page.getByRole("combobox", { name: "Modo de gravação", exact: true })).toBeVisible();
 });
 
-test("settings organization: action Save and Cancel preserve unrelated Style drafts", async ({ page }) => {
-  await openStyleReview(page);
-  const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
-  await prompt.fill("Pending Style instructions");
+test("settings organization: action Save and Cancel operate from the action catalog", async ({ page }) => {
   await navigate(page, "Ações");
   for (const [id, name] of [["rewrite", "Reescrita"], ["translation", "Tradução"]]) {
     await page.locator(`#text-action-${id}`).getByRole("button", { name: "Editar ação", exact: true }).click();
@@ -338,10 +326,7 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
     await expect(editor.getByRole("button", { name: "Salvar ação", exact: true })).toBeDisabled();
     await editor.getByRole("button", { name: "Concluído", exact: true }).click();
   }
-  await openStyleReview(page);
-  await expect(prompt).toHaveValue("Pending Style instructions");
   const state = await page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
-  expect(state.routePrompt).not.toBe("Pending Style instructions");
   for (const id of ["rewrite", "translation"]) expect(state.textActions.find((action: any) => action.id === id).prompt).toMatch(/^Saved /);
   });
 
@@ -352,7 +337,7 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
     expect(cloud!.y).toBeLessThan(local!.y);
     await expect(page.getByRole("button", { name: "Usar este modelo", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Usar este modelo", exact: true }).click();
-    await expect(settingsDialog(page).getByRole("heading", { level: 2, name: "Geral", exact: true })).toBeVisible();
+    await expect(settingsDialog(page).getByRole("tab", { name: "Transcrição de áudio", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toContainText("Local Whisper");
     await navigate(page, "Modelos e serviços");
     const activeLocal = await page.getByRole("heading", { name: /^Modelos locais/ }).boundingBox();
@@ -362,7 +347,7 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
 
   test("settings organization: a completed local selection preserves a later tab choice", async ({ page }) => {
     const settings = await openSettings(page, "Modelos e serviços");
-    const profiles = settings.getByRole("tab", { name: "Processamento de texto" });
+    const profiles = settings.getByRole("tab", { name: "Modelos das ações" });
     let release!: () => void;
     let started!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });
@@ -385,40 +370,43 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
     await (await reply).finished();
     await expect(profiles).toHaveAttribute("aria-selected", "true");
     await expect(settings.getByRole("button", { name: "Editar perfil de Reescrita" })).toBeVisible();
+    await settings.getByRole("button", { name: "Configurar revisão na nuvem", exact: true }).click();
+    await expect(settings.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toContainText("Ditado na nuvem");
     await settings.getByRole("tab", { name: "Serviços e modelos locais" }).click();
     const sections = settings.getByRole("tabpanel").locator("section");
     await expect(sections.first()).toHaveAttribute("id", "local-models");
   });
 
   test("settings organization: local cleanup setup opens and activates the local review context", async ({ page }) => {
-    await navigate(page, "Ditado");
+    await openTranscriptionSettings(page);
     await page.getByRole("combobox", { name: "Serviço", exact: true }).click();
     await page.getByRole("option", { name: "Local Whisper", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "Serviço", exact: true })).toContainText("Local Whisper");
-    await openStyleReview(page);
+    await openReviewSettings(page);
     await expect(page.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toContainText("Transcrição local");
     const localReview = page.getByRole("switch", { name: "Ativar revisão por IA", exact: true });
     if (await localReview.isChecked()) await localReview.click();
     await expect(localReview).not.toBeChecked();
-    await page.getByRole("combobox", { name: "Edição do texto", exact: true }).click();
+    await navigate(page, "Estilo");
+    await page.getByRole("combobox", { name: "Após o ditado", exact: true }).click();
     await page.getByRole("option", { name: "Melhorar a clareza", exact: true }).click();
-    await page.getByRole("button", { name: "Configurar revisão", exact: true }).click();
-    await openStyleReview(page);
+    const openReview = page.getByRole("button", { name: "Configurar revisão", exact: true });
+    await openReview.click();
+    const reviewTab = settingsDialog(page).getByRole("tab", { name: "Revisão do ditado", exact: true });
+    await expect(reviewTab).toHaveAttribute("aria-selected", "true");
+    await expect(reviewTab).toBeFocused();
     await expect(page.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toContainText("Transcrição local");
     await localReview.click();
     await expect(localReview).toBeChecked();
-    await navigate(page, "Ditado");
-    await openStyleReview(page);
-    await expect(localReview).toBeChecked();
-    await expect(page.getByRole("combobox", { name: "Edição do texto", exact: true })).toContainText("Melhorar a clareza");
-    await expect(page.getByRole("button", { name: "Configurar revisão", exact: true })).toHaveCount(0);
+    await closeSettings(page);
+    await expect(page.getByRole("combobox", { name: "Após o ditado", exact: true })).toContainText("Melhorar a clareza");
+    await expect(page.getByText("Conecte o serviço de revisão para melhorar a clareza.", { exact: true })).toBeVisible();
+    await expect(openReview).toBeFocused();
   });
 
-  test("contextual confirmation: Settings Save keeps drafts from other pages unsaved", async ({ page }) => {
-    await openStyleReview(page);
-    const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
-    const original = await prompt.inputValue();
-    await prompt.fill("Keep this text draft unsaved.");
+  test("contextual confirmation: Settings Save preserves a workspace library draft", async ({ page }) => {
+    await navigate(page, "Snippets");
+    await addLibraryEntry(page, false, "draft trigger", "Keep this library draft unsaved.");
     const dialog = await openSettings(page, "Privacidade");
     const history = dialog.getByRole("switch", { name: "Salvar histórico", exact: true });
     if (!await history.isChecked()) await history.click();
@@ -428,10 +416,10 @@ test("settings organization: action Save and Cancel preserve unrelated Style dra
     await expect(dialog.getByRole("status").filter({ hasText: "Há alterações não salvas" })).toBeVisible();
     await dialog.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect(dialog).toBeHidden();
-    await expect(prompt).toHaveValue("Keep this text draft unsaved.");
+    await expect(page.getByText("draft trigger", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Salvar alterações", exact: true })).toBeVisible();
-    await page.reload(); await openStyleReview(page);
-    await expect(prompt).toHaveValue(original);
+    await page.reload(); await navigate(page, "Snippets");
+    await expect(page.getByText("draft trigger", { exact: true })).toHaveCount(0);
     const reopened = await openSettings(page, "Privacidade");
     await expect(reopened.getByRole("spinbutton", { name: "Retenção do histórico", exact: true })).toHaveValue("31");
   });
@@ -461,7 +449,7 @@ test.describe("OpenCode AI review service", () => {
   test.use({ settingsScenario: { personalCatalog: true } });
 
   test("selects OpenCode for AI review only after choosing a catalog model", async ({ page }) => {
-    await openStyleReview(page);
+    await openReviewSettings(page);
     const snapshot = () => page.evaluate(() => (window as any).__testSettings({ method: "snapshot", args: [] }));
     const before = await snapshot();
     const service = page.getByRole("combobox", { name: "Serviço", exact: true });
@@ -485,7 +473,7 @@ test.describe("OpenCode cloud service", () => {
 
   test("loads and saves an OpenCode model for a processing profile", async ({ page }) => {
     await navigate(page, "Modelos e serviços");
-    await page.getByRole("tab", { name: "Processamento de texto", exact: true }).click();
+    await page.getByRole("tab", { name: "Modelos das ações", exact: true }).click();
     await page.getByRole("button", { name: "Editar perfil de Reescrita", exact: true }).click();
     const profile = page.getByRole("dialog", { name: "Perfil de processamento", exact: true });
     await profile.getByRole("combobox", { name: "Serviço do perfil", exact: true }).click();
@@ -513,28 +501,11 @@ test.describe("OpenCode cloud service", () => {
     await expect(cloud.getByRole("status")).toHaveText("Conectado");
     await page.setViewportSize({ width: 640, height: 520 });
     await expect(cloud.getByRole("button", { name: "Consultar modelos gratuitos" })).toBeVisible();
-    const readRoute = (scope: string) => page.evaluate(async name => {
-      const result = await (window as any).__testSettings({ method: "selectWorkflow", args: [name] });
-      return [result.routeProviderId, result.routeModelId];
-    }, scope);
-    const speech = await readRoute("transcription");
-    const model = cloud.getByRole("combobox", { name: "Modelo de reescrita", exact: true });
-    await model.click();
-    const popup = page.locator('[data-slot="combobox-popup"]');
-    const search = popup.getByRole("combobox");
-    const lastModel = popup.getByRole("option", { name: "opencode/fixture-free-b", exact: true });
-    await expect(lastModel).not.toBeInViewport();
-    await popup.getByRole("option", { name: "opencode/fixture-free-a", exact: true }).hover();
-    await page.mouse.wheel(0, 900);
-    await expect(lastModel).toBeInViewport({ ratio: 1 });
-    await expect(search).toBeInViewport({ ratio: 1 });
-    await lastModel.click();
-    await expect(model).toContainText("opencode/fixture-free-b");
-    expect(await readRoute("rewrite")).toEqual(["opencode", "opencode/fixture-free-b"]);
-    expect(await readRoute("transcription")).toEqual(speech);
-    await cloud.getByRole("button", { name: "Consultar modelos gratuitos" }).click();
-    await expect(model).toContainText("opencode/fixture-free-b");
     await cloud.screenshot({ path: testInfo.outputPath("opencode-cloud.png") });
+    await cloud.getByRole("button", { name: "Abrir modelos das ações", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Modelos das ações", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: "Editar perfil de Reescrita", exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Serviços e modelos locais", exact: true }).click();
     await select.click();
     await page.getByRole("option", { name: "OpenAI", exact: true }).click();
     await expect(cloud.getByLabel("Chave de API", { exact: true })).toBeVisible();
@@ -570,7 +541,7 @@ test("provider selection: pending selection cannot transfer a key typed for the 
 
 
 test("practice preserves drafts and permits the window close confirmation", async ({ page }) => {
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft through practice.");
   await navigate(page, "Geral");
   await page.getByRole("button", { name: "Praticar ditado", exact: true }).click();
@@ -579,7 +550,7 @@ test("practice preserves drafts and permits the window close confirmation", asyn
   await page.getByRole("button", { name: "Continuar editando", exact: true }).click();
   await page.getByRole("button", { name: "Pular prática", exact: true }).click();
   await expect(settingsDialog(page)).toBeVisible();
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through practice.");
 });
 
@@ -857,7 +828,7 @@ test("editable fields expose their guidance to assistive technology", async ({ p
 });
 
 test("instruction placeholders meet normal-text contrast", async ({ page }) => {
-  await openStyleReview(page);
+  await openReviewSettings(page);
   const contrast = await page.getByRole("textbox", { name: "Instruções", exact: true }).evaluate(element => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 1;
@@ -945,14 +916,14 @@ test("integrated titlebar stays compact and close preserves unsaved changes", as
   await expect(page.getByRole("button", { name: "Minimizar", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Maximizar", exact: true })).toBeVisible();
   expect(await page.locator(".titlebar").evaluate(el => getComputedStyle(el).backgroundColor)).toBe(await page.locator(".settings-window").evaluate(el => getComputedStyle(el).backgroundColor));
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Titlebar close draft");
-  await page.getByRole("button", { name: "Fechar janela", exact: true }).click();
+  await page.evaluate(() => (window as any).__testDesktop.window("close"));
   await expect(page.getByRole("heading", { name: "Alterações não salvas" })).toBeVisible();
   await page.getByRole("button", { name: "Continuar editando" }).click();
   await page.screenshot({ path: "test-results/settings-titlebar.png" });
   await page.setViewportSize({ width: 640, height: 520 });
-  await expect(page.getByRole("button", { name: "Fechar janela", exact: true })).toBeInViewport();
+  await expect(page.locator(".titlebar").getByRole("button", { name: "Fechar janela", exact: true, includeHidden: true })).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(640);
   await page.screenshot({ path: "test-results/settings-titlebar-compact.png" });
 });
@@ -992,7 +963,7 @@ test("page context stays in the header while tasks and Settings sections scroll"
 
 test("scroll boundaries cannot move the window chrome or sidebar", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 520 });
-  await openStyleReview(page);
+  await navigate(page, "Estilo");
   const area = page.locator(".scroll-area");
   const titlebar = page.locator(".titlebar");
   const nav = page.locator("#desktop-sidebar");
@@ -1013,10 +984,10 @@ test("scroll boundaries cannot move the window chrome or sidebar", async ({ page
   expect(await titlebar.boundingBox()).toEqual(before.titlebar);
 });
 
-test("text actions stay with the form and choices need no save island", async ({ page }) => {
-  const actions = page.getByRole("group", { name: "Alterações pendentes" });
+test("review instructions use the Settings save footer", async ({ page }) => {
+  const actions = settingsDialog(page).locator('[data-slot="dialog-footer"]');
   await expect(actions).toBeHidden();
-  await openStyleReview(page);
+  await openReviewSettings(page);
   const before = await page.locator(".scroll-area").boundingBox();
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Contextual text draft.");
   const editor = page.getByRole("textbox", { name: "Instruções", exact: true });
@@ -1025,7 +996,7 @@ test("text actions stay with the form and choices need no save island", async ({
   expect(shell!.x).toBeGreaterThanOrEqual(panel!.x);
   expect(shell!.x + shell!.width).toBeLessThanOrEqual(panel!.x + panel!.width);
   await expect(actions).toBeVisible();
-  expect(await actions.evaluate(element => !!element.closest(".page"))).toBe(true);
+  expect(await actions.evaluate(element => !!element.closest(".settings-dialog"))).toBe(true);
   expect(await page.locator(".scroll-area").boundingBox()).toEqual(before);
   await actions.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(actions).toBeHidden();
@@ -1033,7 +1004,7 @@ test("text actions stay with the form and choices need no save island", async ({
 });
 
 test("installed models: keyboard selection persists without save and survives reload", async ({ page }) => {
-  await navigate(page, "Ditado");
+  await openTranscriptionSettings(page);
   await page.getByRole("combobox", { name: "Serviço", exact: true }).click();
   await page.getByRole("option", { name: "Local Whisper" }).click();
   await page.getByRole("combobox", { name: "Modelo", exact: true }).click();
@@ -1045,12 +1016,12 @@ test("installed models: keyboard selection persists without save and survives re
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await page.reload();
   await expect(page.getByRole("heading", { level: 1, name: "Bem-vindo de volta", exact: true })).toBeVisible({ timeout: 30000 });
-  await navigate(page, "Ditado");
+  await openTranscriptionSettings(page);
   await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("Medium");
 });
 
 test("picker resets search when reopened before its closing animation ends", async ({ page }) => {
-  await navigate(page, "Ditado");
+  await openTranscriptionSettings(page);
   await page.getByRole("combobox", { name: "Serviço", exact: true }).click();
   await page.getByRole("option", { name: "Local Whisper" }).click();
   await expect(page.locator('[data-slot="combobox-popup"]')).toHaveCount(0);
@@ -1078,7 +1049,7 @@ test("picker resets search when reopened before its closing animation ends", asy
 });
 
 test("draft prompt survives navigation; invalid retention cannot save", async ({ page }, testInfo) => {
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await page.getByRole("textbox", { name: "Instruções" }).fill("Preserve every detail.");
   await navigate(page, "Privacidade");
   await page.getByRole("switch", { name: "Salvar histórico" }).click();
@@ -1089,9 +1060,8 @@ test("draft prompt survives navigation; invalid retention cannot save", async ({
   await page.getByRole("spinbutton", { name: "Retenção do histórico" }).fill("31");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(page.getByRole("textbox", { name: "Instruções" })).toHaveValue("Preserve every detail.");
-  await page.getByRole("button", { name: "Salvar alterações", exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: testInfo.outputPath("settings-text-draft.png"), animations: "disabled" });
 });
 
@@ -1229,10 +1199,11 @@ test("recording options stay in the new window and preserve drafts until save", 
 });
 
 test("local cleanup and custom route settings are editable without legacy navigation", async ({ page }) => {
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await page.getByRole("combobox", { name: "Contexto da revisão", exact: true }).click();
   await page.getByRole("option", { name: "Transcrição local", exact: true }).click();
-  await openStyleReview(page);
+  await expect(page.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toBeFocused();
+  await openReviewSettings(page);
   await expect(page.getByRole("combobox", { name: "Contexto da revisão", exact: true })).toContainText("Transcrição local");
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Revisão local independente.");
   await page.getByText("Modelo e endereço personalizados", { exact: true }).click();
@@ -1242,10 +1213,10 @@ test("local cleanup and custom route settings are editable without legacy naviga
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toBeHidden();
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Revisão local independente.");
   await navigate(page, "Geral");
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await page.getByRole("combobox", { name: "Contexto da revisão", exact: true }).click();
   await page.getByRole("option", { name: "Transcrição local", exact: true }).click();
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Revisão local independente.");
   await expect(page.getByRole("combobox", { name: "Modelo", exact: true })).toContainText("custom-local-cleanup");
 });
@@ -1259,16 +1230,18 @@ test("local model removal requires confirmation and cancel keeps the model", asy
   await expect(page.getByText("Pronto para usar", { exact: true })).toBeVisible();
 });
 
-test("sidebar navigation retains text drafts without a global search", async ({ page }) => {
-  await openStyleReview(page);
+test("settings navigation retains review drafts without a global search", async ({ page }) => {
+  await openReviewSettings(page);
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft through navigation.");
   await navigate(page, "Ditado");
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through navigation.");
   await page.keyboard.press("Control+k");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("textbox", { name: "Instruções", exact: true }).focus();
-  await page.keyboard.press("Control+End"); await page.keyboard.press("/");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  const editor = page.getByRole("textbox", { name: "Instruções", exact: true });
+  await editor.focus();
+  await editor.evaluate((field: HTMLTextAreaElement) => field.setSelectionRange(field.value.length, field.value.length));
+  await page.keyboard.press("/");
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft through navigation./");
 });
 
@@ -1306,7 +1279,7 @@ test("settings updates: microphone telemetry stays compact with a full snippet l
       method: "setSnippets", args: [entries, "local"],
     });
   });
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep this draft during live telemetry.");
   await navigate(page, "Ditado");
   const telemetry: { bytes: number; level: number | undefined }[] = [];
@@ -1324,12 +1297,12 @@ test("settings updates: microphone telemetry stays compact with a full snippet l
   await expect.poll(() => telemetry.filter(sample => sample.bytes < 4096 && Number(sample.level) > 0).length).toBeGreaterThanOrEqual(3);
   await page.getByRole("button", { name: "Parar teste", exact: true }).click();
   await expect(page.getByRole("button", { name: "Testar microfone", exact: true })).toBeVisible();
-  await openStyleReview(page);
+  await openReviewSettings(page);
   await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep this draft during live telemetry.");
 });
 
 test("repeated menus and dialogs return focus without retaining a modal lock", async ({ page }) => {
-  await navigate(page, "Ditado");
+  await openTranscriptionSettings(page);
   const provider = page.getByRole("combobox", { name: "Serviço", exact: true });
   for (let cycle = 0; cycle < 8; cycle++) {
     await provider.click();
@@ -1339,22 +1312,24 @@ test("repeated menus and dialogs return focus without retaining a modal lock", a
     await search.press("Escape");
     await expect(provider).toBeFocused();
   }
-  await openStyleReview(page);
+  await openReviewSettings(page);
   const prompt = page.getByRole("textbox", { name: "Instruções", exact: true });
   const original = await prompt.inputValue();
   await prompt.fill("Repeated dialog draft.");
-  const discard = page.getByRole("group", { name: "Alterações pendentes" }).getByRole("button", { name: "Descartar", exact: true });
+  const settings = settingsDialog(page);
+  const close = settings.getByRole("button", { name: "Fechar", exact: true });
   for (let cycle = 0; cycle < 8; cycle++) {
-    await discard.click();
-    const dialog = page.getByRole("dialog", { name: "Alterações não salvas", exact: true });
-    await expect(dialog).toBeVisible(); await page.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0); await expect(discard).toBeFocused();
+    await close.click();
+    const keepEditing = settings.getByRole("button", { name: "Continuar editando", exact: true });
+    await expect(keepEditing).toBeVisible();
+    await keepEditing.click();
+    await expect(prompt).toHaveValue("Repeated dialog draft.");
   }
-  await discard.click();
-  await page.getByRole("dialog", { name: "Alterações não salvas", exact: true }).getByRole("button", { name: "Descartar", exact: true }).click();
+  await close.click();
+  await settings.getByRole("button", { name: "Descartar", exact: true }).click();
+  await expect(settings).toBeHidden();
+  await openReviewSettings(page);
   await expect(prompt).toHaveValue(original);
-  await expect(page.getByRole("group", { name: "Alterações pendentes" })).toBeHidden();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 test.describe(() => {
