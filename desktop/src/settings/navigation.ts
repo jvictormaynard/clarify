@@ -1,6 +1,6 @@
 import { t } from "../i18n";
 import {
-  Settings2, Mic, Sparkles, Keyboard, Cpu, BookOpen, TextQuote, UserRound, House, Languages, PenLine, Paintbrush, Shield, Smartphone, Info, NotebookPen,
+  Settings2, Mic, Sparkles, Cpu, BookOpen, TextQuote, UserRound, House, Paintbrush, Shield, Smartphone, Info, NotebookPen,
 } from "lucide-react";
 import { meetingsLabel } from "../meetings/labels";
 
@@ -18,7 +18,6 @@ export const getSettingsSections = () => [
   { id: "general", label: t("Sistema"), icon: Settings2, group: "settings" },
   { id: "devices", label: t("Dispositivos"), icon: Smartphone, group: "settings" },
   { id: "models", label: t("Modelos e serviços"), icon: Cpu, group: "settings" },
-  { id: "shortcuts", label: t("Atalhos"), icon: Keyboard, group: "settings" },
   { id: "privacy", label: t("Dados e privacidade"), icon: Shield, group: "settings" },
   { id: "account", label: t("Conta"), icon: UserRound, group: "settings" },
   { id: "about", label: t("Sobre"), icon: Info, group: "settings" },
@@ -27,37 +26,18 @@ export const getSettingsSections = () => [
 export type MainPageId = ReturnType<typeof getMainPages>[number]["id"];
 export type SettingsSectionId = ReturnType<typeof getSettingsSections>[number]["id"];
 
+export type SettingsPage = ReturnType<typeof getMainPages>[number] | ReturnType<typeof getSettingsSections>[number];
+export type PageId = MainPageId | SettingsSectionId;
+
 export const isSettingsSection = (id: PageId): id is SettingsSectionId =>
-  id === "dictation" || id === "general" || id === "devices" || id === "models" || id === "shortcuts" || id === "privacy" || id === "account" || id === "about";
+  id === "dictation" || id === "general" || id === "devices" || id === "models" || id === "privacy" || id === "account" || id === "about";
 
-export const getSettingsPages = () => [
-  ...getMainPages(), ...getSettingsSections(),
-  {
-    id: "text", label: t("Revisão"), icon: Sparkles, group: "processing",
-  },
-  {
-    id: "rewrite", label: t("Reescrita"), icon: PenLine, group: "processing",
-  },
-  {
-    id: "translation", label: t("Tradução"), icon: Languages, group: "processing",
-  },
-] as const;
+export const reviewScopes = ["refinement", "local_asr_refinement"] as const;
+export type ReviewScope = typeof reviewScopes[number];
+export const dictationModelScopes = ["transcription", ...reviewScopes] as const;
 
-export type SettingsPage = ReturnType<typeof getSettingsPages>[number];
-export type PageId = SettingsPage["id"];
-
-export function isWorkflowPage(id: PageId) {
-  return id === "dictation" || id === "style" || id === "text" || id === "rewrite" || id === "translation";
-}
-
-export function isPersonalPage(id: PageId) {
-  return id === "models" || id === "text" || id === "rewrite" || id === "translation";
-}
-
-export function defaultWorkflowScope(id: PageId) {
-  return id === "dictation" ? "transcription" : id === "rewrite" || id === "translation" ? id : "refinement";
-}
-
-export function workflowPage(id: PageId, scope: string): PageId {
-  return id === "text" && (scope === "rewrite" || scope === "translation") ? scope : id;
-}
+export type ModelsTab = "services" | "transcription" | "review" | "profiles";
+export type ModelsView =
+  | { tab: "services" | "profiles" }
+  | { tab: "transcription"; scope: "transcription" }
+  | { tab: "review"; scope: ReviewScope };

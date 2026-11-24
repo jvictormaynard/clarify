@@ -292,17 +292,28 @@ class TextActionService:
             for profile in settings.profiles:
                 if self.managed():
                     continue
-                route = profile.resolved(config)
+                route = (
+                    config.workflow(profile.source_scope)
+                    if profile.source_scope
+                    else profile.route
+                )
+                # Apple Intelligence can review dictation, but cannot serve
+                # saved actions that share the cloud review profile.
+                available = route.provider_id != APPLE_CLARITY_PROVIDER_ID
+                if available:
+                    route = profile.resolved(config)
+                    available = self.profile_available(route, config)
                 profiles.append(
                     {
                         "id": profile.id,
                         "name": self.profile_name(profile.id),
+                        "sourceScope": profile.source_scope,
                         "providerId": route.provider_id,
                         "modelId": route.model_id,
                         "customEndpoint": route.custom_endpoint,
                         "enabled": route.enabled,
                         "managed": False,
-                        "available": self.profile_available(route, config),
+                        "available": available,
                     }
                 )
             if self.managed():
@@ -719,7 +730,7 @@ class TextActionService:
         if (
             type(value) is not dict
             or not required <= set(value)
-            or set(value) - (required | {"name", "managed", "available"})
+            or set(value) - (required | {"name", "managed", "available", "sourceScope"})
         ):
             raise ValueError("Invalid text profile fields")
         if (
@@ -743,6 +754,8 @@ class TextActionService:
 
         def mutate(settings, actions):
             profile = settings.profile(value["id"])
+            if value.get("sourceScope", profile.source_scope) != profile.source_scope:
+                raise ValueError("Text profile identity is read-only")
             before = profile.resolved(self.repository.load())
             account_id = (
                 before.account_id if value["providerId"] == before.provider_id else ""

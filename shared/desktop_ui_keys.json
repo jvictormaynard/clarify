@@ -374,5 +374,20 @@
   "setup_recommend_low_disk",
   "setup_cpu_device",
   "setup_cuda_unavailable",
-  "setup_cuda_license"
+  "setup_cuda_license",
+  "Aplicar uma ação salva",
+  "A revisão do ditado está desativada. O Clarify vai inserir a transcrição.",
+  "Abrir Ações",
+  "Atalhos do aplicativo",
+  "Transcrição de áudio",
+  "Modelos das ações",
+  "Instruções da revisão",
+  "Escolha um modelo para revisar o ditado.",
+  "Conecte o serviço de revisão para melhorar a clareza.",
+  "O serviço de revisão está indisponível. Confira a configuração.",
+  "Para traduzir, escolha um idioma de saída.",
+  "Configure o modelo usado por esta ação.",
+  "Configurar modelo",
+  "Abrir modelos das ações",
+  "Configurar revisão na nuvem"
 ]

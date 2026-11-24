@@ -1,10 +1,10 @@
-import { useLayoutEffect, useRef, type RefObject } from "react";
-import { AlertCircle, LoaderCircle } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
+import { AlertCircle } from "lucide-react";
 import { t } from "../i18n";
 import type { SettingsPageProps } from "../settings/use-settings";
 import { getSettingsSections } from "../settings/navigation";
 import { DictationPage } from "../pages/dictation-page";
-import { GeneralPage, TextLanguagePreferences } from "../pages/general-page";
+import { GeneralPage } from "../pages/general-page";
 import { ModelsPage } from "../pages/models-page";
 import { ShortcutsPage } from "../pages/shortcuts-page";
 import { PrivacyPage } from "../pages/privacy-page";
@@ -16,26 +16,28 @@ import { Button } from "./ui";
 import { Dialog, DialogPopup, DialogTitle, DialogDescription, DialogFooter } from "./primitives/dialog";
 
 function GeneralSettings({ controller }: SettingsPageProps) {
-  return <><ShortcutsPage controller={controller} /><DictationPage controller={controller} /><TextLanguagePreferences controller={controller} /></>;
+  return <><ShortcutsPage controller={controller} /><DictationPage controller={controller} /></>;
 }
 
-const sections = { dictation: GeneralSettings, general: GeneralPage, devices: DevicesPage, models: ModelsPage, shortcuts: ShortcutsPage, privacy: PrivacyPage, account: AccountPage, about: AboutPage };
+const sections = { dictation: GeneralSettings, general: GeneralPage, devices: DevicesPage, models: ModelsPage, privacy: PrivacyPage, account: AccountPage, about: AboutPage };
 
-export function SettingsDialog({ controller: c, returnFocus }: SettingsPageProps & { returnFocus: RefObject<HTMLButtonElement | null> }) {
+export function SettingsDialog({ controller: c, returnFocus }: SettingsPageProps & { returnFocus: () => HTMLButtonElement | null }) {
   const section = c.settingsSection;
   const content = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [section]);
+  useLayoutEffect(() => { if (content.current) content.current.scrollTop = 0; }, [section, c.modelsView.tab]);
   const Page = sections[section];
   const info = getSettingsSections().find(item => item.id === section)!;
   const dirty = c.hasSettingsDrafts();
   return <Dialog open={c.settingsOpen} onOpenChange={open => { if (!open) c.requestCloseSettings(); }}>
-    <DialogPopup className="settings-dialog max-w-[960px] w-[min(960px,calc(100vw-2rem))]" bottomStickOnMobile={false} finalFocus={returnFocus}>
+    <DialogPopup className="settings-dialog max-w-[960px] w-[min(960px,calc(100vw-2rem))]" bottomStickOnMobile={false} finalFocus={returnFocus}
+      initialFocus={() => c.modelsView.tab === "review" && section === "models"
+        ? content.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') : undefined}>
       <DialogTitle className="sr-only">{t("Configurações")}</DialogTitle>
       <DialogDescription className="sr-only">{t("Preferências, modelos, atalhos e conta do Clarify.")}</DialogDescription>
       <div className="settings-dialog-layout">
         <nav className="settings-dialog-navigation" aria-label={t("Seções das configurações")}>
           <span className="settings-dialog-label" aria-hidden="true">{t("Configurações")}</span>
-          {getSettingsSections().filter(item => item.id !== "shortcuts").map(({ id, label, icon: Icon }) =>
+          {getSettingsSections().map(({ id, label, icon: Icon }) =>
             <button key={id} type="button" className="navigation-item" aria-label={label} title={label}
               aria-current={section === id ? "page" : undefined} onClick={() => void c.navigate(id)}>
               <Icon size={16} aria-hidden /><span>{label}</span>
@@ -44,7 +46,7 @@ export function SettingsDialog({ controller: c, returnFocus }: SettingsPageProps
         <div className="settings-dialog-content" ref={content}>
           <header className="workspace-page-header settings-page-header"><info.icon size={24} aria-hidden /><h2>{info.label}</h2></header>
           {c.error && <div role="alert" className="error settings-error"><AlertCircle size={17} /><span>{t(c.error)}</span></div>}
-          <div className="page-content">{c.routeLoading && section === "dictation" ? <div className="connection" role="status"><LoaderCircle size={22} className="spin" />{t("Carregando…")}</div> : <Page controller={c} />}
+          <div className="page-content"><Page controller={c} />
             {(section === "general" || section === "dictation") && <PracticeEntry controller={c} />}
           </div>
         </div>

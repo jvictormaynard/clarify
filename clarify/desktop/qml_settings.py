@@ -742,6 +742,7 @@ class QmlSettingsController(QObject):
         self._model_token: CancellationToken | None = None
         self._model_loading_key = None
         self._model_error_key = None
+        self._apple_clarity_available: bool | None = None
         self._selected_scope = WorkflowScope.TRANSCRIPTION.value
         self._config = self._config_repository.load()
         self._text_actions = text_action_service or TextActionService(
@@ -948,7 +949,9 @@ class QmlSettingsController(QObject):
                 "afterDictationActionPaused": False,
                 "afterDictationTextActionId": "",
                 "afterDictationTextActionLanguage": "auto",
-                "textActionDictationContext": "cloud",
+                "textActionDictationContext": self._text_actions.dictation_context(
+                    self._config
+                ),
             }
 
     @Property("QVariantList", notify=textActionsChanged)
@@ -2472,16 +2475,35 @@ class QmlSettingsController(QObject):
             self._config.dictation_cleanup_level
         ).allows_refinement(permitted)
 
+    def _dictation_review_route(self) -> tuple[str, WorkflowRoute]:
+        local = self._config.workflow("transcription").provider_id == LOCAL_ASR_PROVIDER_ID
+        scope = "local_asr_refinement" if local else "refinement"
+        return scope, self._config.workflow(scope)
+
     @Property(bool, notify=configChanged)
     def dictationCleanupRefinementAllowed(self) -> bool:
-        local = self._config.workflow("transcription").provider_id == "local_asr"
-        scope = "local_asr_refinement" if local else "refinement"
-        route = self._config.workflow(scope)
+        scope, route = self._dictation_review_route()
         return route.enabled and (
-            not local
+            scope != "local_asr_refinement"
             or route.provider_id == APPLE_CLARITY_PROVIDER_ID
             or self._config.local_asr_cloud_refinement
         )
+
+    @property
+    def dictationReviewStatus(self) -> str:
+        """Describe the active review setup without probing a provider."""
+        if not self.dictationCleanupRefinementAllowed:
+            return "disabled"
+        if self._account.managed:
+            return "ready"
+        _, route = self._dictation_review_route()
+        if not route.model_id:
+            return "missing_model"
+        if route.provider_id == APPLE_CLARITY_PROVIDER_ID:
+            return "unavailable" if self._apple_clarity_available is False else "ready"
+        if not self._text_actions.profile_available(route, self._config):
+            return "not_configured"
+        return "ready"
 
     @Property(bool, notify=configChanged)
     def localAsrCloudRefinement(self) -> bool:
@@ -3545,6 +3567,8 @@ class QmlSettingsController(QObject):
             return
         self._model_loading_key = None
         self._model_token = None
+        if key[0] == APPLE_CLARITY_PROVIDER_ID:
+            self._apple_clarity_available = catalog is not None and bool(catalog.text_models)
         if catalog is None:
             self._model_error_key = key
         else:
@@ -5531,7 +5555,28 @@ class QmlSettingsController(QObject):
                     config, hotkeys=config.hotkeys.with_hotkey(action, definition)
                 )
             if method == "resetAllHotkeys":
-                return lambda config: replace(config, hotkeys=self._default_hotkeys)
+
+                def reset_app_hotkeys(config):
+                    app_actions = (
+                        HotkeyAction.RECORDING,
+                        HotkeyAction.VOICE_TRANSLATION,
+                        HotkeyAction.VISIBILITY,
+                    )
+                    bindings = {
+                        **config.hotkeys.hotkeys,
+                        **{
+                            action: self._default_hotkeys.definition(action)
+                            for action in app_actions
+                        },
+                    }
+                    hotkeys = replace(
+                        config.hotkeys,
+                        hotkeys=bindings,
+                        activation_mode=self._default_hotkeys.activation_mode,
+                    )
+                    return replace(config, hotkeys=hotkeys)
+
+                return reset_app_hotkeys
             return lambda config: replace(
                 config,
                 hotkeys=config.hotkeys.with_activation_mode(

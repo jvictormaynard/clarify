@@ -47,15 +47,24 @@ export async function navigate(page: Page, destination: string) {
   }
 }
 
-export async function openStyleReview(page: Page, language = "pt") {
-  const name = language === "en" ? "Style" : "Estilo";
-  if (await settingsDialog(page).isVisible() ||
-    !await page.getByRole("heading", { level: 1, name, exact: true }).isVisible()) {
-    await navigate(page, name);
+export async function openModelsPanel(page: Page, tab: string, language = "pt") {
+  const dialog = settingsDialog(page);
+  if (!await dialog.getByRole("heading", { level: 2, name: /^(Modelos e serviços|Models and services)$/ }).isVisible()) {
+    await openSettings(page, language === "en" ? "Models and services" : "Modelos e serviços");
   }
-  const more = page.getByRole("button", { name: /^(More options|Mais opções|Más opciones)$/ });
-  if (await more.getAttribute("aria-expanded") !== "true") await openDisclosure(page, (await more.innerText()).trim());
-  const disclosure = page.getByRole("button", { name: language === "en" ? "Review model and instructions" : "Modelo e instruções da revisão", exact: true });
+  const target = dialog.getByRole("tab", { name: tab, exact: true });
+  if ((await target.getAttribute("aria-selected")) !== "true") await target.click();
+  await expect(target).toHaveAttribute("aria-selected", "true");
+  return dialog.getByRole("tabpanel", { name: tab, exact: true });
+}
+
+export async function openReviewSettings(page: Page, language = "pt") {
+  await openModelsPanel(page, language === "en" ? "Dictation cleanup" : "Revisão do ditado", language);
+  const disclosure = page.getByRole("button", { name: language === "en" ? "Review instructions" : "Instruções da revisão", exact: true });
   if (await disclosure.getAttribute("aria-expanded") !== "true") await openDisclosure(page, (await disclosure.innerText()).trim());
   await expect(page.getByRole("textbox", { name: language === "en" ? "Instructions" : "Instruções", exact: true })).toBeVisible();
+}
+
+export async function openTranscriptionSettings(page: Page, language = "pt") {
+  return openModelsPanel(page, language === "en" ? "Audio transcription" : "Transcrição de áudio", language);
 }

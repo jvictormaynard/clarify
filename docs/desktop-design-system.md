@@ -285,14 +285,24 @@ output language, run, result and explicit Copy controls. Editing remains in a
 separate dialog. Keep errors, cancellation and recovery visible when required.
 All dialogs retain keyboard dismissal, focus return and dirty-state handling.
 
-Style shows Text editing with Improve
-clarity and Keep my words. Show Tone only when editing is allowed, with Keep my
-tone, Formal and Casual. Keep my tone is an explicit natural style, distinct
-from a legacy unset override. More options contains output language, the optional
-automatic text action and advanced review settings.
-Keep active legacy cleanup levels and tones readable until the user changes
-them. Changing tone must not clear an automatic action. A disabled cleanup route
-links to the matching cloud or local context without enabling it automatically.
+Style shows After dictation and Output language. After dictation offers Keep my
+words, Improve clarity and Apply a saved action. Selecting a saved action
+reveals the action picker. Choose an explicit output language to use a
+translation action. The output language controls translation after dictation.
+Cancel keeps the current editing choice. Show Tone when the selected editing
+path supports it. Keep legacy cleanup levels and tones visible until the user
+changes them. Keep my tone is an explicit natural style, distinct from an
+unset override. Changing tone keeps the saved action.
+
+If dictation review is off, show its effect next to After dictation. Configure
+review opens the matching local or cloud context under Models and services.
+The user enables review there. Show the Apple Intelligence pause message on
+Style when automatic actions are unavailable for local review.
+
+General contains audio input, recording and app shortcuts. Edit a saved
+action's shortcut in Actions. Models and services contains service connections,
+local model installation, audio transcription, dictation review and saved
+action profiles. The pill keeps its output-language shortcut.
 
 Action name, instructions, profile and shortcut remain local drafts until Save.
 Cancel discards the dialog draft. Closing with unsaved edits asks whether to keep
@@ -311,9 +321,8 @@ preserves the draft. If the saved definition changed, show its instructions and
 let the user choose the saved version or retain the draft before saving again.
 An incomplete write must show how to refresh and recover.
 
-Settings saves handle only Settings drafts, including transcription instructions
-and recording limits. Style and library drafts remain outside that save. Main-page instructions and content
-drafts keep their own owners. Profile edits use an explicit profile command;
+Settings Save includes transcription instructions, both review contexts and
+recording limits. Library drafts use their workspace Save. Profile edits use an explicit profile command;
 they do not select another global workflow. Native window close accounts for
 all open dirty editors. Account or endpoint changes reject stale writes and
 results. Opening a dialog must not enable cloud processing or upload personal

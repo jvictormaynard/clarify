@@ -198,8 +198,15 @@ class QmlSettingsControllerTests(unittest.TestCase):
                 repo.load().hotkeys.definition(HotkeyAction.RECORDING),
                 original.definition(HotkeyAction.RECORDING),
             )
+            self.assertTrue(
+                controller.savePreference("setHotkey", ["rewrite_hotkey", "Ctrl+Alt+U"])
+            )
+            customized = repo.load().hotkeys.definition(HotkeyAction.REWRITE)
             self.assertTrue(controller.savePreference("resetAllHotkeys", []))
-            self.assertEqual(repo.load().hotkeys, HotkeySettings.defaults())
+            self.assertEqual(
+                repo.load().hotkeys,
+                HotkeySettings.defaults().with_hotkey(HotkeyAction.REWRITE, customized),
+            )
             self.assertFalse(controller.dirty)
             self.assertTrue(controller.load())
             self.assertEqual(controller.hotkeyActivationMode, "toggle")

@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect, settingsScenario } from "./settings-fixture";
-import { navigate, openSettings, closeSettings, openStyleReview, settingsDialog, openDisclosure } from "./settings-navigation";
+import { navigate, openSettings, closeSettings, openReviewSettings, settingsDialog, openDisclosure } from "./settings-navigation";
 
 
 async function finishPersonalSetup(page: Page) {
@@ -25,7 +25,7 @@ async function practiceCommand(page: Page, action: "start" | "stop" | "cancel") 
 
 settingsScenario({ signedIn: true, initialPage: "style" }, () => {
   test("account: cleanup choices remain available with personal processing", async ({ page }) => {
-    const level = page.getByRole("combobox", { name: "Edição do texto", exact: true });
+    const level = page.getByRole("combobox", { name: "Após o ditado", exact: true });
     await level.click();
     await page.getByRole("option", { name: "Manter minhas palavras", exact: true }).click();
     await expect(level).toContainText("Manter minhas palavras");
@@ -212,14 +212,14 @@ settingsScenario({ socialWait: true }, () => {
     await navigate(page, "Conta Clarify");
     await page.getByRole("button", { name: "Continuar com Google", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Conclua o login no navegador" })).toBeVisible();
-    await openStyleReview(page);
+    await openReviewSettings(page);
     await page.getByRole("textbox", { name: "Instruções", exact: true }).fill("Keep my local draft");
     await navigate(page, "Conta Clarify");
     const cancel = page.getByRole("button", { name: "Cancelar login", exact: true });
     await expect(cancel).toBeEnabled();
     await cancel.click();
     await expect(page.getByRole("alert")).toContainText("O login foi cancelado.");
-    await openStyleReview(page);
+    await openReviewSettings(page);
     await expect(page.getByRole("textbox", { name: "Instruções", exact: true })).toHaveValue("Keep my local draft");
   });
 });
@@ -288,7 +288,7 @@ settingsScenario({ signedIn: true }, () => {
     const settings = await openSettings(page, "Geral");
     await settings.getByRole("button", { name: "Modelos e serviços", exact: true }).click();
     await expect(settings.getByRole("combobox", { name: "Serviço na nuvem", exact: true })).toBeVisible();
-    await openStyleReview(page);
+    await openReviewSettings(page);
     await navigate(page, "Conta Clarify");
     await expect(page.getByText("Dicionário e snippets", { exact: true })).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Uso nesta semana" })).toHaveCount(0);

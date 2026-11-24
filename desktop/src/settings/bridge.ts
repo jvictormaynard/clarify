@@ -19,6 +19,7 @@ export type TextAction = {
 export type TextActionWrite = Omit<TextAction, "revision">;
 export type TextActionProfile = {
   id: string; name: string; providerId: string; modelId: string;
+  sourceScope?: "" | "refinement" | "rewrite" | "translation";
   customEndpoint: string; enabled: boolean; managed: boolean; available: boolean;
 };
 export type TextActionProfileWrite = Pick<TextActionProfile, "id" | "providerId" | "modelId" | "customEndpoint" | "enabled">;
@@ -132,6 +133,7 @@ export interface Settings {
   dictationWritingStyle?: WritingStyle | "";
   writingStyleRefinementAllowed?: boolean;
   dictationCleanupRefinementAllowed?: boolean;
+  dictationReviewStatus?: "disabled" | "missing_model" | "not_configured" | "unavailable" | "ready";
   selectedScope: string;
   routeProviderId: string;
   routeModelId: string;

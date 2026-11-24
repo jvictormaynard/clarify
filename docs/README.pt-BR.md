@@ -38,16 +38,15 @@ opções dos itens já salvos nas bibliotecas são salvos automaticamente. Rascu
 e números usam **Salvar alterações** e **Descartar** na página atual. Alterações
 na chave ou na URL de conexão em **Modelos e serviços** exigem **Validar e salvar
 chave**. Valide ou descarte essas alterações antes de salvar outros rascunhos.
-Ao fechar as Configurações, você pode salvar ou descartar os rascunhos de todas
-as páginas.
+Ao fechar as Configurações, você pode salvar ou descartar os rascunhos desse painel.
 
-Use **Estilo** para revisar o ditado, escolher uma ação após o ditado e definir
-um estilo geral de escrita. **Ações de texto** começa com Reescrita e Tradução;
-crie outra ação para usar suas próprias instruções. Os diálogos de ação, perfil
-de processamento mantêm rascunhos até **Salvar**.
-**Cancelar** descarta as alterações daquele diálogo. A prévia usa texto de
-exemplo e não cola em outro aplicativo. Local Whisper continua restrito à
-transcrição de áudio.
+Use **Estilo** para escolher o que acontece após o ditado, definir o idioma de
+saída e escolher um tom quando a edição estiver disponível. Em **Configurações →
+Modelos e serviços**, configure a transcrição de áudio e a revisão do ditado.
+Em **Ações**, crie ou edite uma ação salva, suas instruções e seu atalho. Os
+diálogos de ações e perfis mantêm os rascunhos até **Salvar**. **Cancelar**
+descarta as alterações daquele diálogo. A prévia usa texto de exemplo e não
+cola em outro aplicativo.
 
 O Clarify usa o idioma do dispositivo: português, inglês ou espanhol,
 incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft

@@ -115,8 +115,10 @@ class QmlTextActionTests(QmlTextActionFixture, unittest.TestCase):
                 "enabled",
                 "managed",
                 "available",
+                "sourceScope",
             },
         )
+        self.assertEqual(profile["sourceScope"], "translation")
         profile.update(providerId="openai", modelId="gpt-4.1-mini")
         reply = self.request(
             "saveTextActionProfile",
