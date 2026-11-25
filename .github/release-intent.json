@@ -1,10 +1,14 @@
 {
   "schema": 2,
-  "component": "desktop",
-  "version": "0.19.0",
-  "base_sha": "31c6be3abaefc44171837ef465ae778155fa4d97",
-  "notes": "Build the Windows x64 and Apple Silicon macOS candidate from the reviewed source, with the account setup fixes and personal processing. Verify the packaged apps before publication.",
+  "component": "mobile",
+  "version": "0.17.3",
+  "base_sha": "75c3479629bb8955859983afc69facdde3ed89ec",
+  "notes": "Prepare the signed iPhone candidate for paired-computer processing, account sign-in discovery, and the Xcode extension project fix. Verify physical iPhone operation before App Store submission.",
   "evidence": {
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/359"
+    "build": "94",
+    "highest_build": "93",
+    "pending_builds_checked": true,
+    "checked_at": "2026-11-25T19:21:42Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/45684377142"
   }
 }
