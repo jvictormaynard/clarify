@@ -312,8 +312,8 @@ final class AppFlowUITests: XCTestCase {
     verifyLibraryIsolation()
     tab("Ajustes"); press("settings.account")
     XCTAssertTrue(app.textFields["account.email"].waitForExistence(timeout: 15))
-    for provider in ["Google", "Microsoft", "GitHub"] {
-      XCTAssertTrue(app.buttons["Continuar com \(provider)"].exists)
+    for provider in ["google", "microsoft", "github"] {
+      XCTAssertFalse(app.buttons["account.social.\(provider)"].exists, "The HTTP fixture supports email sign-in only")
     }
     enter("clarify-e2e@example.test", in: app.textFields["account.email"], name: "email")
     XCTAssertEqual(app.textFields["account.email"].value as? String, "clarify-e2e@example.test")
