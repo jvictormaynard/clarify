@@ -526,6 +526,48 @@ class AccountService:
             cancel.raise_if_cancelled()
         return response.status_code, result
 
+    def discover_social_providers(self):
+        """Read public browser sign-in capabilities without using the session."""
+        from social_login import SUPPORTED_PROVIDERS
+
+        with self._lock:
+            base = self._state.get("endpoint", self.default_endpoint)
+        try:
+            base = endpoint(base)
+            if urlsplit(base).scheme != "https":
+                return []
+            response = self.request(
+                "GET",
+                base + "/_allauth/app/v1/config",
+                headers={"Accept": "application/json"},
+                timeout=(3, 5),
+                allow_redirects=False,
+            )
+            if response.status_code != 200:
+                return []
+            providers = response.json()["data"]["socialaccount"]["providers"]
+        except (
+            AccountError,
+            requests.RequestException,
+            ValueError,
+            KeyError,
+            TypeError,
+        ):
+            return []
+        if not isinstance(providers, list):
+            return []
+        return sorted(
+            {
+                provider["id"]
+                for provider in providers
+                if isinstance(provider, dict)
+                and isinstance(provider.get("id"), str)
+                and provider["id"] in SUPPORTED_PROVIDERS
+                and isinstance(provider.get("flows"), list)
+                and "provider_redirect" in provider["flows"]
+            }
+        )
+
     def authenticate_social(self, provider, *, open_browser=None, cancel=None):
         from social_login import SocialLoginError, sign_in
         import webbrowser

@@ -139,13 +139,14 @@ test('sign-in shows only providers advertised by the current account server', as
     command: async (...args) => { calls.push(args); } };
   const tree = () => render('AccountSignIn', props);
   const respond = async (request, ids) => {
-    request.resolve({ ok: true, json: async () => ({ data: { socialaccount: { providers: ids.map(id => ({ id })) } } }) });
+    const providers = ids.map(id => ({ id, flows: [id === 'microsoft' ? 'provider_token' : 'provider_redirect'] }));
+    request.resolve({ ok: true, json: async () => ({ data: { socialaccount: { providers } } }) });
     await new Promise(setImmediate);
   };
   assert.equal(find(tree(), 'account.social.google'), undefined);
   assert.ok(find(tree(), 'account.email'));
   assert.equal(requests[0].url, 'https://account.example.test/_allauth/app/v1/config');
-  await respond(requests[0], ['google', 'unknown']);
+  await respond(requests[0], ['google', 'microsoft', 'unknown']);
   assert.equal(find(tree(), 'account.social.microsoft'), undefined);
   assert.equal(find(tree(), 'account.social.github'), undefined);
   find(tree(), 'account.social.google').props.onPress();
@@ -157,8 +158,8 @@ test('sign-in shows only providers advertised by the current account server', as
   assert.equal(requests[0].options.signal.aborted, true);
   props.account = { ...props.account, endpoint: 'https://third.example.test' };
   tree();
-  await respond(requests[1], ['microsoft']);
-  assert.equal(find(tree(), 'account.social.microsoft'), undefined);
+  await respond(requests[1], ['github']);
+  assert.equal(find(tree(), 'account.social.github'), undefined);
   await respond(requests[2], ['github']);
   assert.ok(find(tree(), 'account.social.github'));
 

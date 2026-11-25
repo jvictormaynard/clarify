@@ -34,8 +34,10 @@ export function AccountSignIn({ account, busy, command }: {
         });
         const config = response.ok ? await response.json() : null;
         const advertised = config?.data?.socialaccount?.providers;
-        const ids = Array.isArray(advertised)
-          ? advertised.flatMap(provider => typeof provider?.id === 'string' ? [provider.id] : []) : [];
+        const ids = Array.isArray(advertised) ? advertised.flatMap(provider => (
+          typeof provider?.id === 'string' && Array.isArray(provider.flows) && provider.flows.includes('provider_redirect')
+            ? [provider.id] : []
+        )) : [];
         if (!controller.signal.aborted) setProviderConfig({ endpoint, ids });
       } catch {
         if (!controller.signal.aborted) setProviderConfig({ endpoint, ids: [] });

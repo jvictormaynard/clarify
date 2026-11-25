@@ -493,8 +493,10 @@ model or connect a provider. The user starts each action.
 Live speech appears in a bounded panel above the pill while recording. Partials
 are display-only and clear when capture ends.
 
-Account Settings uses the shared sign-in method selector:
-Google, Microsoft, GitHub and email. The shared sign-in form keeps full-width
+Account Settings uses the shared sign-in method selector. Show Google, Microsoft
+and GitHub when the configured server advertises their browser sign-in flows.
+Keep email and guest access available if the provider list cannot load.
+The shared sign-in form keeps full-width
 controls with a 44 px minimum height, 8 px gaps between method choices and a
 14 px form gap during onboarding. Email opens its own form; Back retains the
 typed address and returns focus to the email choice. A centered 12 px muted text

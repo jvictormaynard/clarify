@@ -10,6 +10,14 @@ Notable user-facing changes are documented here. This project follows
 - Run Clarify on Apple Silicon Macs with cloud dictation, global shortcuts, a menu bar icon, and focus-safe paste.
 - Download the macOS app and its SHA-256 checksum with each new desktop release.
 
+### Changed
+
+- Use your own models or services for processing. On iPhone, use a paired computer. The optional Clarify account still syncs libraries and history.
+
+### Fixed
+
+- Show only the social sign-in options enabled by the account service.
+
 ## [0.18.0] - 2026-11-13
 
 ### Added

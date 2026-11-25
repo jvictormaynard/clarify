@@ -76,6 +76,40 @@ class SocialAccountTests(unittest.TestCase):
             "native-session-only",
         )
 
+    def test_discovery_uses_only_public_redirect_capabilities(self):
+        self.secrets.set(SECRET_ID, "existing-session")
+        self.request.return_value = self.response(
+            {
+                "data": {
+                    "socialaccount": {
+                        "providers": [
+                            {"id": "google", "flows": ["provider_redirect"]},
+                            {"id": "microsoft", "flows": ["provider_token"]},
+                            {"id": "github", "flows": "provider_redirect"},
+                            {"id": "unknown", "flows": ["provider_redirect"]},
+                            {"id": "google", "flows": ["provider_redirect"]},
+                        ]
+                    }
+                },
+                "meta": {"session_token": "ignore-public-token"},
+            }
+        )
+        self.assertEqual(self.account.discover_social_providers(), ["google"])
+        self.assertEqual(
+            self.request.call_args.args,
+            ("GET", "https://clarify.example/_allauth/app/v1/config"),
+        )
+        self.assertNotIn("X-Session-Token", self.request.call_args.kwargs["headers"])
+        self.assertFalse(self.request.call_args.kwargs["allow_redirects"])
+        self.assertEqual(self.secrets.get(SECRET_ID), "existing-session")
+        self.request.return_value.status_code = 503
+        self.assertEqual(self.account.discover_social_providers(), [])
+        self.account.configure("http://localhost:8080")
+        self.request.reset_mock()
+        self.request.return_value.status_code = 200
+        self.assertEqual(self.account.discover_social_providers(), [])
+        self.request.assert_not_called()
+
     def test_all_providers_use_same_origin_browser_and_proof_bound_once_only_handoff(
         self,
     ):

@@ -16,6 +16,7 @@ export type SettingsScenario = {
   usage?: "error" | "legacy" | "malformed" | "waiting" | "unfunded" | "inactive" | "paused" | "exhausted" | "reserved";
   practice?: "account-error" | "auth-error" | "provider-quota" | "missing-model";
   socialWait?: boolean;
+  socialAll?: boolean;
   librarySync?: boolean;
   history?: boolean;
   recordingRecovery?: boolean;
@@ -52,6 +53,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     if (scenario.onboarding) args.push("--onboarding");
     if (scenario.signedIn || scenario.account) args.push("--signed-in");
     if (scenario.socialWait) args.push("--social-wait");
+    if (scenario.socialAll) args.push("--social-all");
     if (scenario.librarySync) args.push("--library-sync");
     if (scenario.history) args.push("--history");
     if (scenario.historyReview) args.push("--history-review");

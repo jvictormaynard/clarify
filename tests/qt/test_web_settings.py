@@ -724,6 +724,58 @@ class WebSettingsTests(unittest.TestCase):
         self.assertNotEqual(changed["snippetContext"], signed_in["snippetContext"])
         self.assertEqual(self.request("poll")["result"], {})
 
+    def test_social_provider_discovery_discards_results_from_the_previous_server(self):
+        import threading
+
+        account = self.settings._account
+        account.configure("https://first.example")
+        first_started = threading.Event()
+        release_first = threading.Event()
+        first_posted = threading.Event()
+        second_posted = threading.Event()
+        self.addCleanup(release_first.set)
+        post = self.settings._background_mailbox.post
+
+        def discover():
+            if account.snapshot()["endpoint"] == "https://first.example":
+                first_started.set()
+                release_first.wait(5)
+                return ["github"]
+            return ["google"]
+
+        def publish(kind, generation, payload):
+            post(kind, generation, payload)
+            if kind == "social_providers":
+                (first_posted if payload == ["github"] else second_posted).set()
+
+        with (
+            patch.object(
+                account, "discover_social_providers", side_effect=discover
+            ) as load,
+            patch.object(
+                self.settings._background_mailbox, "post", side_effect=publish
+            ),
+        ):
+            result = self.request("accountCommand", "load-social-providers", "")[
+                "result"
+            ]["accountState"]
+            self.assertEqual(result["socialProviders"], [])
+            self.assertFalse(result["busy"])
+            self.assertTrue(first_started.wait(2))
+            self.request("accountCommand", "load-social-providers", "")
+            load.assert_called_once()
+
+            account.configure("https://second.example")
+            self.request("accountCommand", "load-social-providers", "")
+            self.assertTrue(second_posted.wait(2))
+            self.settings._drain_background_publications()
+            self.assertEqual(self.settings.accountState["socialProviders"], ["google"])
+
+            release_first.set()
+            self.assertTrue(first_posted.wait(2))
+            self.settings._drain_background_publications()
+            self.assertEqual(self.settings.accountState["socialProviders"], ["google"])
+
     def test_ignored_command_response_cannot_consume_future_poll_delta(self):
         self.request("poll")
         self.settings._microphone_test_level = 0.75
