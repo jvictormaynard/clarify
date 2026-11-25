@@ -1,14 +1,10 @@
 {
   "schema": 2,
-  "component": "mobile",
-  "version": "0.17.3",
-  "base_sha": "1e7f5f77e80600cc17bf98670ad8bb2e21878992",
-  "notes": "Internal TestFlight build from main for iPhone dictation through a paired desktop. Same-network pairing uses the default configuration. Cellular tests require a matching WebRTC signaling endpoint on the iPhone and desktop.",
+  "component": "desktop",
+  "version": "0.19.0",
+  "base_sha": "31c6be3abaefc44171837ef465ae778155fa4d97",
+  "notes": "Build the Windows x64 and Apple Silicon macOS candidate from the reviewed source, with the account setup fixes and personal processing. Verify the packaged apps before publication.",
   "evidence": {
-    "build": "93",
-    "highest_build": "92",
-    "pending_builds_checked": true,
-    "checked_at": "2026-11-23T06:44:14Z",
-    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/45126091281"
+    "report_url": "https://github.com/jvictormaynard/clarify/pull/359"
   }
 }
