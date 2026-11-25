@@ -3,6 +3,18 @@ name: iOS TestFlight
 on:
   workflow_dispatch:
     inputs:
+      gallery_submission:
+        description: Apple submission ID for gallery status
+        type: string
+        default: ''
+      gallery_experiment:
+        description: Apple experiment ID for gallery status
+        type: string
+        default: ''
+      gallery_treatment:
+        description: Apple treatment ID for gallery status
+        type: string
+        default: ''
       source_sha:
         description: Exact reviewed source SHA (required for signed upload on an ios/v tag)
         type: string
@@ -10,7 +22,7 @@ on:
       mode:
         description: Validation, internal TestFlight upload, read-only status or existing-build availability
         type: choice
-        options: [validate, testflight, status, availability]
+        options: [validate, testflight, status, availability, screenshot-gallery-submit, screenshot-gallery-status]
         default: validate
         required: true
       internal_testing:
@@ -390,3 +402,65 @@ jobs:
             console.log(JSON.stringify({ groups }, null, 2));
           })().catch(error => { console.error(error.message); process.exitCode = 1; });
           JS
+
+  screenshot_gallery:
+    if: >-
+      github.repository == 'jvictormaynard/clarify' &&
+      github.ref_name == 'codex/asc-english-gallery' &&
+      (inputs.mode == 'screenshot-gallery-submit' || inputs.mode == 'screenshot-gallery-status')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install image resizer
+        if: inputs.mode == 'screenshot-gallery-submit'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends imagemagick
+      - name: Submit or check the new screenshot gallery
+        env:
+          ASC_PPO_MODE: ${{ inputs.mode }}
+          ASC_KEY: ${{ secrets.CLARIFY_ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.CLARIFY_ASC_KEY_ID }}
+          ASC_ISSUER: ${{ secrets.CLARIFY_ASC_ISSUER_ID }}
+          ASC_SUBMISSION: ${{ inputs.gallery_submission }}
+          ASC_EXPERIMENT: ${{ inputs.gallery_experiment }}
+          ASC_TREATMENT: ${{ inputs.gallery_treatment }}
+          EN1_01: ${{ secrets.CLARIFY_GALLERY_45560_EN1_01 }}
+          EN1_02: ${{ secrets.CLARIFY_GALLERY_45560_EN1_02 }}
+          EN1_03: ${{ secrets.CLARIFY_GALLERY_45560_EN1_03 }}
+          EN1_04: ${{ secrets.CLARIFY_GALLERY_45560_EN1_04 }}
+          EN1_05: ${{ secrets.CLARIFY_GALLERY_45560_EN1_05 }}
+          EN1_06: ${{ secrets.CLARIFY_GALLERY_45560_EN1_06 }}
+          EN1_07: ${{ secrets.CLARIFY_GALLERY_45560_EN1_07 }}
+          EN2_01: ${{ secrets.CLARIFY_GALLERY_45560_EN2_01 }}
+          EN2_02: ${{ secrets.CLARIFY_GALLERY_45560_EN2_02 }}
+          EN2_03: ${{ secrets.CLARIFY_GALLERY_45560_EN2_03 }}
+          EN2_04: ${{ secrets.CLARIFY_GALLERY_45560_EN2_04 }}
+          EN2_05: ${{ secrets.CLARIFY_GALLERY_45560_EN2_05 }}
+          BR1_01: ${{ secrets.CLARIFY_GALLERY_45560_BR1_01 }}
+          BR1_02: ${{ secrets.CLARIFY_GALLERY_45560_BR1_02 }}
+          BR1_03: ${{ secrets.CLARIFY_GALLERY_45560_BR1_03 }}
+          BR1_04: ${{ secrets.CLARIFY_GALLERY_45560_BR1_04 }}
+          BR1_05: ${{ secrets.CLARIFY_GALLERY_45560_BR1_05 }}
+          BR1_06: ${{ secrets.CLARIFY_GALLERY_45560_BR1_06 }}
+          BR2_01: ${{ secrets.CLARIFY_GALLERY_45560_BR2_01 }}
+          BR2_02: ${{ secrets.CLARIFY_GALLERY_45560_BR2_02 }}
+          BR2_03: ${{ secrets.CLARIFY_GALLERY_45560_BR2_03 }}
+          BR2_04: ${{ secrets.CLARIFY_GALLERY_45560_BR2_04 }}
+          BR2_05: ${{ secrets.CLARIFY_GALLERY_45560_BR2_05 }}
+          ES1_01: ${{ secrets.CLARIFY_GALLERY_45560_ES1_01 }}
+          ES1_02: ${{ secrets.CLARIFY_GALLERY_45560_ES1_02 }}
+          ES1_03: ${{ secrets.CLARIFY_GALLERY_45560_ES1_03 }}
+          ES1_04: ${{ secrets.CLARIFY_GALLERY_45560_ES1_04 }}
+          ES1_05: ${{ secrets.CLARIFY_GALLERY_45560_ES1_05 }}
+          ES1_06: ${{ secrets.CLARIFY_GALLERY_45560_ES1_06 }}
+          ES2_01: ${{ secrets.CLARIFY_GALLERY_45560_ES2_01 }}
+          ES2_02: ${{ secrets.CLARIFY_GALLERY_45560_ES2_02 }}
+          ES2_03: ${{ secrets.CLARIFY_GALLERY_45560_ES2_03 }}
+          ES2_04: ${{ secrets.CLARIFY_GALLERY_45560_ES2_04 }}
+          ES2_05: ${{ secrets.CLARIFY_GALLERY_45560_ES2_05 }}
+        run: node scripts/asc-screenshot-gallery.cjs

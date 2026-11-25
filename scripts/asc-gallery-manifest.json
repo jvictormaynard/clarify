@@ -1,0 +1,44 @@
+{
+  "en-US": [
+    {
+      "key": "EN1",
+      "count": 7,
+      "bytes": 202358,
+      "sha256": "86e56648e429b5dac03e7f43fa97cc1d4ef8ea5d45fe58cfd6e176960ba69cef"
+    },
+    {
+      "key": "EN2",
+      "count": 5,
+      "bytes": 164576,
+      "sha256": "914d573a0f428f6ebbc5f03ef4f377dec890542ad0d313e9e29b0b94ac5e8abf"
+    }
+  ],
+  "pt-BR": [
+    {
+      "key": "BR1",
+      "count": 6,
+      "bytes": 195059,
+      "sha256": "cef38932d71140d4050f2dd71617591cc54e5d545c5d0a202bd4431927cebbd1"
+    },
+    {
+      "key": "BR2",
+      "count": 5,
+      "bytes": 158242,
+      "sha256": "9123179aa5a739f1e36d77b84cbe501c6ed6ba75aa0216766bdd95287b00edf5"
+    }
+  ],
+  "es-ES": [
+    {
+      "key": "ES1",
+      "count": 6,
+      "bytes": 190238,
+      "sha256": "8834e1ff59340841fab71885c4b09405f7f0bff3bf83ce72d2aee94fdd16369f"
+    },
+    {
+      "key": "ES2",
+      "count": 5,
+      "bytes": 156352,
+      "sha256": "40a84dad2d18fb2403d1e8f7421c7a33945060ab9566dfedca8cce338974b041"
+    }
+  ]
+}
