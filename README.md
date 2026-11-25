@@ -55,7 +55,8 @@ Clarify uses Portuguese, English and Spanish interfaces. Personal onboarding gui
 spoken language, a hardware-based speech recommendation, optional text processing,
 verified installation and practice. Model names remain visible, and advanced
 provider settings stay available when signed in. Recognition and output languages
-are separate. Account sign-in supports Google, Microsoft, GitHub and email codes.
+are separate. Account sign-in uses email codes and the social providers enabled by
+the account service.
 Account libraries synchronize independently of inference. Sign-out and deletion
 retain separate confirmations in the Danger zone. Existing provider choices remain
 saved; former hosted users need a personal processing route.
@@ -93,7 +94,7 @@ registration is deferred until a business account is available.
 - A personal dictionary for names and technical terms, with per-term enablement
 - Local-only usage statistics without storing transcripts
 - Bundled SoX runtime in the portable Windows build
-- Optional account with email-code, Google, Microsoft or GitHub login, shared vocabulary, new transcription history and hosted allowance
+- Optional account with email-code or enabled social sign-in, shared vocabulary and new transcription history
 - Local and personal-key modes remain available without an account; no telemetry service
 
 Settings keeps navigation available while microphone tests, refreshes and saves
@@ -516,4 +517,4 @@ accidental duplicates. Incomplete provider output also uses the original text.
 
 ## Privacy
 
-Read the [privacy notice](PRIVACY.md) before enabling account sync or hosted processing.
+Read the [privacy notice](PRIVACY.md) before enabling account sync or using a cloud provider.

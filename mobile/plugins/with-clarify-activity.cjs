@@ -31,9 +31,10 @@ module.exports = function withClarifyActivity(config) {
     if (project.pbxTargetByName(targetName)) return mod;
     const target = project.addTarget(targetName, 'app_extension', targetName, bundle);
     const files = ['ClarifyActivity.swift', 'ClarifyActivityAttributes.swift', 'ClarifyMark.swift', 'Localization.swift'];
-    const group = project.addPbxGroup(files, targetName, targetName);
+    const sources = files.map(name => `${targetName}/${name}`);
+    const group = project.addPbxGroup(sources, targetName, '"."');
     project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
-    project.addBuildPhase(files.map((name) => `${targetName}/${name}`), 'PBXSourcesBuildPhase', 'Sources', target.uuid);
+    project.addBuildPhase(sources, 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
     for (const entry of Object.values(project.pbxXCBuildConfigurationSection())) {
       if (!entry?.buildSettings || entry.buildSettings.PRODUCT_NAME !== `"${targetName}"`) continue;

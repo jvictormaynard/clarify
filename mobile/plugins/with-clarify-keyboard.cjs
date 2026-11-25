@@ -44,9 +44,12 @@ module.exports = function withClarifyKeyboard(config) {
     if (project.pbxTargetByName(targetName)) return mod;
     const target = project.addTarget(targetName, 'app_extension', targetName, `${bundle}.keyboard`);
     const files = ['KeyboardViewController.swift', 'DictationEdit.swift', 'KeyGridView.swift', 'KeyPreview.swift', 'TypingAssistant.swift', 'HostActivation.swift', 'KBHostArbiterHook.m', 'KeyboardHeightSync.m', 'SharedState.swift', 'ClarifyError.swift', 'KeyboardVocabulary.swift', 'KeyboardState.swift', 'TypingCorrection.swift', 'HapticFeedback.swift', 'ClarifyMark.swift', 'ActivationRequest.swift', 'Localization.swift'];
-    const pbxGroup = project.addPbxGroup(files, targetName, targetName);
+    const sources = files.map(name => `${targetName}/${name}`);
+    // Use the same project-relative paths in the group and phase. Xcode
+    // requires separate references for copied files that share a basename.
+    const pbxGroup = project.addPbxGroup(sources, targetName, '"."');
     project.addToPbxGroup(pbxGroup.uuid, project.getFirstProject().firstProject.mainGroup);
-    project.addBuildPhase(files.map((name) => `${targetName}/${name}`), 'PBXSourcesBuildPhase', 'Sources', target.uuid);
+    project.addBuildPhase(sources, 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
     project.addBuildPhase([`${targetName}/KeyboardHostBundleID.LICENSE`], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
     for (const entry of Object.values(project.pbxXCBuildConfigurationSection())) {

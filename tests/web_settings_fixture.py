@@ -255,6 +255,13 @@ class OnboardingAccount:
             email=f"{provider}@example.test",
         )
 
+    def discover_social_providers(self):
+        return (
+            ["google", "microsoft", "github"]
+            if "--social-all" in sys.argv
+            else ["google"]
+        )
+
 
 class Dispatcher(QObject):
     request = Signal(object)
@@ -351,6 +358,9 @@ def main():
             return_value=os.environ.get("CLARIFY_TEST_UI_LANGUAGE", "pt"),
         ),
         patch("clarify.desktop.qml_settings._is_windows", return_value=False),
+        patch(
+            "clarify_account.AccountService.discover_social_providers", return_value=[]
+        ),
         patch(
             "local_asr_catalog.installer_for",
             side_effect=lambda model, device="cpu": Mock(

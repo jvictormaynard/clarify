@@ -9,6 +9,8 @@ import time
 from urllib.parse import urlsplit
 import uuid
 
+SUPPORTED_PROVIDERS = frozenset({"google", "microsoft", "github"})
+
 
 class SocialLoginError(RuntimeError):
     pass
@@ -47,7 +49,7 @@ def sign_in(
     clock=time.monotonic,
 ):
     """Return one validated session, with bounded polling and best-effort cleanup."""
-    if provider not in {"google", "microsoft", "github"}:
+    if provider not in SUPPORTED_PROVIDERS:
         raise _failure(None)
     cancel = cancel or threading.Event()
 

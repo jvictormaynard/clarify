@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 const require = createRequire(import.meta.url);
 const { getConfig } = require('expo/config');
 const withClarifyKeyboard = require('../plugins/with-clarify-keyboard.cjs');
+const withClarifyActivity = require('../plugins/with-clarify-activity.cjs');
 const withClarifySounds = require('../plugins/with-clarify-sounds.cjs');
 
 test('iPhone Settings includes localized setup help once in the app resources', async () => {
@@ -64,24 +65,44 @@ test('the containing app bundles the shared dictation sounds once', async () => 
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test('keyboard source composition excludes account credential access', async () => {
+test('extension sources have one Xcode group and the keyboard excludes account credentials', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'clarify-keyboard-sources-'));
   try {
-    const config = withClarifyKeyboard(structuredClone(require('../app.json').expo));
+    const template = path.join(path.dirname(require.resolve('expo/package.json')), 'template.tgz');
+    const projectFile = path.join(root, 'project.pbxproj');
+    fs.writeFileSync(projectFile, execFileSync('tar', ['-xOzf', template, 'package/ios/HelloWorld.xcodeproj/project.pbxproj']));
+    const project = require('xcode').project(projectFile);
+    project.parseSync();
+    const config = withClarifyActivity(withClarifyKeyboard(structuredClone(require('../app.json').expo)));
     const modRequest = { projectRoot: process.cwd(), platformProjectRoot: root };
     await config.mods.ios.dangerous({ ...config, modRequest });
-    let sources: string[] = [];
-    const project = {
-      pbxTargetByName: () => null,
-      addTarget: () => ({ uuid: 'keyboard-target' }),
-      addPbxGroup: () => ({ uuid: 'keyboard-group' }),
-      addToPbxGroup() {},
-      getFirstProject: () => ({ firstProject: { mainGroup: 'main-group' } }),
-      addBuildPhase(files: string[], type: string) { if (type === 'PBXSourcesBuildPhase') sources = files; },
-      pbxXCBuildConfigurationSection: () => ({}),
-    };
     await config.mods.ios.xcodeproj({ ...config, modRequest, modResults: project });
-    const swift = sources.filter(file => file.endsWith('.swift')).map(file => fs.readFileSync(path.join(root, file), 'utf8')).join('\n');
+    const seen = new Set<string>();
+    const references = project.pbxFileReferenceSection();
+    const buildFiles = project.pbxBuildFileSection();
+    const groups = ['ClarifyKeyboard', 'ClarifyActivity'].map(target => {
+      const group = project.getPBXGroupByKey(project.findPBXGroupKey({ name: target }));
+      const groupRefs = group.children.map((file: { value: string }) => file.value);
+      for (const ref of groupRefs) {
+        assert.ok(!seen.has(ref), `${references[ref].path} has two extension groups`);
+        seen.add(ref);
+      }
+      return { target, groupRefs, directory: group.path.replace(/^"|"$/g, '') };
+    });
+    let swift = '';
+    for (const { target, groupRefs, directory } of groups) {
+      const targetId = project.findTargetKey(`"${target}"`);
+      assert.ok(targetId);
+      const phase = project.pbxSourcesBuildPhaseObj(targetId);
+      const sourceRefs = phase.files.map((file: { value: string }) => buildFiles[file.value].fileRef);
+      assert.deepEqual(sourceRefs, groupRefs, `${target} compiles the files in its group`);
+      for (const ref of sourceRefs) {
+        const source = references[ref].path.replace(/^"|"$/g, '');
+        assert.ok(source.startsWith(`${target}/`));
+        const content = fs.readFileSync(path.join(root, directory, source), 'utf8');
+        if (target === 'ClarifyKeyboard' && source.endsWith('.swift')) swift += content + '\n';
+      }
+    }
     assert.doesNotMatch(swift, /enum KeyStore\b|SecItemCopyMatching|AccountCredential/, 'The keyboard must not receive credential access to obtain an error type');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

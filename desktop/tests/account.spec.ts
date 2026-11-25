@@ -70,6 +70,7 @@ test("login methods: Settings keeps the email draft and guest preferences", asyn
   await navigate(page, "Conta Clarify");
   const email = page.getByRole("textbox", { name: "E-mail", exact: true });
   const chooseEmail = page.getByRole("button", { name: "Continuar com e-mail", exact: true });
+  await expect(page.getByRole("button", { name: /Continuar com (Google|Microsoft|GitHub)/ })).toHaveCount(0);
   await expect(email).toBeHidden();
   await chooseEmail.click();
   await expect(email).toBeFocused();
@@ -182,11 +183,18 @@ settingsScenario({ onboarding: true, practice: "provider-quota" }, () => {
 });
 
 for (const provider of ["Google", "Microsoft", "GitHub"]) {
-  settingsScenario({ account: true }, () => {
+  settingsScenario({ account: true, socialAll: provider !== "Google" }, () => {
     test(`account: social ${provider} signs in without requiring the email form`, async ({ page }) => {
       await navigate(page, "Conta Clarify");
       await expect(page.getByRole("textbox", { name: "E-mail", exact: true })).toBeHidden();
-      await page.getByRole("button", { name: `Continuar com ${provider}`, exact: true }).click();
+      const signIn = page.getByRole("button", { name: `Continuar com ${provider}`, exact: true });
+      await expect(signIn).toBeEnabled();
+      if (provider === "Google") {
+        await expect(page.getByRole("button", { name: /Continuar com (Microsoft|GitHub)/ })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Continuar com e-mail", exact: true })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Continuar sem conta", exact: true })).toBeEnabled();
+      }
+      await signIn.click();
       await expect(page.getByText(`${provider.toLowerCase()}@example.test`, { exact: true })).toBeVisible();
       await expect(settingsDialog(page)).toBeVisible();
     });

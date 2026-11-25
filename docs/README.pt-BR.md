@@ -29,7 +29,7 @@ textos selecionados usando Gemini, OpenAI, Groq ou endpoints compatíveis.
 - Gravação por alternância ou mantendo o atalho pressionado (Hold)
 - Dicionário pessoal para nomes e termos técnicos
 - Estatísticas locais sem armazenar o conteúdo das transcrições
-- Conta opcional com entrada por Google, Microsoft, GitHub ou código de e-mail, dicionário, histórico novo e cota de ditado compartilhados
+- Conta opcional com entrada por código de e-mail ou provedor social habilitado, dicionário e novas transcrições compartilhados
 - Modos locais e com chave própria disponíveis sem conta; sem telemetria
 
 As Configurações mantêm a navegação disponível durante testes de microfone,
@@ -48,21 +48,15 @@ diálogos de ações e perfis mantêm os rascunhos até **Salvar**. **Cancelar**
 descarta as alterações daquele diálogo. A prévia usa texto de exemplo e não
 cola em outro aplicativo.
 
-O Clarify usa o idioma do dispositivo: português, inglês ou espanhol,
-incluindo o e-mail de autenticação. No primeiro acesso, use Google, Microsoft
-ou GitHub, ou informe seu e-mail e confirme o código dentro do aplicativo
-para entrar ou criar uma conta.
-**Continuar sem conta** abre a configuração do modelo local; a chave própria
-continua disponível nessa etapa. Entrar na conta ativa o processamento do Clarify automaticamente.
-Contas autenticadas usam os modelos gerenciados pelo Clarify. As configurações
-de provedores, chaves e modelos locais ficam no modo sem conta. Estilo e Ações
-de texto ficam disponíveis nos dois modos.
-A cota semanal aparece como porcentagem, com a próxima renovação no horário local.
-As cotas renovam na segunda-feira, às 00:00 UTC. Enquanto a cota não é conhecida,
-a tela mostra o carregamento. Uma mensagem informa quando faltam fundos.
+O Clarify usa português, inglês ou espanhol na interface e no e-mail de
+autenticação. Para entrar ou criar uma conta, confirme o código recebido por
+e-mail ou escolha um provedor social habilitado pelo servidor de contas.
+**Continuar sem conta** abre a configuração dos modelos e serviços. A conta
+sincroniza bibliotecas e histórico. O processamento usa os modelos ou serviços
+que você configurou no computador.
 Sair e excluir conta ficam em uma Zona de perigo
 fechada por padrão, com confirmações separadas.
-O dicionário sincroniza automaticamente e o consumo é atualizado após o uso.
+O dicionário sincroniza automaticamente.
 O cache local preserva alterações offline; conflitos mantêm ambas as cópias
 até a resolução. As novas transcrições da conta sincronizam automaticamente entre
 Windows e iOS, com texto original, texto revisado, horário e dispositivo de origem.
@@ -83,10 +77,8 @@ por QR para processar pela rede local, com a configuração pessoal do computado
 > O acesso pessoal à nuvem usa sua chave de API ou um plano ChatGPT elegível.
 > No Windows, o plano permite reescrita, tradução e refinamento de texto sem
 > conta Clarify. Ele usa os limites existentes do ChatGPT e não inclui
-> transcrição de áudio. O ditado
-> pela conta Clarify usa o servidor do Clarify e a Groq, sujeito à cota semanal
-> e aos fundos disponíveis após a reserva dos custos operacionais. O
-> Local Whisper pode transcrever sem chave e baixa seus assets somente após uma
+> transcrição de áudio. No iPhone, o ditado usa um computador pareado. O
+> Local Whisper pode transcrever sem chave e baixa os arquivos do modelo após uma
 > ação explícita. As chaves e estatísticas ficam no seu computador. O áudio e o
 > texto selecionado são enviados diretamente ao provedor configurado.
 
@@ -350,4 +342,4 @@ nuvem de transcrições locais continua dependendo da autorização nas configur
 ## Privacidade
 
 Consulte o [aviso de privacidade](../PRIVACY.md) antes de ativar a sincronização
-da conta ou o processamento pelo serviço Clarify.
+da conta ou usar um provedor na nuvem.

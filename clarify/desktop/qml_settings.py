@@ -613,6 +613,9 @@ class QmlSettingsController(QObject):
         self._account_shutdown = False
         self._account_social = False
         self._account_cancel = threading.Event()
+        self._social_provider_scope = None
+        self._social_provider_generation = 0
+        self._social_providers = None
         self._chatgpt_session = chatgpt_session
         self._chatgpt_snapshot = {
             "connected": False,
@@ -887,6 +890,10 @@ class QmlSettingsController(QObject):
                 self._finish_personal_setup(generation, payload)
             elif kind == "chatgpt":
                 self._finish_chatgpt_command(generation, payload)
+            elif kind == "social_providers":
+                if generation == self._social_provider_generation:
+                    self._social_providers = payload
+                    self.accountStateChanged.emit()
             elif kind == "text_action_preview":
                 context, result, error = payload
                 if generation == self._text_action_preview_generation:
@@ -4211,8 +4218,35 @@ class QmlSettingsController(QObject):
             **self._account.snapshot(),
             "busy": self._account_busy,
             "socialPending": self._account_busy and self._account_social,
+            "socialProviders": self._social_providers or []
+            if self._social_provider_scope is not None
+            and self._social_provider_scope == self._account.context_stamp()
+            else [],
             "error": self._account_error,
         }
+
+    def _load_social_providers(self):
+        account = self._account
+        discover = getattr(account, "discover_social_providers", None)
+        if not callable(discover) or account.signed_in:
+            return True
+        scope = account.context_stamp()
+        if scope == self._social_provider_scope and self._social_providers is None:
+            return True
+        self._social_provider_scope = scope
+        self._social_providers = None
+        self._social_provider_generation += 1
+        generation = self._social_provider_generation
+        mailbox = self._background_mailbox
+
+        def perform():
+            mailbox.post("social_providers", generation, discover())
+
+        threading.Thread(
+            target=perform, name="ClarifySocialProviders", daemon=True
+        ).start()
+        self.accountStateChanged.emit()
+        return True
 
     def bindComputer(self, controller):
         self._computer = controller
@@ -5144,6 +5178,8 @@ class QmlSettingsController(QObject):
     def accountCommand(self, action, value="", *, expected_identity=None):
         if self._account_shutdown:
             return False
+        if action == "load-social-providers":
+            return self._load_social_providers()
         if action == "cancel-social":
             if self._account_busy and self._account_social:
                 self._account_cancel.set()

@@ -1,9 +1,9 @@
 import { t } from "../i18n";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, HardDrive, Mail } from "lucide-react";
 import { Button, Field } from "./ui";
 import { ProviderBrandIcon } from "./provider-brand-icon";
-import type { Settings } from "../settings/bridge";
+import { call, type Settings } from "../settings/bridge";
 
 export type SignInStep = "methods" | "email" | "code" | "browser";
 
@@ -22,6 +22,10 @@ export function AccountSignIn({ account, command, busy = false, onContinueWithou
   const emailChoice = useRef<HTMLButtonElement>(null);
   const returnToChoice = useRef(false);
   const step: SignInStep = account.socialPending ? "browser" : account.pending ? "code" : emailEntry ? "email" : "methods";
+  useEffect(() => {
+    if (account.endpoint && step === "methods")
+      void call("accountCommand", "load-social-providers", "").catch(() => {});
+  }, [account.endpoint, step]);
   useLayoutEffect(() => { onStepChange?.(step); }, [onStepChange, step]);
   useLayoutEffect(() => {
     if (account.socialPending || account.pending) return;
@@ -54,7 +58,7 @@ export function AccountSignIn({ account, command, busy = false, onContinueWithou
       <Button variant="primary" type="submit" loading={busy} disabled={!email.trim() || !account.endpoint}>{t("Continuar")}</Button>
     </div>
   </> : <div className="social-sign-in" aria-label={t("Entrar com outra conta")}>
-    {(["Google", "Microsoft", "GitHub"] as const).map(provider => <Button key={provider}
+    {(["Google", "Microsoft", "GitHub"] as const).filter(provider => account.socialProviders?.includes(provider.toLowerCase())).map(provider => <Button key={provider}
       className={provider === "Google" ? "google-sign-in" : undefined}
       disabled={busy || !account.endpoint} onClick={() => command("social", provider.toLowerCase())}>
       <ProviderBrandIcon provider={provider} className="text-foreground" />

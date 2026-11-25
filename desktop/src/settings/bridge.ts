@@ -98,6 +98,7 @@ export interface Settings {
   };
   accountState?: {
     socialPending?: boolean;
+    socialProviders?: string[];
     endpoint: string; managed?: boolean; signedIn: boolean; email: string; pending: string;
     hosted: boolean; syncEnabled: boolean; busy: boolean; error: string;
     dictionaryConflict?: boolean; syncError?: string;
