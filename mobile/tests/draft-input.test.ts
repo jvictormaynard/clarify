@@ -6,16 +6,16 @@ import { test } from 'node:test';
 import ts from 'typescript';
 import * as guide from '../src/quick-start.ts';
 
-function fixture(file, modules = {}) {
+function fixture(file, modules = {}, globals = {}) {
   const source = fs.readFileSync(new URL(`../src/components/${file}.tsx`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022,
   } }).outputText;
-  const slots = [], refs = [];
-  let stateIndex = 0, refIndex = 0;
+  const slots = [], refs = [], effects = [];
+  let stateIndex = 0, refIndex = 0, effectIndex = 0;
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const exports = {};
-  vm.runInNewContext(code, { exports, require(name) {
+  vm.runInNewContext(code, { AbortController, fetch: async () => ({ ok: false }), ...globals, exports, require(name) {
     if (name in modules) return modules[name];
     if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (name === 'react') return {
@@ -25,6 +25,12 @@ function fixture(file, modules = {}) {
         return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }];
       },
       useRef(initial) { return refs[refIndex++] ??= { current: initial }; },
+      useEffect(effect, [dependency]) {
+        const i = effectIndex++;
+        if (effects[i]?.dependency === dependency) return;
+        effects[i]?.cleanup?.();
+        effects[i] = { dependency, cleanup: effect() };
+      },
     };
     if (name === 'react-native') return { TextInput: 'TextInput', Text: 'Text', View: 'View' };
     if (name === '../i18n') return { t: text => text };
@@ -35,7 +41,7 @@ function fixture(file, modules = {}) {
     if (name === './account-endpoint-recovery') return { AccountEndpointRecovery: 'AccountEndpointRecovery' };
     throw new Error(`Unexpected fixture dependency: ${name}`);
   } });
-  return (name, props) => { stateIndex = 0; refIndex = 0; return exports[name](props); };
+  return (name, props) => { stateIndex = 0; refIndex = 0; effectIndex = 0; return exports[name](props); };
 }
 
 function find(tree, id) {
@@ -121,6 +127,48 @@ test('email draft survives account snapshots and returning from code entry', () 
   props.account = { ...props.account, pending: 'login' }; tree();
   props.account = { ...props.account, pending: '' };
   assert.equal(find(tree(), 'account.email').props.initialValue, 'complete@example.test');
+});
+
+test('sign-in shows only providers advertised by the current account server', async () => {
+  const requests = [], calls = [];
+  const render = fixture('account-sign-in', { '../state/clarify': { report: error => { throw error; } } }, {
+    URL, AbortController,
+    fetch: (url, options) => new Promise(resolve => { requests.push({ url, options, resolve }); }),
+  });
+  const props = { account: { pending: '', email: '', endpoint: 'https://account.example.test' }, busy: false,
+    command: async (...args) => { calls.push(args); } };
+  const tree = () => render('AccountSignIn', props);
+  const respond = async (request, ids) => {
+    request.resolve({ ok: true, json: async () => ({ data: { socialaccount: { providers: ids.map(id => ({ id })) } } }) });
+    await new Promise(setImmediate);
+  };
+  assert.equal(find(tree(), 'account.social.google'), undefined);
+  assert.ok(find(tree(), 'account.email'));
+  assert.equal(requests[0].url, 'https://account.example.test/_allauth/app/v1/config');
+  await respond(requests[0], ['google', 'unknown']);
+  assert.equal(find(tree(), 'account.social.microsoft'), undefined);
+  assert.equal(find(tree(), 'account.social.github'), undefined);
+  find(tree(), 'account.social.google').props.onPress();
+  assert.deepEqual(calls, [['social', 'google']]);
+  await new Promise(setImmediate);
+
+  props.account = { ...props.account, endpoint: 'https://other.example.test' };
+  assert.equal(find(tree(), 'account.social.google'), undefined);
+  assert.equal(requests[0].options.signal.aborted, true);
+  props.account = { ...props.account, endpoint: 'https://third.example.test' };
+  tree();
+  await respond(requests[1], ['microsoft']);
+  assert.equal(find(tree(), 'account.social.microsoft'), undefined);
+  await respond(requests[2], ['github']);
+  assert.ok(find(tree(), 'account.social.github'));
+
+  props.account = { ...props.account, endpoint: 'https://offline.example.test' };
+  assert.equal(find(tree(), 'account.social.github'), undefined);
+  requests[3].resolve({ ok: false });
+  await new Promise(setImmediate);
+  find(tree(), 'account.email').props.onChangeText('user@example.test');
+  find(tree(), 'account.requestCode').props.onPress();
+  assert.deepEqual(calls.at(-1), ['login', 'user@example.test']);
 });
 
 function practiceFixture(onFinish) {
