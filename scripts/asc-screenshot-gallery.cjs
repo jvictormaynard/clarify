@@ -105,7 +105,7 @@ async function inspect() {
     if (image.state !== 'APPROVED' || width !== 1206 || height !== 2622) {
       throw new Error('Previously published asset not approved at expected size: ' + locale);
     }
-    expected[locale] = { width, height, native, sources: sourceImages[locale] };
+    expected[locale] = { width, height, native, previous: current, sources: sourceImages[locale] };
     console.log(JSON.stringify({ locale, originals: current.length, width, height, native }));
   }
   return { live, experiments, expected };
@@ -179,13 +179,18 @@ async function resizedAsset(locale, plan, item) {
   return asset.id;
 }
 
-async function setTreatmentImages(id, ordered) {
+async function setTreatmentImages(id, ordered, previous) {
   const localization = relation(locType, id);
   const type = 'appAssetLibraryPlacements';
   const existing = await treatmentPlacements(id);
   const found = new Map(existing.map(row => [assetId(row), row.id]));
-  if (found.size !== existing.length || [...found.keys()].some(image => !ordered.includes(image))) {
-    throw new Error('Treatment already has different screenshots');
+  const inherited = [...found.keys()].filter(image => !ordered.includes(image));
+  if (found.size !== existing.length || inherited.some(image => !previous.includes(image))) {
+    throw new Error('Treatment contains screenshots outside the authorized replacement');
+  }
+  for (const image of inherited) {
+    await request('/v1/' + type + '/' + found.get(image), 'DELETE');
+    found.delete(image);
   }
   for (const image of ordered) {
     if (found.has(image)) continue;
@@ -240,7 +245,7 @@ async function prepare({ experiments, expected }) {
       type: locType, attributes: { locale },
       relationships: { appStoreVersionExperimentTreatment: relation(treatmentType, treatment.id) },
     })).data;
-    await setTreatmentImages(loc.id, ordered);
+    await setTreatmentImages(loc.id, ordered, plan.previous);
     console.log(JSON.stringify({ locale, treatmentLocalization: loc.id, images: ordered, width: plan.width, height: plan.height }));
   }
 }
