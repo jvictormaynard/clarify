@@ -60,16 +60,17 @@ export function App() {
   }, [meetingOpen, canOpenMeeting]);
   const setupWasRequired = useRef(false);
   const setupPurpose = useRef<SetupPurpose>("dictation");
+  const setupCloudSpeech = useRef(false);
   useEffect(() => {
     if (!controller.state) return;
     const completed = setupWasRequired.current && !controller.state.onboardingRequired;
     setupWasRequired.current = controller.state.onboardingRequired;
     if (completed) {
-      if (setupPurpose.current === "cloud-settings") {
+      if (setupPurpose.current !== "dictation") void currentController.current.navigate("meetings");
+      if (setupCloudSpeech.current) {
         void currentController.current.navigate("models");
         return;
       }
-      if (setupPurpose.current !== "dictation") void currentController.current.navigate("meetings");
       if (setupPurpose.current !== "meetings") void controller.run("practiceCommand", "open");
     }
   }, [controller.state?.onboardingRequired, controller.run]);
@@ -111,7 +112,7 @@ export function App() {
         onClose={() => controller.setClosing(true)}
         onError={controller.setError}
       />
-      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} onChoosePurpose={purpose => { setupPurpose.current = purpose; }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
+      {state?.onboardingRequired ? <OnboardingPage controller={{ ...controller, state }} onChoosePurpose={purpose => { setupPurpose.current = purpose; setupCloudSpeech.current = false; }} onCloudSpeechSetup={() => { setupCloudSpeech.current = true; }} /> : state?.practiceState?.open ? <DictationPractice controller={{ ...controller, state }} /> : <div className="app">
         <aside id="desktop-sidebar">
           <div className="sidebar-brand"><img src={logo} alt="" /><span>Clarify</span></div>
           <SettingsNavigation pages={pages} activePage={mainPage} settingsButtonRef={settingsButton}

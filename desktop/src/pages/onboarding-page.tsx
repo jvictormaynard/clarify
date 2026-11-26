@@ -15,7 +15,7 @@ const dictationSteps = ["language", "purpose", "account", "speech", "welcome", "
 const cloudSpeechSteps = ["language", "purpose", "account", "speech"] as const;
 const meetingSteps = ["language", "purpose"] as const;
 type Step = typeof dictationSteps[number];
-export type SetupPurpose = "dictation" | "meetings" | "both" | "cloud-settings";
+export type SetupPurpose = "dictation" | "meetings" | "both";
 const setupFeatures = [
   { id: "dictation", title: "setup_purpose_dictation", hint: "setup_purpose_dictation_hint", Icon: Mic },
   { id: "meetings", title: "setup_purpose_meetings", hint: "setup_purpose_meetings_hint", Icon: CalendarDays },
@@ -30,8 +30,9 @@ function chooseRadio(event: KeyboardEvent<HTMLDivElement>) {
   radios[next]?.focus(); radios[next]?.click();
 }
 
-export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProps & {
+export function OnboardingPage({ controller, onChoosePurpose, onCloudSpeechSetup }: SettingsPageProps & {
   onChoosePurpose: (purpose: SetupPurpose) => void;
+  onCloudSpeechSetup: () => void;
 }) {
   const { state, busy, error, run } = controller;
   const setup = state.personalSetupState;
@@ -113,7 +114,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
     }
     if (step === "speech") {
       if (cloudSpeechSetup) {
-        onChoosePurpose("cloud-settings");
+        onCloudSpeechSetup();
         await run("completeOnboarding", "cloud-settings", "");
         return;
       }

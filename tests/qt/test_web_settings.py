@@ -42,9 +42,11 @@ class WebSettingsTests(unittest.TestCase):
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
 
     def test_cloud_speech_setup_opens_settings_without_starting_practice(self):
-        with patch.object(
-            self.settings, "_requires_cloud_speech_setup", return_value=True
-        ):
+        installer = self.settings._local_product.installer
+        with patch("clarify.desktop.qml_settings.sys.platform", "darwin"):
+            installer.platform_supported.return_value = True
+            self.assertFalse(self.settings.personalSetupState["cloudSpeechSetup"])
+            installer.platform_supported.return_value = False
             self.assertTrue(self.settings.personalSetupState["cloudSpeechSetup"])
             result = self.request("completeOnboarding", "cloud-settings", "")
         self.assertFalse(result["result"]["onboardingRequired"])

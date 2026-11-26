@@ -1,4 +1,12 @@
 {
+  "setup_cloud_speech_title": {
+    "de": "Transkription einrichten",
+    "ru": "Настройте распознавание речи"
+  },
+  "setup_cloud_speech_hint": {
+    "de": "Öffnen Sie Modelle und Dienste, um einen Transkriptionsdienst auf diesem Mac zu verbinden.",
+    "ru": "Откройте «Модели и сервисы», чтобы подключить распознавание речи на этом Mac."
+  },
   "setup_choose_purpose": {
     "de": "Wie möchten Sie Clarify nutzen?",
     "ru": "Как вы хотите использовать Clarify?"
