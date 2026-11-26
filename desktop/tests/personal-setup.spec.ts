@@ -371,3 +371,20 @@ test.describe("optional text setup recovery", () => {
     await expect(page.getByRole("heading", { name: "Vamos preparar seu ditado", exact: true })).toBeVisible();
   });
 });
+
+test.describe("Mac without a local speech runtime", () => {
+  test.use({ settingsScenario: { onboarding: true, locale: "en", cloudSpeechSetup: true } });
+  test("opens model settings from first-run dictation setup", async ({ page }) => {
+    await advance(page);
+    await page.getByRole("checkbox", { name: "Meetings", exact: true }).check();
+    await advance(page);
+    await advance(page, "Continue without an account");
+    await expect(page.getByRole("heading", { name: "Set up transcription" })).toBeFocused();
+    await expect(page.getByText(/Whisper|Download and install/)).toHaveCount(0);
+    await page.getByRole("button", { name: "Models and services", exact: true }).click();
+    await expect(page.getByRole("tab", { name: "Audio transcription", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator(".personal-setup")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Meetings", exact: true })).toHaveAttribute("aria-current", "page");
+  });
+});

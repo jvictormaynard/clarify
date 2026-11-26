@@ -62,7 +62,7 @@ export type ComputerState = {
   pairingReady: boolean; pairingExpiresAt: number;
 };
 export type PersonalSetupState = {
-  language: string; busy: boolean; error: string;
+  language: string; busy: boolean; error: string; cloudSpeechSetup?: boolean;
   recommendation: { providerId: string; modelId: string; label: string; reason: string; reasonValues?: Record<string, string | number>; recognitionLanguage?: string; executionDevice: string; downloadBytes: number; installed: boolean; requirementsList?: string[]; description?: string; lowMemory?: boolean; availableRamMiB?: number; lowDisk?: boolean };
   textOptions: { id: string; label: string; available: boolean; runtimeInstalled?: boolean; connected: boolean; modelId: string; modelLabel: string; rewriteModelId?: string; access: string; models?: Option[] }[];
 };
@@ -205,7 +205,7 @@ export type SettingsArguments = {
   practiceCommand: [action: "open" | "close" | "done" | "start" | "stop" | "cancel" | "test-shortcut" | "leave-shortcut" | "finish-shortcut"];
   computerCommand: [action: "enable" | "pair" | "stop" | "revoke" | "durable" | "close", value: string];
   personalSetupCommand: [action: "interface_language" | "recommend" | "prepare_speech" | "configure" | "connect_opencode" | "complete" | "cancel" | "reset_text_choice" | "cuda_license", value: string];
-  completeOnboarding: [mode: "account" | "byok" | "local" | "meetings", key: string];
+  completeOnboarding: [mode: "account" | "byok" | "local" | "meetings" | "cloud-settings", key: string];
   accountCommand: [action: string, value: string];
   chatgptCommand: [action: ChatGPTAction, value: string];
   deleteHistoryEntry: [id: string, context: string];

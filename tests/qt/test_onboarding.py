@@ -6,6 +6,7 @@ import sys
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
+from local_asr_product import LocalASRProductState
 from tests.support.settings import (
     _repositories,
 )
@@ -50,6 +51,30 @@ class OnboardingControllerTests(unittest.TestCase):
                 self.assertFalse(repositories.config.load().onboarding_practice_pending)
             finally:
                 reopened.shutdown()
+
+    def test_macos_cloud_speech_setup_completes_without_starting_practice(self):
+        with TemporaryDirectory() as directory:
+            repositories = _repositories(directory)
+            product = Mock(state=LocalASRProductState("missing"), busy=False)
+            controller = QmlSettingsController(repositories, local_product=product)
+            try:
+                practice = Mock()
+                controller.bindPractice(practice)
+                mac_platform = Mock(wraps=sys, platform="darwin")
+                with patch("clarify.desktop.qml_settings.sys", mac_platform):
+                    product.installer.platform_supported.return_value = True
+                    self.assertFalse(controller.personalSetupState["cloudSpeechSetup"])
+                    product.installer.platform_supported.return_value = False
+                    self.assertTrue(controller.personalSetupState["cloudSpeechSetup"])
+                    self.assertTrue(
+                        controller.completeOnboarding("cloud-settings"),
+                        controller.lastError,
+                    )
+                self.assertFalse(controller.onboardingRequired)
+                self.assertFalse(repositories.config.load().onboarding_practice_pending)
+                practice.command.assert_not_called()
+            finally:
+                controller.shutdown()
 
     def test_byok_is_saved_securely_and_routes_both_stages_to_groq(self):
         with TemporaryDirectory() as directory:

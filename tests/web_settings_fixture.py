@@ -358,6 +358,11 @@ def main():
             return_value=os.environ.get("CLARIFY_TEST_UI_LANGUAGE", "pt"),
         ),
         patch("clarify.desktop.qml_settings._is_windows", return_value=False),
+        patch.object(
+            QmlSettingsController,
+            "_requires_cloud_speech_setup",
+            return_value="--cloud-speech-setup" in sys.argv,
+        ),
         patch(
             "clarify_account.AccountService.discover_social_providers", return_value=[]
         ),

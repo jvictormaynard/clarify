@@ -17,6 +17,7 @@ export type SettingsScenario = {
   practice?: "account-error" | "auth-error" | "provider-quota" | "missing-model";
   socialWait?: boolean;
   socialAll?: boolean;
+  cloudSpeechSetup?: boolean;
   librarySync?: boolean;
   history?: boolean;
   recordingRecovery?: boolean;
@@ -51,6 +52,7 @@ export const test = base.extend<Fixtures & { settingsScenario: SettingsScenario 
     if (scenario.personalMissing) args.push("--personal-missing");
     if (scenario.practice) args.push(`--practice-${scenario.practice}`);
     if (scenario.onboarding) args.push("--onboarding");
+    if (scenario.cloudSpeechSetup) args.push("--cloud-speech-setup");
     if (scenario.signedIn || scenario.account) args.push("--signed-in");
     if (scenario.socialWait) args.push("--social-wait");
     if (scenario.socialAll) args.push("--social-all");

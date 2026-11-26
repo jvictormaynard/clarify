@@ -4650,6 +4650,9 @@ class QmlSettingsController(QObject):
             action = "close"
         return self._practice.command(action)
 
+    def _requires_cloud_speech_setup(self):
+        return sys.platform == "darwin" and not self.localAsrCanInstall
+
     @Property("QVariantMap", notify=personalSetupStateChanged)
     def personalSetupState(self):
         rewrite = self._config.workflow(WorkflowScope.REWRITE.value)
@@ -4731,6 +4734,7 @@ class QmlSettingsController(QObject):
         return {
             **state,
             "recommendation": recommendation,
+            "cloudSpeechSetup": self._requires_cloud_speech_setup(),
             "textOptions": options,
             "busy": state["busy"]
             or self.localAsrBusy
@@ -5119,6 +5123,9 @@ class QmlSettingsController(QObject):
                 account = self._account.snapshot()
                 if not account.get("signedIn"):
                     raise ValueError("Entre na conta novamente.")
+            elif mode == "cloud-settings":
+                if not self._requires_cloud_speech_setup():
+                    raise ValueError("Escolha uma opção para continuar.")
             elif mode in {"byok", "local"}:
                 if mode == "byok":
                     key = str(key).strip()
@@ -5159,7 +5166,7 @@ class QmlSettingsController(QObject):
                     config,
                     onboarding_completed=True,
                     onboarding_practice_pending=sys.platform == "darwin"
-                    and mode != "meetings",
+                    and mode not in {"meetings", "cloud-settings"},
                 )
             )
         except Exception as error:
@@ -5170,7 +5177,7 @@ class QmlSettingsController(QObject):
             self.selectProvider("groq")
         self._set_error(None)
         self.saved.emit()
-        if self._practice is not None and mode != "meetings":
+        if self._practice is not None and mode not in {"meetings", "cloud-settings"}:
             self._practice.command("open")
         return True
 
