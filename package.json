@@ -1,6 +1,6 @@
 {
   "name": "clarify",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "private": true,
   "scripts": {
     "build:desktop": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-desktop.ps1",
