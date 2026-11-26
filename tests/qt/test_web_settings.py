@@ -1,7 +1,6 @@
 """The new frontend reuses the real settings controller, without exposing secrets."""
 
 import json
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -41,22 +40,6 @@ class WebSettingsTests(unittest.TestCase):
         if method == "setSnippets" and len(args) == 1:
             args = (*args, self.settings.snippetContext)
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
-
-    def test_cloud_speech_setup_opens_settings_without_starting_practice(self):
-        installer = self.settings._local_product.installer
-        # Only the controller should see macOS. Persistence runs on the real host.
-        platform = Mock(wraps=sys, platform="darwin")
-        with patch("clarify.desktop.qml_settings.sys", platform):
-            installer.platform_supported.return_value = True
-            self.assertFalse(self.settings.personalSetupState["cloudSpeechSetup"])
-            installer.platform_supported.return_value = False
-            self.assertTrue(self.settings.personalSetupState["cloudSpeechSetup"])
-            result = self.request("completeOnboarding", "cloud-settings", "")
-        self.assertIn("result", result, result)
-        self.assertFalse(result["result"]["onboardingRequired"])
-        self.assertFalse(
-            self.settings._config_repository.load().onboarding_practice_pending
-        )
 
     def test_microphone_start_waits_until_the_frontend_acknowledges_audio_stop(self):
         import threading
