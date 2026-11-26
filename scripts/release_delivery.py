@@ -261,16 +261,20 @@ def validate_intent(intent):
         # identify the final packaged candidate, so it belongs to publication.
         exact_keys(evidence, {"report_url"})
     else:
-        exact_keys(
-            evidence,
-            {
-                "build",
-                "highest_build",
-                "pending_builds_checked",
-                "checked_at",
-                "report_url",
-            },
-        )
+        mobile_fields = {
+            "build",
+            "highest_build",
+            "pending_builds_checked",
+            "checked_at",
+            "report_url",
+        }
+        if isinstance(evidence, dict) and "internal_testing" in evidence:
+            mobile_fields.add("internal_testing")
+            require(
+                type(evidence["internal_testing"]) is bool,
+                "Internal TestFlight selection must be a boolean",
+            )
+        exact_keys(evidence, mobile_fields)
         require(
             evidence["pending_builds_checked"] is True,
             "Check App Store Connect builds and pending submissions before reserving a build",
@@ -413,9 +417,52 @@ def internal_ci_proof(api, run, source):
         ],
         "CI required": [],
     }
-    evidence = []
+    pr_attempt = None
+    pr_jobs = []
+    result_jobs = []
+    task_by_job = {
+        "Mobile checks": "mobile",
+        "ios validation / Native keyboard and library tests": "ios",
+    }
+    if any(
+        not any(
+            job.get("name") == name and job.get("conclusion") == "success"
+            for job in jobs
+        )
+        for name in task_by_job
+    ):
+        receipt = evidence.release_receipt(api, run, source)
+        reused = set(receipt["reused"])
+        if reused & {"mobile", "ios"}:
+            pr_attempt = decode(receipt["needs"]["plan"]["outputs"]["reuse"])
+            pr_run_id = pr_attempt["run_id"]
+            pr_attempt_number = pr_attempt["attempt"]
+            pr_head = receipt["source"]["parents"][1]
+            pr_run = api.request("GET", f"/actions/runs/{pr_run_id}")
+            evidence.complete(pr_run)
+            require(
+                pr_run["id"] == pr_run_id
+                and pr_run["run_attempt"] == pr_attempt_number
+                and pr_run["head_sha"] == pr_head,
+                "Authenticated PR CI attempt changed",
+            )
+            pr_jobs = api.pages(
+                f"/actions/runs/{pr_run_id}/attempts/{pr_attempt_number}/jobs", "jobs"
+            )
+            current_pr = api.request("GET", f"/actions/runs/{pr_run_id}")
+            evidence.complete(current_pr)
+            require(
+                current_pr["id"] == pr_run_id
+                and current_pr["run_attempt"] == pr_attempt_number
+                and current_pr["head_sha"] == pr_head,
+                "Authenticated PR CI attempt changed during verification",
+            )
+    else:
+        reused = set()
     for name, steps in coverage.items():
-        matches = [job for job in jobs if job.get("name") == name]
+        from_pr = task_by_job.get(name) in reused
+        producer_jobs = pr_jobs if from_pr else jobs
+        matches = [job for job in producer_jobs if job.get("name") == name]
         require(
             len(matches) == 1, "Internal CI proof job missing or duplicated: " + name
         )
@@ -434,7 +481,10 @@ def internal_ci_proof(api, run, source):
                 and found[0].get("conclusion") == "success",
                 "Internal CI proof step is not green: " + step_name,
             )
-        evidence.append({"job_id": job["id"], "name": name, "steps": steps})
+        record = {"job_id": job["id"], "name": name, "steps": steps}
+        if from_pr:
+            record.update(run_id=pr_attempt["run_id"], attempt=pr_attempt["attempt"])
+        result_jobs.append(record)
     current = api.request("GET", f"/actions/runs/{int(run['id'])}")
     require(
         current.get("id") == run["id"]
@@ -447,7 +497,7 @@ def internal_ci_proof(api, run, source):
         "run_id": run["id"],
         "attempt": attempt,
         "workflow": CI_PATH,
-        "jobs": evidence,
+        "jobs": result_jobs,
         "internalManualReturn": True,
     }
 
@@ -664,12 +714,27 @@ def mobile_upload_never_started(jobs):
         # Tests/status/availability inputs cannot sign or upload.
         return True
     uploads = [job for job in jobs if job.get("name") == "Test, sign and upload iOS"]
+    if (
+        gates[0].get("status") != "completed"
+        or len(uploads) != 1
+        or uploads[0].get("status") != "completed"
+    ):
+        return False
+    gate_result = gates[0].get("conclusion")
+    upload_result = uploads[0].get("conclusion")
+    if gate_result in {"failure", "cancelled", "timed_out"}:
+        return upload_result == "skipped"
+    steps = [
+        step
+        for step in uploads[0].get("steps", [])
+        if step.get("name") == "Upload directly to App Store Connect"
+    ]
     return (
-        gates[0].get("status") == "completed"
-        and gates[0].get("conclusion") in {"failure", "cancelled", "timed_out"}
-        and len(uploads) == 1
-        and uploads[0].get("status") == "completed"
-        and uploads[0].get("conclusion") == "skipped"
+        gate_result == "success"
+        and upload_result == "failure"
+        and len(steps) == 1
+        and steps[0].get("status") == "completed"
+        and steps[0].get("conclusion") == "skipped"
     )
 
 
@@ -720,7 +785,7 @@ def require_main_source(api, source):
     )
 
 
-def promote(api, event):
+def promote(api, event, *, components=WORKFLOWS):
     require(
         event.get("repository", {}).get("full_name") == REPOSITORY,
         "Unexpected event repository",
@@ -732,9 +797,17 @@ def promote(api, event):
     intent = intent_at(api, source)
     if intent is None:
         return "no-intent"
+    component = intent["component"]
+    if component not in components:
+        return "component-disabled"
     if not dedicated_plan(api, source, intent):
         return "no-preparation-pr"
-    check_jobs(api, run, intent["component"])
+    check_jobs(api, run, component)
+    internal_testing = component == "mobile" and intent["evidence"].get(
+        "internal_testing"
+    )
+    if internal_testing:
+        internal_ci_proof(api, run, source)
     tag = release_tag(intent)
     existing = tag_source(api, tag)
     require(
@@ -773,8 +846,11 @@ def promote(api, event):
             "inputs": {
                 "source_sha": source,
                 **(
-                    {"mode": "testflight"}
-                    if intent["component"] == "mobile"
+                    {
+                        "mode": "testflight",
+                        **({"internal_testing": "true"} if internal_testing else {}),
+                    }
+                    if component == "mobile"
                     else {"action": "build-candidate", "channel": "stable"}
                 ),
             },
@@ -1091,10 +1167,17 @@ def main():
                 os.environ.get("RELEASE_NOTES", ""),
             )
         elif args.command == "promote":
-            require(
-                os.environ.get("CLARIFY_RELEASE_PROMOTION_ENABLED") == "true",
-                "Release promotion is disabled",
-            )
+            components = WORKFLOWS.keys()
+            if os.environ.get("CLARIFY_RELEASE_PROMOTION_ENABLED") != "true":
+                components = {
+                    component
+                    for component in WORKFLOWS
+                    if os.environ.get(
+                        f"CLARIFY_{component.upper()}_RELEASE_PROMOTION_ENABLED"
+                    )
+                    == "true"
+                }
+            require(bool(components), "Release promotion is disabled")
             require(
                 os.environ.get("GITHUB_EVENT_NAME") == "workflow_run",
                 "Use a completed CI event",
@@ -1104,6 +1187,7 @@ def main():
                 decode(
                     Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
                 ),
+                components=components,
             )
         else:
             require(

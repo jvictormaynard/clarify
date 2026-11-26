@@ -327,6 +327,7 @@ def path_components(path: str) -> set[str]:
 def select_jobs(paths, repo=None):
     """Return the task closure. Invalid, unknown and linked inputs select all."""
     selected = set()
+    root = Path(repo).resolve() if repo is not None else None
     for path in paths:
         if (
             not isinstance(path, str)
@@ -337,9 +338,9 @@ def select_jobs(paths, repo=None):
             or any(part in {".", ".."} for part in path.split("/"))
         ):
             return set(JOBS)
-        if repo is not None and any(
+        if root is not None and any(
             (p.is_symlink() or getattr(p, "is_junction", lambda: False)())
-            for p in (Path(repo) / path, *(Path(repo) / path).parents)
+            for p in (root / path, *(root / path).parents)
         ):
             return set(JOBS)
         old = path_components(path)

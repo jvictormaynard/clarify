@@ -16,17 +16,9 @@ $packaged = Join-Path $desktop 'electron-dist\Clarify Desktop-win32-x64'
 $node = (Get-Command node -ErrorAction Stop).Source
 $npmCli = Join-Path (Split-Path -Parent $node) 'node_modules\npm\bin\npm-cli.js'
 if (-not (Test-Path -LiteralPath $npmCli)) { throw 'The installed Node npm CLI is required.' }
-$logs = Join-Path $env:TEMP ('clarify-desktop-build-' + [Guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $logs | Out-Null
 function Invoke-DesktopNpm([string[]]$Arguments) {
-    $stdout = Join-Path $logs 'npm.stdout.log'
-    $stderr = Join-Path $logs 'npm.stderr.log'
-    $process = Start-Process -FilePath $node -ArgumentList (@('"' + $npmCli + '"') + $Arguments) -WorkingDirectory $desktop -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-    if ($process.ExitCode -ne 0) {
-        Get-Content -LiteralPath $stdout, $stderr -Tail 40
-        throw 'Desktop npm command failed.'
-    }
-    Get-Content -LiteralPath $stdout -Tail 8
+    & $node $npmCli @Arguments
+    if ($LASTEXITCODE -ne 0) { throw 'Desktop npm command failed.' }
 }
 
 Push-Location $desktop

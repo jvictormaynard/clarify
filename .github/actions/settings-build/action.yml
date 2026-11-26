@@ -108,7 +108,7 @@ runs:
       if: ${{ (always() && inputs.test == 'true') }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
-        name: Settings-tests-${{ github.job }}-${{ github.sha }}
+        name: Settings-tests-${{ github.job }}-${{ runner.os }}-${{ github.sha }}
         path: desktop/test-results/
         if-no-files-found: ignore
         retention-days: 7

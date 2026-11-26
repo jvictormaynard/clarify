@@ -125,6 +125,31 @@ def control_change(paths):
     )
 
 
+def desktop_version_metadata_only(repo, base, head, paths):
+    """Permit reuse when release preparation changes only the root version."""
+    paths = set(paths)
+    required = {impact.RELEASE_INTENT, "package.json", "version.py"}
+    if not required <= paths <= required | {"CHANGELOG.md"}:
+        return False
+    if impact.release_component(repo, head) != "desktop":
+        return False
+    for ref in (base, head):
+        if not git(repo, "ls-tree", ref, "--", "package.json").startswith(
+            "100644 blob "
+        ):
+            return False
+    before, after = (
+        json.loads(
+            git(repo, "show", f"{ref}:package.json"),
+            object_pairs_hook=impact.json_object,
+        )
+        for ref in (base, head)
+    )
+    old_version = before.pop("version")
+    new_version = after.pop("version")
+    return before == after and old_version != new_version
+
+
 def emit(repo, env, event, needs, destination):
     impact.validate_ci_results(needs)
     checked = source(repo, env["GITHUB_SHA"])
@@ -226,7 +251,10 @@ def authenticate(repo, head, api=None, reference=None, now=None):
     if len(actual["parents"]) != 2:
         raise ValueError("Main source is not a two-parent merge")
     base, pr_head = actual["parents"]
-    if control_change(impact.changed_paths(repo, base, head)):
+    paths = set(impact.changed_paths(repo, base, head))
+    if desktop_version_metadata_only(repo, base, head, paths):
+        paths.remove("package.json")
+    if control_change(paths):
         raise ValueError("CI control changes require fresh validation")
     remote = api.get(f"git/commits/{head}")
     if (
@@ -316,13 +344,13 @@ def authenticate(repo, head, api=None, reference=None, now=None):
     ):
         raise ValueError("Synthetic source mismatch")
     impact.validate_ci_results(proof["needs"])
-    # These consumers need jobs/artifacts in the main run itself.
+    # The installer needs its package artifact in the main run itself.
     coverage = {
         j
         for j in JOBS
         if proof["needs"]["plan"]["outputs"][j] == "true"
         and proof["needs"][j]["result"] == "success"
-    } - {"mobile", "ios", "installer"}
+    } - {"installer"}
     current = api.get(f"actions/runs/{run_id}")
     complete(current)
     if current["run_attempt"] != attempt or current["head_sha"] != pr_head:
@@ -406,7 +434,7 @@ def validate(repo, head, expected, needs, env, api=None):
     return {j for j in JOBS if flags[j] == "true"} | coverage
 
 
-def release_coverage(api, run, expected_source):
+def release_receipt(api, run, expected_source):
     """Authenticate the main producer receipt, not inferred job-name coverage.
 
     Main emits its receipt only after verifying direct results and any exact-tree
@@ -496,7 +524,7 @@ def release_coverage(api, run, expected_source):
             raise ValueError("Invalid coverage inventory")
     reused = set(proof["reused"])
     if (
-        reused & {"mobile", "ios", "installer"}
+        "installer" in reused
         or (reused and not proof["needs"]["plan"]["outputs"].get("reuse"))
         or set(proof["coverage"]) != direct | reused
     ):
@@ -504,4 +532,8 @@ def release_coverage(api, run, expected_source):
             "Coverage differs from successful direct and authenticated reused tasks"
         )
     check_run(get(f"actions/runs/{run_id}"))
-    return set(proof["coverage"])
+    return proof
+
+
+def release_coverage(api, run, expected_source):
+    return set(release_receipt(api, run, expected_source)["coverage"])

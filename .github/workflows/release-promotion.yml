@@ -18,7 +18,9 @@ concurrency:
 jobs:
   promote:
     if: >-
-      vars.CLARIFY_RELEASE_PROMOTION_ENABLED == 'true' &&
+      (vars.CLARIFY_RELEASE_PROMOTION_ENABLED == 'true' ||
+       vars.CLARIFY_DESKTOP_RELEASE_PROMOTION_ENABLED == 'true' ||
+       vars.CLARIFY_MOBILE_RELEASE_PROMOTION_ENABLED == 'true') &&
       github.repository == 'jvictormaynard/clarify' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main' &&
@@ -39,4 +41,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CLARIFY_RELEASE_PROMOTION_ENABLED: ${{ vars.CLARIFY_RELEASE_PROMOTION_ENABLED }}
+          CLARIFY_DESKTOP_RELEASE_PROMOTION_ENABLED: ${{ vars.CLARIFY_DESKTOP_RELEASE_PROMOTION_ENABLED }}
+          CLARIFY_MOBILE_RELEASE_PROMOTION_ENABLED: ${{ vars.CLARIFY_MOBILE_RELEASE_PROMOTION_ENABLED }}
         run: python scripts/release_delivery.py promote

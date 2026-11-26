@@ -390,7 +390,7 @@ class CandidateTests(unittest.TestCase):
             with self.assertRaises(InvalidSignature):
                 candidate.verify_payload(self.files, expected, building=True)
 
-    def producer(self):
+    def producer(self, *, separate_windows=False):
         artifact = {
             "id": 456,
             "name": "desktop-candidate-123-1",
@@ -431,9 +431,22 @@ class CandidateTests(unittest.TestCase):
 
         channel, version = self.identity["channel"], self.identity["version"]
         job = successful_job(
-            candidate.BUILD_JOB, candidate.producer_steps(channel, version)
+            candidate.BUILD_JOB,
+            candidate.producer_steps(
+                channel, version, separate_windows=separate_windows
+            ),
         )
         jobs = [job]
+        if separate_windows:
+            jobs.append(
+                successful_job(
+                    candidate.WINDOWS_BUILD_JOB,
+                    [
+                        *candidate.windows_producer_steps(channel),
+                        "Upload Windows candidate inputs",
+                    ],
+                )
+            )
         if candidate.release.desktop_requires_macos(channel, version):
             jobs.append(
                 successful_job(
@@ -468,6 +481,23 @@ class CandidateTests(unittest.TestCase):
                 return self.request("GET", path)
 
         return API(), routes, run, job, artifact
+
+    def test_parallel_producer_requires_windows_inputs_from_same_attempt(self):
+        api, routes, _, seal_job, artifact = self.producer(separate_windows=True)
+        candidate.authenticate(api, self.identity, 456, artifact["digest"])
+        jobs = routes["/actions/runs/123/attempts/1/jobs"]
+        windows = next(
+            job for job in jobs if job["name"] == candidate.WINDOWS_BUILD_JOB
+        )
+        windows["run_attempt"] = 2
+        with self.assertRaisesRegex(
+            candidate.release.ReleaseError, "Windows candidate"
+        ):
+            candidate.authenticate(api, self.identity, 456, artifact["digest"])
+        windows["run_attempt"] = 1
+        seal_job["steps"].pop(0)
+        with self.assertRaisesRegex(candidate.release.ReleaseError, "Download Windows"):
+            candidate.authenticate(api, self.identity, 456, artifact["digest"])
 
     def test_producer_checks_selected_attempt_job_steps_and_artifact_identity(self):
         api, routes, run, job, artifact = self.producer()

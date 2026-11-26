@@ -37,6 +37,8 @@ require = release.require
 allowed_assets = release.desktop_assets
 WORKFLOW = ".github/workflows/release.yml"
 BUILD_JOB = "Build desktop candidate"
+WINDOWS_BUILD_JOB = "Build Windows candidate inputs"
+WINDOWS_DOWNLOAD_STEP = "Download Windows candidate inputs"
 MACOS_BUILD_JOB = "Build macOS candidate inputs"
 MACOS_BUILD_STEPS = (
     "Build Apple Silicon app",
@@ -213,13 +215,20 @@ def extract_files(data, allowed, output):
                 stream.write(archive.read(entry))
 
 
-def producer_steps(channel, version):
+def windows_producer_steps(channel):
     steps = [
         "Build portable executable",
         "Verify frozen portable replacement and recovery",
     ]
     if channel == "stable":
         steps.append("Sign portable update metadata")
+    return steps
+
+
+def producer_steps(channel, version, *, separate_windows=False):
+    steps = (
+        [WINDOWS_DOWNLOAD_STEP] if separate_windows else windows_producer_steps(channel)
+    )
     if release.desktop_requires_macos(channel, version):
         steps.extend([MACOS_DOWNLOAD_STEP, MACOS_STAGE_STEP])
     steps.extend([SEAL_STEP, "Attest candidate provenance", "Upload desktop candidate"])
@@ -279,14 +288,31 @@ def authenticate(api, expected, artifact_id, artifact_digest):
     )
     jobs = api.pages(f"/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
     channel, version = expected["channel"], expected["version"]
-    windows_steps = verify_producer_job(
-        jobs, BUILD_JOB, attempt, producer_steps(channel, version)
+    separate_windows = any(job.get("name") == WINDOWS_BUILD_JOB for job in jobs)
+    if separate_windows:
+        verify_producer_job(
+            jobs,
+            WINDOWS_BUILD_JOB,
+            attempt,
+            [*windows_producer_steps(channel), "Upload Windows candidate inputs"],
+        )
+    seal_steps = verify_producer_job(
+        jobs,
+        BUILD_JOB,
+        attempt,
+        producer_steps(channel, version, separate_windows=separate_windows),
     )
+    if separate_windows:
+        require(
+            positive(seal_steps[WINDOWS_DOWNLOAD_STEP].get("number"))
+            < positive(seal_steps[SEAL_STEP].get("number")),
+            "Download Windows candidate inputs before sealing the candidate",
+        )
     if release.desktop_requires_macos(channel, version):
         require(
-            positive(windows_steps[MACOS_DOWNLOAD_STEP].get("number"))
-            < positive(windows_steps[MACOS_STAGE_STEP].get("number"))
-            < positive(windows_steps[SEAL_STEP].get("number")),
+            positive(seal_steps[MACOS_DOWNLOAD_STEP].get("number"))
+            < positive(seal_steps[MACOS_STAGE_STEP].get("number"))
+            < positive(seal_steps[SEAL_STEP].get("number")),
             "Stage verified macOS candidate inputs before sealing the candidate",
         )
         verify_producer_job(jobs, MACOS_BUILD_JOB, attempt, MACOS_BUILD_STEPS)
@@ -952,7 +978,7 @@ def main():
                 ) as stream:
                     stream.write(f"macos_required={json.dumps(macos)}\n")
         else:
-            verify_payload(args.inputs, expected, building=True)
+            verify_payload(args.inputs, expected, building=sys.platform == "win32")
             seal(args.inputs, args.output, expected)
         print(json.dumps(expected, sort_keys=True))
 

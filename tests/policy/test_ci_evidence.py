@@ -132,11 +132,11 @@ class EvidenceTests(unittest.TestCase):
         self.needs["qt"]["result"] = "skipped"
         self.seal()
         coverage, identity = self.auth()
-        self.assertEqual(coverage, set(JOBS) - {"qt", "mobile", "ios", "installer"})
+        self.assertEqual(coverage, set(JOBS) - {"qt", "installer"})
         remaining, reference = evidence.plan(
             Path("."), self.head, set(JOBS), self.env, self
         )
-        self.assertEqual(remaining, {"qt", "mobile", "ios", "installer", "package"})
+        self.assertEqual(remaining, {"qt", "installer", "package"})
         self.assertEqual(json.loads(reference), identity)
         needs = copy.deepcopy(self.needs)
         needs["plan"]["outputs"].update(
@@ -147,8 +147,8 @@ class EvidenceTests(unittest.TestCase):
         )
         self.seal()
         evidence.validate(Path("."), self.head, set(JOBS), needs, self.env, self)
-        needs["plan"]["outputs"]["mobile"] = "false"
-        needs["mobile"]["result"] = "skipped"
+        needs["plan"]["outputs"]["qt"] = "false"
+        needs["qt"]["result"] = "skipped"
         with self.assertRaises(ValueError):
             evidence.validate(Path("."), self.head, set(JOBS), needs, self.env, self)
 
@@ -260,13 +260,40 @@ class EvidenceTests(unittest.TestCase):
         remaining, reference = evidence.plan(
             Path("."), self.head, STANDARD, self.env, self
         )
-        self.assertEqual(remaining, {"mobile", "ios"})
+        self.assertEqual(remaining, set())
         self.assertTrue(reference)
         for name in ["schedule", "workflow_dispatch", "pull_request"]:
             env = {**self.env, "GITHUB_EVENT_NAME": name}
             self.assertEqual(
                 evidence.plan(Path("."), self.head, STANDARD, env, self), (STANDARD, "")
             )
+
+    def test_root_package_version_only_allows_desktop_release_reuse(self):
+        self.paths = [
+            ".github/release-intent.json",
+            "version.py",
+            "package.json",
+            "CHANGELOG.md",
+        ]
+        versions = {
+            self.base: '{"version":"1.0.0","scripts":{"build":"old"}}',
+            self.head: '{"version":"1.0.1","scripts":{"build":"old"}}',
+        }
+
+        def git(_repo, command, ref, *_args):
+            if command == "ls-tree":
+                return "100644 blob package"
+            return versions[ref.split(":")[0]]
+
+        self.seal()
+        with (
+            patch.object(evidence.impact, "release_component", return_value="desktop"),
+            patch.object(evidence, "git", side_effect=git),
+        ):
+            self.assertIn("package", self.auth()[0])
+            versions[self.head] = '{"version":"1.0.1","scripts":{"build":"new"}}'
+            with self.assertRaisesRegex(ValueError, "CI control changes"):
+                self.auth()
 
     def test_api_uncertainty_falls_back_but_required_fails_closed(self):
         self.seal()
@@ -441,7 +468,7 @@ class EvidenceTests(unittest.TestCase):
         self.seal()
         needs = copy.deepcopy(self.needs)
         needs["plan"]["outputs"]["reuse"] = "null"
-        remaining = {"mobile", "ios", "installer", "package"}
+        remaining = {"installer", "package"}
         needs["plan"]["outputs"].update({j: str(j in remaining).lower() for j in JOBS})
         needs.update(
             {j: {"result": "success" if j in remaining else "skipped"} for j in JOBS}

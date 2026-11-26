@@ -727,6 +727,32 @@ class ReleaseDeliveryTests(unittest.TestCase):
                 )
                 self.assertEqual(self.mutations(), [])
 
+    def test_internal_promotion_checks_proof_and_only_enabled_component(self):
+        self.mobile()
+        self.intent["evidence"]["internal_testing"] = True
+        self.save_intent()
+        self.assertEqual(
+            delivery.promote(self.api, self.event, components={"desktop"}),
+            "component-disabled",
+        )
+        self.assertEqual(self.mutations(), [])
+        with patch.object(
+            delivery, "internal_ci_proof", side_effect=delivery.ReleaseError("missing")
+        ):
+            with self.assertRaisesRegex(delivery.ReleaseError, "missing"):
+                delivery.promote(self.api, self.event, components={"mobile"})
+        self.assertEqual(self.mutations(), [])
+        with patch.object(delivery, "internal_ci_proof") as proof:
+            self.assertEqual(
+                delivery.promote(self.api, self.event, components={"mobile"}),
+                "dispatched",
+            )
+            proof.assert_called_once_with(self.api, self.run, SOURCE)
+        self.assertEqual(
+            self.mutations()[-1][1]["inputs"],
+            {"mode": "testflight", "source_sha": SOURCE, "internal_testing": "true"},
+        )
+
     def test_final_ci_gate_must_be_unique_completed_and_successful(self):
         original_jobs = deepcopy(self.jobs)
         for component, tag in (
@@ -819,6 +845,34 @@ class ReleaseDeliveryTests(unittest.TestCase):
         receipt = delivery.internal_ci_proof(self.api, self.run, SOURCE)
         self.assertEqual(receipt["source"], SOURCE)
         self.assertEqual(receipt["run_id"], 42)
+        pr_run = dict(
+            self.run,
+            id=43,
+            event="pull_request",
+            head_sha=BASE,
+            name="CI",
+            run_attempt=1,
+        )
+        self.routes["/actions/runs/43"] = pr_run
+        self.routes["/actions/runs/43/attempts/1/jobs"] = {"jobs": jobs[:2]}
+        self.routes["/actions/runs/42/attempts/1/jobs"] = {"jobs": jobs[2:]}
+        main_receipt = {
+            "source": {"parents": [SOURCE, BASE]},
+            "reused": ["mobile", "ios"],
+            "needs": {
+                "plan": {"outputs": {"reuse": json.dumps({"run_id": 43, "attempt": 1})}}
+            },
+        }
+        with patch.object(evidence, "release_receipt", return_value=main_receipt):
+            reused = delivery.internal_ci_proof(self.api, self.run, SOURCE)
+            self.assertEqual(reused["source"], SOURCE)
+            self.assertEqual(reused["jobs"][0]["run_id"], 43)
+            self.assertEqual(reused["jobs"][1]["attempt"], 1)
+            self.assertNotIn("run_id", reused["jobs"][-1])
+            self.routes["/actions/runs/43"] = dict(pr_run, run_attempt=2)
+            with self.assertRaisesRegex(delivery.ReleaseError, "PR CI attempt changed"):
+                delivery.internal_ci_proof(self.api, self.run, SOURCE)
+        self.routes["/actions/runs/42/attempts/1/jobs"] = {"jobs": jobs}
         for change in (
             {"run_attempt": 2, "status": "in_progress", "conclusion": None},
             {"run_attempt": 2},
@@ -1161,6 +1215,27 @@ class ReleaseDeliveryTests(unittest.TestCase):
             },
         ]
         self.routes["/actions/runs/900/jobs"] = {"jobs": safe_jobs}
+        self.assertEqual(
+            delivery.verify_publication(
+                self.api, "mobile", SOURCE, "ios/v0.9.2-build33", 1000
+            ),
+            "publish",
+        )
+        before_upload = [
+            dict(safe_jobs[0], conclusion="success"),
+            dict(
+                safe_jobs[1],
+                conclusion="failure",
+                steps=[
+                    {
+                        "name": "Upload directly to App Store Connect",
+                        "status": "completed",
+                        "conclusion": "skipped",
+                    }
+                ],
+            ),
+        ]
+        self.routes["/actions/runs/900/jobs"] = {"jobs": before_upload}
         self.assertEqual(
             delivery.verify_publication(
                 self.api, "mobile", SOURCE, "ios/v0.9.2-build33", 1000

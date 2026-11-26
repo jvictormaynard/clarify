@@ -152,6 +152,14 @@ class ValidationPlanTests(unittest.TestCase):
     def test_settings_runs_build_then_built_and_source_contracts(self):
         self.write("desktop/src/changed.ts", "export {};\n")
         plan = validate.build_plan(self.repo)
+        if sys.platform not in {"win32", "linux"}:
+            self.assertTrue(
+                any(
+                    check["id"] == "browser-process-owner" and check.get("reason")
+                    for check in plan["checks"]
+                )
+            )
+            return
         ids = [check["id"] for check in plan["checks"]]
         self.assertLess(ids.index("desktop-build"), ids.index("desktop-test:boot"))
         self.assertLess(
