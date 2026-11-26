@@ -361,6 +361,22 @@ class NativeCatalogSelectionTests(unittest.TestCase):
             head,
         )
 
+    def test_worktree_alias_preserves_selection_but_linked_inputs_expand_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            alias = Path(directory) / "worktree"
+            try:
+                alias.symlink_to(self.root, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"Directory links unavailable: {error}")
+            self.assertEqual(
+                impact.select_jobs(["server/api.py"], repo=alias), {"server"}
+            )
+            link = self.root / "server"
+            link.symlink_to(alias, target_is_directory=True)
+            self.assertEqual(
+                impact.select_jobs(["server/api.py"], repo=alias), set(JOBS)
+            )
+
     def test_release_scope_uses_tested_intent_and_keeps_other_changed_consumers(self):
         from ci.tasks import release_jobs
 

@@ -182,10 +182,14 @@ jobs:
         working-directory: desktop
       - run: python scripts/ci.py --task settings_unit
   settings_browser:
-    name: Settings browser, bridge and production boot
+    name: Settings browser, bridge and production boot (${{ matrix.platform }})
     needs: plan
     if: needs.plan.outputs.settings_browser == 'true'
-    runs-on: ${{ needs.plan.outputs.linux }}
+    runs-on: ${{ matrix.platform == 'windows' && needs.plan.outputs.windows || needs.plan.outputs.linux }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(needs.plan.outputs.package == 'true' && '["linux","windows"]' || '["linux"]') }}
     timeout-minutes: 35
     env:
       QT_QPA_PLATFORM: offscreen
@@ -196,11 +200,11 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/python-env
         with:
-          platform: linux
+          platform: ${{ matrix.platform }}
           qt: "true"
       - uses: ./.github/actions/settings-build
         with:
-          python: ${{ env.pythonLocation }}/bin/python
+          python: ${{ matrix.platform == 'windows' && format('{0}/python.exe', env.pythonLocation) || format('{0}/bin/python', env.pythonLocation) }}
           native: "false"
   desktop_shell:
     name: Windows Electron package and native smoke

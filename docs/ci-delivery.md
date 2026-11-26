@@ -28,9 +28,11 @@ confuse the run's PR head SHA with the tested synthetic merge SHA.
 Planning uncertainty runs full CI. The main aggregate reauthenticates
 the same artifact and recomputes the original plan minus verified coverage;
 authentication failure or a changed selection fails the aggregate. Policy always
-runs fresh. Selected mobile and iOS tasks also run fresh so internal TestFlight proof still
-contains the required native jobs and steps in the main run. Installer remains
-fresh, and package remains fresh when installer needs its main-SHA artifact.
+runs fresh. Mobile and iOS can reuse the successful PR attempt when it tested
+the same tree and parents. Internal TestFlight verifies its required steps in
+the main run or the PR attempt named by the main receipt. It rejects a missing
+step or a changed attempt. Installer remains fresh and uses a package from the
+same main run.
 After verification, main emits a schema-2 coverage receipt in
 `ci-proof-<run>-<attempt>`. It binds the exact Git source, successful direct tasks
 and authenticated reused tasks to the canonical producer. Release consumers
@@ -41,7 +43,9 @@ that component's release. Missing or expired receipts fail closed. Main receipts
 are retained for 30 days; reusable PR receipts retain their two-day lifetime.
 
 CI control changes (including `ci/`, workflows/actions, scripts, policy tests and
-shared classifier inputs) disable reuse for the integration. Bootstrap therefore runs
+shared classifier inputs) disable reuse for the integration. A desktop release
+preparation can reuse PR results if its root package manifest changes only the
+version. Bootstrap therefore runs
 full CI when they affect the selector or top-level graph. Direct pushes,
 squash/rebase integrations, changed base, foreign/fork PRs and absent or expired
 artifacts use the affected plan without PR reuse. Scheduled and manual runs do
@@ -115,8 +119,9 @@ native keyboard/library tests, including typing, opening/final height and two
 fresh activation attempts. It permits the authorized internal manual return
 below. This does not establish automatic-return or App Store acceptance.
 The mobile CI job also runs Expo Doctor. Internal publication can reuse this
-proof only from successful canonical main CI at its exact source SHA and run
-attempt. Missing, failed or skipped installed coverage blocks reuse.
+proof from successful canonical main CI at its exact source SHA. The receipt
+can point to the authenticated PR attempt that supplied the native coverage.
+Missing, failed or skipped installed coverage blocks reuse.
 Strict installed typing and both automatic returns remain in default signed
 publication and the default focused manual validation.
 
@@ -194,7 +199,9 @@ Native builds use `scripts/build-desktop.ps1 -Python <path> -SkipInstall` after
 `npm ci`. The output is the complete app in `dist/desktop-shell`; inventory keeps
 `Clarify-settings.sbom.json` and `Clarify-settings-NOTICES.txt` in `dist/`.
 The portable build embeds that directory through `-DesktopShellDirectory`.
-The browser action does not repeat the independent Settings unit lane. The package
+The Settings browser job runs on Linux. When CI selects Windows packaging, it
+also runs the Windows browser and startup checks in parallel with the package
+job. The browser action does not repeat the independent Settings unit lane. The package
 job does not repeat the Electron suite from the required shell lane.
 Release candidates run native packaged smoke after building their shell.
 Electron downloads are cached by exact runtime version, platform and

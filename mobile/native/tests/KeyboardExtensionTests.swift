@@ -450,6 +450,44 @@ final class KeyboardExtensionTests: XCTestCase {
     }, evaluatedWith: nil)
     wait(for: [settled], timeout: 10)
   }
+  private func enableFullAccess(in settings: XCUIApplication) {
+    open("Clarify", in: settings)
+    let access = settings.switches["Allow Full Access"].firstMatch
+    let ready = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == true AND hittable == true AND enabled == true"), object: access)
+    guard XCTWaiter.wait(for: [ready], timeout: 10) == .completed else {
+      captureKeyboardAppearance("full-access-switch-unavailable", in: settings)
+      XCTFail("Settings did not show a usable Allow Full Access switch")
+      return
+    }
+
+    if access.value as? String == "1" { return }
+    let confirmation = settings.alerts.firstMatch
+    let allow = confirmation.buttons["Allow"].firstMatch
+    access.tap()
+    var confirmationReady = allow.waitForExistence(timeout: 5)
+    if !confirmationReady && !confirmation.exists && access.value as? String == "0" {
+      // Settings can expose the whole row as a switch. Try its trailing
+      // control once if the first tap left the switch off and showed no alert.
+      access.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+      confirmationReady = allow.waitForExistence(timeout: 5)
+    }
+    guard confirmationReady else {
+      captureKeyboardAppearance("full-access-confirmation-missing", in: settings)
+      XCTFail("Settings did not ask to allow Full Access for the installed Clarify keyboard")
+      return
+    }
+    allow.tap()
+
+    let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: confirmation)
+    guard XCTWaiter.wait(for: [dismissed], timeout: 10) == .completed else {
+      captureKeyboardAppearance("full-access-confirmation-stayed-open", in: settings)
+      XCTFail("Settings stayed on the Full Access confirmation")
+      return
+    }
+    // Settings can report a stale switch value. The installed extension checks
+    // the actual permission through its Start action.
+  }
   // Run the measured native control before selecting the installed extension.
   // This initializes the system keyboard without warming the Clarify process
   // or discarding any measured Clarify opening.
@@ -480,7 +518,6 @@ final class KeyboardExtensionTests: XCTestCase {
     continueAfterFailure = false
     executionTimeAllowance = 600
     let strictHeight = Bundle(for: Self.self).object(forInfoDictionaryKey: "ClarifyStrictOpeningHeight") as? Bool ?? true
-    let testFullAccess = true
     let app = XCUIApplication(); app.launch()
     let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
     settings.launch()
@@ -492,26 +529,16 @@ final class KeyboardExtensionTests: XCTestCase {
       XCTAssertTrue(addKeyboard.waitForExistence(timeout: 5), settings.debugDescription); addKeyboard.tap()
       open("Clarify", in: settings)
     }
-    if testFullAccess {
-      open("Clarify", in: settings)
-      let access = settings.switches["Allow Full Access"]
-      XCTAssertTrue(access.waitForExistence(timeout: 5), settings.debugDescription)
-      if access.value as? String != "1" {
-        // New Settings exposes the whole labelled row as the switch's frame;
-        // the control itself is at its trailing edge.
-        access.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        let allow = settings.alerts.buttons["Allow"]
-        if allow.waitForExistence(timeout: 3) { allow.tap() }
-      }
-      // The Settings switch can keep a stale AX value after its alert closes.
-      // Verify the permission in the extension below, where it affects Start.
-    }
+    enableFullAccess(in: settings)
     activateHost(app)
     app.textFields["composer"].tap()
     let keyboard = app.buttons["clarify.keyboard.record"]
     selectClarifyKeyboard(in: app)
-    XCTAssertTrue(app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5),
-                  "The installed extension must receive Full Access before testing activation")
+    guard app.buttons["clarify.keyboard.start"].waitForExistence(timeout: 5) else {
+      captureKeyboardAppearance("full-access-start-missing", in: app)
+      XCTFail("The installed Clarify keyboard did not show Start after Full Access setup")
+      return
+    }
     try checkTrace(in: app, opening: "Switching to the extension", strict: strictHeight)
     try captureKeyboardReference("clarify-default-uppercase", uppercase: true, in: app)
     let letter = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label == %@", "q", "Q")).firstMatch

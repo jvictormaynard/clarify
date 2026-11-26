@@ -257,9 +257,12 @@ schedule repeated checks solely to restate an unchanged block.
 
 ## Publication
 
-Validation and publication are separate. CI passing does not prove manual
-Windows acceptance, Apple availability, or a public release. Each platform has
-one publication coordinator after feature integration.
+Each platform has one release coordinator. Record the authorized outcome for
+each platform and continue ready tracks when another is blocked. Use the
+promotion workflow for candidate dispatch after successful CI when enabled.
+If it skips or fails, inspect the exact run before manual dispatch. Report the
+source SHA, run or artifact, and next gate. Track native acceptance, Apple
+upload, tester availability and public availability as distinct results.
 
 Prepare native control, isolated profiles/instances, fake routes, shortcut access
 and the test window during implementation or CI. Check Apple access/agreements

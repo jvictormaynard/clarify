@@ -9,9 +9,10 @@ exact Apple build ID through a verified manual handoff.
 
 ## Activation
 
-`CLARIFY_RELEASE_PROMOTION_ENABLED` must be exactly `true` to enable promotion.
-Unset and false values leave it inactive. Installing this architecture does not
-activate promotion, reserve a version, configure an environment, or publish.
+Set `CLARIFY_DESKTOP_RELEASE_PROMOTION_ENABLED=true` or
+`CLARIFY_MOBILE_RELEASE_PROMOTION_ENABLED=true` to enable candidate dispatch for
+the selected platform. The existing `CLARIFY_RELEASE_PROMOTION_ENABLED=true`
+enables both. Unset and false values leave promotion inactive.
 
 Preparation requires `CLARIFY_RELEASE_PREPARATION_TOKEN`, restricted to this
 repository with Contents and Pull requests write access. It must create PR events
@@ -99,8 +100,11 @@ python scripts/release_delivery.py notes --tag vX.Y.Z --output release-notes.md
 
 ## Build, accept and publish a desktop candidate
 
-The build packages once with the final channel/version identity. It retains
-locked dependencies, current audits, Settings payload verification, frozen
+Windows and macOS package in parallel with the final channel and version.
+A separate job verifies and seals their outputs from the same run and attempt.
+Stable candidates use the authenticated Settings browser result from CI.
+Previews run the browser suite during packaging. Both retain locked
+dependencies, current audits, packaged Settings smoke and payload verification, frozen
 portable replacement/recovery smoke checks, licenses, merged runtime SBOM,
 pinned Qt/SoX sources, checksums, signed stable update metadata and provenance.
 New previews and stable versions after v0.18.0 include `Clarify-macos-arm64.zip`
@@ -177,8 +181,8 @@ preview tag also stops. Never use `--clobber` or move the tag to conceal a gap.
 `scripts/release_delivery.py` owns reviewed preparation and source authorization.
 The exact intent fields are `schema` (integer `2`), `component`, `version`,
 `base_sha`, `notes` and `evidence`. Duplicate and unknown fields fail. Desktop
-evidence contains only `report_url`. Mobile evidence contains exactly the fields
-below. Schema 1 is retired; do not retain both authorization systems.
+evidence contains only `report_url`. Mobile evidence contains the reservation
+fields below and can include the internal testing choice.
 
 Release checks authenticate canonical `jvictormaynard/clarify`, workflow name
 `CI`, path `.github/workflows/ci.yml`, completed successful main `push`, exact
@@ -199,8 +203,10 @@ apply. Promotion never moves a tag, and publication never rebuilds accepted byte
 
 Enabled **Release Promotion** handles only a dedicated preparation merge. It
 creates the immutable tag and dispatches `action=build-candidate, channel=stable`
-for desktop, or `mode=testflight` for mobile. It never dispatches desktop
-publication. Ordinary merges with an old intent are inert. Existing runs prevent
+for desktop, or `mode=testflight` for mobile. Mobile preparation can select internal
+testing in its reviewed evidence. Promotion verifies that CI proof before
+tagging and dispatches the internal build when eligible. Desktop publication
+uses its separate workflow action. Ordinary merges with an old intent are inert. Existing runs prevent
 a second automatic dispatch. Desktop releases share a serialized queue. An
 overflow cancellation is an open gate and needs inspection before a manual run.
 
@@ -225,7 +231,9 @@ Run **Release Preparation** on `main`, select `mobile`, stable `version`, decima
 }
 ```
 
-The inventory check must be within 24 hours at preparation. Recheck reservation
+For an authorized internal TestFlight build, add `"internal_testing": true`
+to the evidence before review. Omit the field for strict testing. The inventory
+check must be within 24 hours at preparation. Recheck reservation
 conflicts before merge. The metadata-only PR changes `mobile/app.json` and the
 schema-2 intent. Its reviewed merge and exact green main CI permit an immutable
 `ios/vX.Y.Z-buildN` tag. App, keyboard and activity versions/builds derive from
@@ -236,10 +244,11 @@ Direct Xcode remains the signing owner. Validation is the default.
 
 For an explicitly authorized internal test, `internal_testing=true` reuses the
 successful canonical main CI at the exact source SHA. The gate requires a
-completed successful CI attempt, its required aggregate, Expo Doctor and native
-steps, including the installed-keyboard fixture with two fresh activation
-attempts. Old CI without that installed coverage, missing steps, skipped tests
-and failed runs cannot authorize reuse. The upload retains a receipt with the
+completed successful main CI attempt, its required aggregate, Expo Doctor and
+native steps, including the installed-keyboard fixture with two fresh activation
+attempts. When main reused either task, the main receipt identifies the tested
+PR attempt and the upload gate verifies those steps in that attempt. Reuse
+requires successful installed-keyboard coverage. The upload retains a receipt with the
 source, CI run, attempt and job IDs. It omits repeated JavaScript, Expo Doctor,
 Swift, UIKit and installed tests, and the full app UI run. Ordinary CI retains
 both app profiles and the unsigned build. Dependency installation and patches,

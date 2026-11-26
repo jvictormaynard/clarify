@@ -496,8 +496,8 @@ not install it. The build requires a .NET SDK because
    after all PR checks pass. No second-person approval is required.
 5. With promotion enabled, successful post-merge CI creates an immutable tag on
    that exact current main commit and explicitly dispatches Desktop Release.
-   Ordinary code pushes do not publish. Promotion is inactive when
-   `CLARIFY_RELEASE_PROMOTION_ENABLED` is false or unset.
+   See [promotion activation](release-automation.md#activation) for the desktop
+   setting.
 6. Desktop Release builds the unsigned portable EXE, runtime-lock CycloneDX
    SBOM, checksum, ZIP, SoX and Qt/PySide source archives, and provenance
    attestations, plus portable update metadata and its detached Ed25519 signature.

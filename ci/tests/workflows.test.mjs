@@ -93,6 +93,10 @@ test('Settings unit tests need neither Qt nor a browser', () => {
   assert.ok(!ci.jobs.settings_unit.steps.some(step => /playwright|python-env|settings-build/.test(step.uses || step.run || '')));
   const step = ci.jobs.settings_browser.steps.find(step => step.uses === './.github/actions/settings-build');
   assert.equal(step.with.native, 'false');
+  const browser = ci.jobs.settings_browser;
+  assert.equal(browser.strategy['fail-fast'], false);
+  assert.match(browser.strategy.matrix.platform, /outputs\.package == 'true'.*\["linux","windows"\].*\["linux"\]/);
+  assert.match(browser['runs-on'], /matrix\.platform == 'windows'/);
 });
 
 test('Windows builds embed the complete Electron shell without a Rust toolchain', () => {
@@ -101,7 +105,7 @@ test('Windows builds embed the complete Electron shell without a Rust toolchain'
   for (const command of ['npm ci', '../scripts/javascript_dependency_audit.py --component desktop', 'npm run build',
     '../scripts/ci.py --task settings_browser',
     'build-desktop.ps1 -Python $env:BUILD_PYTHON -SkipInstall']) assert.ok(commands.includes(command), command);
-  for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_candidate]) {
+  for (const job of [ci.jobs.package, workflows.get('release.yml').jobs.build_windows]) {
     const settings = job.steps.findIndex(step => step.uses === './.github/actions/settings-build');
     const packaging = job.steps.findIndex(step => step.run?.includes('scripts\\build.ps1') || step.run?.includes('scripts/build.ps1'));
     assert.ok(settings >= 0 && settings < packaging);
@@ -129,8 +133,9 @@ test('Electron native validation is selected, isolated and retains failure evide
   assert.ok(!action.runs.steps.some(step => /cargo|rustc|src-tauri/.test(step.run || JSON.stringify(step.with || {}))));
   assert.ok(!action.runs.steps.some(step => /--task desktop_shell|npm run test:electron$/.test(step.run || '')));
   assert.equal(ci.jobs.package.steps.find(step => step.uses === './.github/actions/settings-build').with.test, 'false');
-  const release = workflows.get('release.yml').jobs.build_candidate.steps.find(step => step.uses === './.github/actions/settings-build');
+  const release = workflows.get('release.yml').jobs.build_windows.steps.find(step => step.uses === './.github/actions/settings-build');
   assert.equal(release.with.smoke, 'true');
+  assert.equal(release.with.test, "$" + "{{ inputs.channel == 'preview' }}");
   assert.ok(action.runs.steps.some(step => step.if?.includes("inputs.smoke == 'true'") && step.run?.includes('npm run test:electron:smoke')));
 });
 
@@ -217,7 +222,15 @@ test('desktop publication consumes a sealed candidate across a permission bounda
   const mac = release.jobs.build_macos;
   assert.equal(mac['runs-on'], 'macos-26');
   assert.equal(mac.permissions.contents, 'read');
-  assert.ok(release.jobs.build_candidate.needs.includes('build_macos'));
+  const windows = release.jobs.build_windows;
+  assert.equal(windows.needs, 'build_gate');
+  assert.equal(mac.needs, 'build_gate');
+  assert.deepEqual(release.jobs.build_candidate.needs, ['build_gate', 'build_windows', 'build_macos']);
+  const windowsUpload = windows.steps.find(step => step.name === 'Upload Windows candidate inputs');
+  const windowsDownload = release.jobs.build_candidate.steps.find(step => step.name === 'Download Windows candidate inputs');
+  assert.equal(windowsUpload.with.name, windowsDownload.with.name);
+  assert.match(windowsUpload.with.name, /github\.run_id.*github\.run_attempt/);
+  assert.equal(release.jobs.build_candidate.environment, undefined);
   const macUpload = mac.steps.find(step => step.name === 'Upload macOS candidate inputs');
   const macDownload = release.jobs.build_candidate.steps.find(step => step.name === 'Download macOS candidate inputs');
   assert.equal(macUpload.with.name, macDownload.with.name);
@@ -226,7 +239,7 @@ test('desktop publication consumes a sealed candidate across a permission bounda
   assert.match(macDownload.with.path, /runner\.temp.*macos-candidate-inputs/);
   const names = release.jobs.build_candidate.steps.map(step => step.name);
   const required = JSON.parse(execFileSync(process.env.CLARIFY_TEST_PYTHON || 'python', [
-    '-c', 'import json; from scripts.release_candidate import producer_steps; print(json.dumps({c:producer_steps(c, "0.19.0") for c in ("preview","stable")}))',
+    '-c', 'import json; from scripts.release_candidate import producer_steps; print(json.dumps({c:producer_steps(c, "0.19.0", separate_windows=True) for c in ("preview","stable")}))',
   ], { cwd: root }));
   for (const expected of Object.values(required)) for (const name of expected) {
     assert.equal(names.filter(value => value === name).length, 1, name);

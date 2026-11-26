@@ -62,9 +62,9 @@ future rollout gates in `docs/windows-distribution.md`.
 The reviewed source must remain reachable in canonical main. Later unrelated
 merges do not invalidate that fixed candidate. Create an
 immutable annotated stable tag on that source only when authorized. With
-`CLARIFY_RELEASE_PROMOTION_ENABLED=true`, promotion can create the tag and
-explicitly dispatch the stable candidate build. Unset/false remains inactive.
-Promotion never dispatches desktop publication.
+desktop promotion enabled, GitHub Actions creates the tag and dispatches the
+stable candidate build after CI passes. Check the promotion result before
+considering manual dispatch. Desktop publication uses its own control.
 
 Dispatch **Desktop Release** on the reviewed stable tag with
 `action=build-candidate`, `channel=stable` and exact `source_sha`. Preview uses

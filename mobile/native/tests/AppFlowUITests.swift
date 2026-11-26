@@ -132,18 +132,24 @@ final class AppFlowUITests: XCTestCase {
     let keyboard = app.keyboards.firstMatch
     XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Keep the keyboard open for \(identifier)")
     let button = app.buttons[identifier].firstMatch
-    XCTAssertTrue(button.waitForExistence(timeout: 15))
-    if !button.isHittable {
-      // Use the visible viewport above the system keyboard, including on Account.
-      guard reveal(button, identifier: identifier) else { return }
+    guard button.waitForExistence(timeout: 15) else {
+      diagnose("missing-keyboard-action-\(identifier)")
+      XCTFail("Missing action with the keyboard open: \(identifier)")
+      return
     }
-    let reachable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: button)
-    XCTAssertEqual(XCTWaiter.wait(for: [reachable], timeout: 5), .completed, "Reach \(identifier) with the keyboard open")
+    let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: button)
+    guard XCTWaiter.wait(for: [enabled], timeout: 15) == .completed else {
+      diagnose("disabled-keyboard-action-\(identifier)")
+      XCTFail("Action stayed disabled with the keyboard open: \(identifier)")
+      return
+    }
+    // During keyboard layout, XCTest can report a button as hittable before
+    // its frame settles. Check the visible viewport on every submission.
+    guard reveal(button, identifier: identifier) else { return }
     XCTAssertTrue(keyboard.exists && keyboard.isHittable, "Scrolling must keep the keyboard open")
     XCTAssertTrue(field.isHittable, "Keep the input visible beside its action")
     XCTAssertEqual(field.value as? String, value, "Scrolling must retain the complete input")
-    capture("keyboard-action-ready-\(identifier)")
-    press(identifier, allowScroll: false)
+    button.tap()
   }
   func enter(_ value: String, in field: XCUIElement, name: String, replacing: Bool = false) {
     XCTAssertTrue(field.waitForExistence(timeout: 15))
