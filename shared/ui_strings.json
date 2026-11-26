@@ -9119,6 +9119,16 @@
     "en": "Would you like to edit the text?",
     "es": "¿Quieres ajustar el texto?"
   },
+  "setup_cloud_speech_title": {
+    "pt": "Configure a transcrição",
+    "en": "Set up transcription",
+    "es": "Configura la transcripción"
+  },
+  "setup_cloud_speech_hint": {
+    "pt": "Abra Modelos e serviços para conectar um serviço de transcrição neste Mac.",
+    "en": "Open Models and services to connect a transcription service on this Mac.",
+    "es": "Abre Modelos y servicios para conectar un servicio de transcripción en este Mac."
+  },
   "setup_install": {
     "pt": "Prepare seu primeiro ditado",
     "en": "Prepare your first dictation",

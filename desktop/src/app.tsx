@@ -65,6 +65,10 @@ export function App() {
     const completed = setupWasRequired.current && !controller.state.onboardingRequired;
     setupWasRequired.current = controller.state.onboardingRequired;
     if (completed) {
+      if (setupPurpose.current === "cloud-settings") {
+        void currentController.current.navigate("models");
+        return;
+      }
       if (setupPurpose.current !== "dictation") void currentController.current.navigate("meetings");
       if (setupPurpose.current !== "meetings") void controller.run("practiceCommand", "open");
     }

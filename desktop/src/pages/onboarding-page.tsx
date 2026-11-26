@@ -12,9 +12,10 @@ import { ChatGPTPlan } from "../components/chatgpt-plan";
 import type { SettingsPageProps } from "../settings/use-settings";
 
 const dictationSteps = ["language", "purpose", "account", "speech", "welcome", "text", "install"] as const;
+const cloudSpeechSteps = ["language", "purpose", "account", "speech"] as const;
 const meetingSteps = ["language", "purpose"] as const;
 type Step = typeof dictationSteps[number];
-export type SetupPurpose = "dictation" | "meetings" | "both";
+export type SetupPurpose = "dictation" | "meetings" | "both" | "cloud-settings";
 const setupFeatures = [
   { id: "dictation", title: "setup_purpose_dictation", hint: "setup_purpose_dictation_hint", Icon: Mic },
   { id: "meetings", title: "setup_purpose_meetings", hint: "setup_purpose_meetings_hint", Icon: CalendarDays },
@@ -46,7 +47,8 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
   const [features, setFeatures] = useState({ dictation: true, meetings: false });
   const meetingsOnly = features.meetings && !features.dictation;
   const hasFeature = features.dictation || features.meetings;
-  const steps: readonly Step[] = meetingsOnly ? meetingSteps : dictationSteps;
+  const cloudSpeechSetup = setup?.cloudSpeechSetup === true;
+  const steps: readonly Step[] = meetingsOnly ? meetingSteps : cloudSpeechSetup ? cloudSpeechSteps : dictationSteps;
   const [language, setLanguage] = useState(setup?.language || "auto");
   const [speech, setSpeech] = useState("");
   const [provider, setProvider] = useState("chatgpt");
@@ -89,7 +91,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
   const command = (action: "recommend" | "prepare_speech" | "complete" | "connect_opencode" | "cancel" | "reset_text_choice" | "cuda_license", overrides: Partial<typeof options> = {}) =>
     run("personalSetupCommand", action, JSON.stringify({ ...options, ...overrides }));
   const enterSpeech = async () => {
-    if (!pending && await command("recommend")) setStep("speech");
+    if (!pending && (cloudSpeechSetup || await command("recommend"))) setStep("speech");
   };
   const next = async () => {
     if (pending) return;
@@ -109,7 +111,14 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
       if (!await selectText(provider)) return;
       if (provider === "none") { setStep("install"); return; }
     }
-    if (step === "speech" && !await command("prepare_speech")) return;
+    if (step === "speech") {
+      if (cloudSpeechSetup) {
+        onChoosePurpose("cloud-settings");
+        await run("completeOnboarding", "cloud-settings", "");
+        return;
+      }
+      if (!await command("prepare_speech")) return;
+    }
     if (step === "install") {
       setSaving(true);
       try { await command("complete"); } finally { setSaving(false); }
@@ -140,7 +149,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
   const skipText = async () => {
     if (!pending && await selectText("none")) setStep("install");
   };
-  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", purpose: "setup_choose_purpose", account: "setup_clarify_account", speech: "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
+  const titles: Record<Step, string> = { welcome: "setup_choose_rewriting", language: "setup_choose_language", purpose: "setup_choose_purpose", account: "setup_clarify_account", speech: cloudSpeechSetup ? "setup_cloud_speech_title" : "setup_speech", text: provider === "opencode" ? "setup_free_models_title" : provider === "chatgpt" ? "setup_subscription_title" : "setup_connect_plan", install: "setup_install" };
   return <main className="onboarding onboarding-page onboarding-flow personal-setup" data-step={step}>
     <div className="onboarding-content">
       <div className="setup-progress" role="progressbar" aria-label={t("setup_progress")}
@@ -186,7 +195,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
           ].map(({ id, title, hint, icon: Icon }) => <button key={id} type="button" role="radio" aria-checked={setupChoice === id} disabled={pending}
             className="setup-choice" onClick={() => setProvider(id === "openai" && setupChoice === "openai" ? provider : id)}><span className="setup-provider-brand"><Icon /></span><span><strong>{t(title)}</strong><small>{t(hint)}</small></span><span className="setup-radio" aria-hidden="true">{setupChoice === id && <Check size={12} />}</span></button>)}
         </div>}
-        {step === "speech" && <>
+        {step === "speech" && (cloudSpeechSetup ? <p>{t("setup_cloud_speech_hint")}</p> : <>
           <Picker label={t("setup_languages")} value={language} options={state.languages.map(id => ({ id, label: id === "auto" ? t("setup_auto_language") : new Intl.DisplayNames([state.uiLanguage || "en"], { type: "language" }).of(id) || id }))}
             onChange={async id => { if (id !== language && await command("recommend", { language: id })) setLanguage(id); }} disabled={pending} />
           <div className="setup-recommendation setup-speech-card">
@@ -205,7 +214,7 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
             {speechDescription && <p className="hint">{t(speechDescription)}</p>}
             <Button variant="text" disabled={pending} onClick={() => void command("recommend")}>{t("setup_check_again")}</Button>
           </SettingsDisclosure>
-        </>}
+        </>)}
         {step === "text" && <>
           <div className="setup-provider-section">
             <p className="setup-field-label" id="setup-provider-label">{t("setup_text_service")}</p>
@@ -271,9 +280,9 @@ export function OnboardingPage({ controller, onChoosePurpose }: SettingsPageProp
       <div className="onboarding-flow-actions setup-footer">
         {setup?.busy ? <Button onClick={() => state.chatgptState?.busy ? void run("chatgptCommand", "cancel", "") : void command("cancel")}>{t("Cancelar")}</Button> : step === "text" && selected && !selected.connected
           ? <Button variant="primary" disabled={pending} onClick={() => void connectText()}>{t(provider === "opencode" && !selected.runtimeInstalled ? "setup_connect" : connectionAction)}</Button>
-          : step === "speech" && !speech && !usesRecommendation
+          : step === "speech" && !cloudSpeechSetup && !speech && !usesRecommendation
           ? <Button variant="primary" disabled={pending} onClick={() => void command("recommend")}>{t("setup_check_again")}</Button>
-          : (step !== "account" || account?.signedIn) && (step !== "install" || installed) && (step !== "text" || textReady) && <Button variant="primary" disabled={pending || !setup || (step === "purpose" && !hasFeature)} onClick={() => void next()}>{t(step === "install" ? "setup_practice" : "Continuar")}</Button>}
+          : (step !== "account" || account?.signedIn) && (step !== "install" || installed) && (step !== "text" || textReady) && <Button variant="primary" disabled={pending || !setup || (step === "purpose" && !hasFeature)} onClick={() => void next()}>{t(step === "install" ? "setup_practice" : step === "speech" && cloudSpeechSetup ? "Modelos e serviços" : "Continuar")}</Button>}
         {step !== "language" && (step !== "account" || account?.signedIn || accountStep === "methods") && <Button variant={step === "text" ? "default" : "text"} disabled={pending} onClick={() => setStep(step === "install" && provider === "none" ? "welcome" : steps[steps.indexOf(step) - 1])}>{step !== "text" && <ArrowLeft size={16} />}{t("Voltar")}</Button>}
         {step === "text" && provider !== "none" && !setup?.busy && <Button variant="text" disabled={pending} onClick={() => void skipText()}>{t("setup_skip_text")}</Button>}
       </div>

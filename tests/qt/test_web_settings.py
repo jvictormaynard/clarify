@@ -41,6 +41,17 @@ class WebSettingsTests(unittest.TestCase):
             args = (*args, self.settings.snippetContext)
         return self.protocol.dispatch({"id": 7, "method": method, "args": list(args)})
 
+    def test_cloud_speech_setup_opens_settings_without_starting_practice(self):
+        with patch.object(
+            self.settings, "_requires_cloud_speech_setup", return_value=True
+        ):
+            self.assertTrue(self.settings.personalSetupState["cloudSpeechSetup"])
+            result = self.request("completeOnboarding", "cloud-settings", "")
+        self.assertFalse(result["result"]["onboardingRequired"])
+        self.assertFalse(
+            self.settings._config_repository.load().onboarding_practice_pending
+        )
+
     def test_microphone_start_waits_until_the_frontend_acknowledges_audio_stop(self):
         import threading
         from clarify.desktop.qml_runtime import QtRecordingSession
