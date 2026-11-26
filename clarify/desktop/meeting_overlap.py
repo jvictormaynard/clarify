@@ -584,6 +584,13 @@ def _repeated(words, other):
 
 
 def _project(block, recovered):
+    turns = _project_system(block, recovered)
+    if turns is None or not block.microphone_turns:
+        return turns
+    return sorted(block.microphone_turns + turns, key=lambda turn: turn["start"])
+
+
+def _project_system(block, recovered):
     # Resolve word positions against the mixed transcript before pruning repeated
     # text. The original text and speaker turns remain in the database.
     timed = _timed_words(block.text, block.tokens)

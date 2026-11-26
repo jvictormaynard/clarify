@@ -545,6 +545,7 @@ class Capture:
     previous_status: str
     lease_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     microphone: str = ""
+    native_channels: bool = False
     windows_channels: bool = False
     light_threads: int | None = None
     system_signal_samples: int = 0
@@ -565,7 +566,9 @@ class Capture:
 
     @property
     def separate_channels(self):
-        return self.windows_channels and self.light_threads is None
+        return self.native_channels or (
+            self.windows_channels and self.light_threads is None
+        )
 
     @property
     def mix_windows_channels(self):
@@ -993,6 +996,7 @@ class Meetings:
         capture = self.capture = Capture(
             meeting["id"], language, meeting["duration"], meeting["status"]
         )
+        capture.native_channels = source == "system" and self.system_audio is not None
         capture.windows_channels = (
             sys.platform == "win32" and source == "system" and self.system_audio is None
         )
@@ -1081,20 +1085,24 @@ class Meetings:
             ):
                 raise MeetingError("capture_unavailable")
             try:
-                packet = (pcm, microphone)
+                valid_system_frames = 0
                 if capture.windows_channels and capture.system_signal_samples < 160:
                     capture.system_signal_samples += sum(
                         abs(sample) >= 328
                         for (sample,) in struct.iter_unpack("<h", pcm)
                     )
                     system_audio = capture.system_signal_samples >= 160
-                if self.active["source"] == "system" and self.system_audio is not None:
+                if capture.native_channels:
                     if capture.system_tap is None:
                         raise MeetingError("capture_unavailable")
-                    mixed, system, valid, system_audio = capture.system_tap.mix(pcm)
-                    packet = (mixed, (pcm, system, valid))
+                    _, system, valid_system_frames, system_audio = (
+                        capture.system_tap.mix(pcm)
+                    )
+                    pcm, microphone = system, pcm
                 received = time.monotonic()
-                capture.packets.put_nowait((*packet, received))
+                capture.packets.put_nowait(
+                    (pcm, microphone, valid_system_frames, received)
+                )
                 capture.last_input = received
                 if (
                     self.active["source"] == "system"
@@ -1275,8 +1283,12 @@ class Meetings:
             if isinstance(capture.speaker_context, SourceContext)
             else None
         )
-        source_buffer = SourceBuffer(source_context) if open_system_tap else None
         label_enabled = capture.light_threads is None and self.speakers_ready()
+        source_buffer = (
+            SourceBuffer(source_context)
+            if capture.native_channels and label_enabled
+            else None
+        )
         mixed_windows = (
             sys.platform == "win32" and label_enabled and not open_system_tap
         )
@@ -1292,7 +1304,7 @@ class Meetings:
         )
         timeline = (
             SourceTimeline(capture.start)
-            if source_buffer is not None or mixed_windows or capture.separate_channels
+            if mixed_windows or capture.separate_channels
             else None
         )
         current_result = microphone_result = None
@@ -1346,19 +1358,28 @@ class Meetings:
                 def partial_end(result):
                     return start + (result.received_seconds if result else 0)
 
-                self.partial_turns = ordered_turns(
-                    channel_turns(
-                        current_result, "system", partial_end(current_result)
-                    ),
-                    channel_turns(
-                        microphone_result, "mic", partial_end(microphone_result)
-                    ),
+                end = partial_end(current_result)
+                remote = channel_turns(current_result, "system", end)
+                microphone = channel_turns(
+                    microphone_result, "mic", partial_end(microphone_result)
                 )
+                self.partial_turns = ordered_turns(remote, microphone)
                 self.partial = " ".join(turn["text"] for turn in self.partial_turns)
+                capture.projected_partial = None
+                if capture.overlap is not None and current_result is not None:
+                    capture.projected_partial = capture.overlap.project(
+                        TranscriptBlock(
+                            start,
+                            end,
+                            current_result.text,
+                            current_result.tokens,
+                            remote,
+                            microphone,
+                        )
+                    )
                 return
             if current_result is None:
                 self.partial_turns = []
-                capture.projected_partial = None
                 return
             end = start + current_result.received_seconds
             self.partial_turns = timeline.turns(
@@ -1367,16 +1388,6 @@ class Meetings:
                 current_result.text,
                 current_result.tokens,
             )
-            if capture.overlap is not None:
-                capture.projected_partial = capture.overlap.project(
-                    TranscriptBlock(
-                        start,
-                        end,
-                        current_result.text,
-                        current_result.tokens,
-                        self.partial_turns,
-                    )
-                )
 
         def publish(result):
             nonlocal checkpoint_text, current_result
@@ -1395,12 +1406,18 @@ class Meetings:
                 update_partial_turns()
 
         def annotate_segment(block):
-            turns = timeline.turns(block.start, block.end, block.text, block.tokens)
+            turns = timeline.turns(
+                block.start, block.end, block.text, block.tokens, source="system"
+            )
             if turns == block.turns:
                 return
             try:
                 self.store.annotate(
-                    capture.meeting_id, block.start, block.end, block.text, turns
+                    capture.meeting_id,
+                    block.start,
+                    block.end,
+                    block.checkpoint_text,
+                    ordered_turns(turns, block.microphone_turns),
                 )
             except (OSError, sqlite3.Error):
                 self.error = "meeting_storage_failed"
@@ -1668,8 +1685,8 @@ class Meetings:
                 )
             if source_buffer is not None:
                 return SourceSpeakerWorker(
-                    engine.verified_library if label_enabled else None,
-                    self.speaker_assets if label_enabled else None,
+                    engine.verified_library,
+                    self.speaker_assets,
                     next_speaker,
                     source_context,
                     capture.speaker_abort,
@@ -1678,6 +1695,7 @@ class Meetings:
                     observe=observe_overlap if capture.overlap is not None else None,
                     embedding_assets=self.overlap_embedding_assets,
                     capture_end=capture.end,
+                    remote_only=True,
                 )
             return SpeakerWorker(
                 engine.verified_library,
@@ -1733,6 +1751,8 @@ class Meetings:
             with self.lock:
                 if capture.separate_channels:
                     mic_turns = channel_turns(microphone_result, "mic", duration)
+                    if capture.native_channels:
+                        remote_turns = channel_turns(result, "system", duration)
                     finalized_segment = checkpoint_segment(duration)
                 elif mixed_windows:
                     turns = timeline.turns(window_start, duration, text, result.tokens)
@@ -1754,12 +1774,12 @@ class Meetings:
                     )
                     recent_segments.append(segment)
                     if capture.separate_channels:
-                        segment.turns = turns
+                        segment.turns = (
+                            remote_turns if capture.native_channels else turns
+                        )
                         segment.microphone_turns = mic_turns
                     elif mixed_windows:
                         segment.turns = turns
-                    else:
-                        annotate_segment(segment)
                     if capture.overlap is not None:
                         capture.overlap.remember(segment)
                     segment.checkpoint_text = saved_text
@@ -1887,7 +1907,9 @@ class Meetings:
                 ):
                     raise MeetingError("capture_failed")
                 try:
-                    packet, sources, received = capture.packets.get(timeout=0.1)
+                    packet, microphone, valid_system_frames, received = (
+                        capture.packets.get(timeout=0.1)
+                    )
                 except queue.Empty:
                     if time.monotonic() - capture.last_input > 8:
                         self.interrupt(capture.meeting_id)
@@ -1900,11 +1922,14 @@ class Meetings:
                                 capture.language, publish_microphone
                             )
                     chunk = packet[offset : offset + MAX_CHUNK]
+                    mic_chunk = (
+                        microphone[offset : offset + len(chunk)]
+                        if microphone is not None
+                        else None
+                    )
                     if capture.mix_windows_channels:
-                        chunk = mix_pcm16(sources[offset : offset + len(chunk)], chunk)
-                    mic_chunk = None
+                        chunk = mix_pcm16(mic_chunk, chunk)
                     if microphone_live is not None:
-                        mic_chunk = sources[offset : offset + len(chunk)]
                         microphone_live.feed(mic_chunk, timeout=2)
                     if capture.light_threads is not None:
                         # The capture queue bounds live buffering while the ASR queue waits.
@@ -1931,13 +1956,14 @@ class Meetings:
                                 or fed - feed_started >= WINDOWS_FEED_WAIT
                             ),
                         )
-                    if source_worker is not None and sources is not None:
-                        microphone, system, valid = sources
-                        end = offset + len(chunk)
+                    if source_worker is not None:
                         source_buffer.append(
-                            microphone[offset:end],
-                            system[offset:end],
-                            min(len(chunk) // 2, max(0, valid - offset // 2)),
+                            mic_chunk,
+                            chunk,
+                            min(
+                                len(chunk) // 2,
+                                max(0, valid_system_frames - offset // 2),
+                            ),
                         )
                         stride = (
                             meeting_overlap.STRIDE_SECONDS
@@ -1952,7 +1978,7 @@ class Meetings:
                     peak = max(
                         abs(value[0]) for value in struct.iter_unpack("<h", chunk)
                     )
-                    if mic_chunk is not None:
+                    if microphone_live is not None:
                         peak = max(
                             peak,
                             max(

@@ -568,7 +568,9 @@ class SourceVoices:
             for speakers, speaker in zip(active, tracked)
         ]
 
-    def analyze(self, window, recognizer, observe=None, *, final=False):
+    def analyze(
+        self, window, recognizer, observe=None, *, final=False, remote_only=False
+    ):
         count = len(window.known) // BIN_FRAMES
         mic = list(_activity(window.microphone, count, 260))
         system = list(_activity(window.system, count, 160))
@@ -607,7 +609,7 @@ class SourceVoices:
             local = sum(mic[max(0, i - 3) : i + 4]) >= 2
             nearby_system = system[max(0, i - 10) : i + 11]
             coverage = known[max(0, i - 10) : i + 11]
-            if local:
+            if local and not remote_only:
                 enough_coverage = len(coverage) == 21 and sum(coverage) >= 18
                 label = (
                     LOCAL_MICROPHONE
@@ -731,7 +733,9 @@ class SourceSpeakerWorker:
         observe=None,
         embedding_assets=None,
         capture_end=None,
+        remote_only=False,
     ):
+        self.remote_only = remote_only
         self.jobs = queue.Queue(1)
         self.finished = threading.Event()
         self.labeling = SourceVoices(next_speaker, context)
@@ -802,6 +806,7 @@ class SourceSpeakerWorker:
                             window,
                             recognizer,
                             observe,
+                            remote_only=self.remote_only,
                             final=self.finished.is_set()
                             or (inference is not None and inference.end.is_set()),
                         )
@@ -811,7 +816,9 @@ class SourceSpeakerWorker:
                         failed(error)
                         stack.close()
                         recognizer = None
-                        labels = labeling.analyze(window, None)
+                        labels = labeling.analyze(
+                            window, None, remote_only=self.remote_only
+                        )
                     if not abort.is_set():
                         publish(window.start, labels)
             except Exception as error:
