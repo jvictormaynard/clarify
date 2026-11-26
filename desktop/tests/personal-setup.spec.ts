@@ -382,7 +382,7 @@ test.describe("Mac without a local speech runtime", () => {
     await expect(page.getByRole("heading", { name: "Set up transcription" })).toBeFocused();
     await expect(page.getByText(/Whisper|Download and install/)).toHaveCount(0);
     await page.getByRole("button", { name: "Models and services", exact: true }).click();
-    await expect(page.getByRole("tab", { name: "Services and local models" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Audio transcription", exact: true })).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".personal-setup")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Meetings", exact: true })).toHaveAttribute("aria-current", "page");

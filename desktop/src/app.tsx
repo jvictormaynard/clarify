@@ -68,7 +68,7 @@ export function App() {
     if (completed) {
       if (setupPurpose.current !== "dictation") void currentController.current.navigate("meetings");
       if (setupCloudSpeech.current) {
-        void currentController.current.navigate("models");
+        void currentController.current.openModelsTab("transcription");
         return;
       }
       if (setupPurpose.current !== "meetings") void controller.run("practiceCommand", "open");
