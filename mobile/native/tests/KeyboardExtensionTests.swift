@@ -558,12 +558,22 @@ final class KeyboardExtensionTests: XCTestCase {
     for punctuation in [".", "?", "!"] {
       // Letter and number controls expose keyboardKey, not the button trait.
       app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "123")).firstMatch.tap()
-      app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", punctuation)).firstMatch.tap()
+      let mark = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", punctuation)).firstMatch
+      let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == true AND hittable == true"), object: mark)
+      guard XCTWaiter.wait(for: [ready], timeout: 5) == .completed else {
+        XCTFail("The numeric page must show a usable \(punctuation) key")
+        return
+      }
+      mark.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+      sentence += punctuation
+      expectText(sentence, in: app)
       app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["space", "espaço", "espacio"])).firstMatch.tap()
+      sentence += " "
+      expectText(sentence, in: app)
       let capital = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "A")).firstMatch
       XCTAssertTrue(capital.waitForExistence(timeout: 5), "Sentence shift must activate after \(punctuation)")
       capital.tap()
-      sentence += punctuation + " A"
+      sentence += "A"
       expectText(sentence, in: app)
     }
     for index in 0..<4 {
