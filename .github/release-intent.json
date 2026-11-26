@@ -1,10 +1,14 @@
 {
   "schema": 2,
-  "component": "desktop",
-  "version": "0.19.1",
-  "base_sha": "5a9bafd48794dd8569341fc4cbd1db8f9e0f3ee0",
-  "notes": "Build the Windows x64 and Apple Silicon macOS candidate with the first-run transcription setup fix and account provider discovery. Verify the packaged apps before publication.",
+  "component": "mobile",
+  "version": "0.17.3",
+  "base_sha": "f102c15484496e9e9946654600089d0b14e37c45",
+  "notes": "Prepare build 95 for internal TestFlight. It includes paired-computer processing, account provider discovery, and the Xcode extension project fix. Use the exact-source CI checks. Verify the keyboard on an iPhone before an App Store submission.",
   "evidence": {
-    "report_url": "https://github.com/jvictormaynard/clarify/pull/362"
+    "build": "95",
+    "highest_build": "94",
+    "pending_builds_checked": true,
+    "checked_at": "2026-11-26T03:04:11Z",
+    "report_url": "https://github.com/jvictormaynard/clarify/actions/runs/45746501320"
   }
 }
