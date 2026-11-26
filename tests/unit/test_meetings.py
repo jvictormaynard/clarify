@@ -79,7 +79,10 @@ class MeetingsTests(unittest.TestCase):
             backend=lambda: SimpleNamespace(
                 reserve_live=lambda **_options: nullcontext(
                     lambda _language, publish: FakeLive(publish)
-                )
+                ),
+                isolated_decoder=lambda _cancel, **_options: nullcontext(
+                    lambda _language, publish: FakeLive(publish)
+                ),
             ),
             language=lambda: "en",
             allowed=lambda: True,
@@ -325,11 +328,12 @@ class MeetingsTests(unittest.TestCase):
         self.assertEqual(session.samples, 31 * meetings.MAX_PACKET // 2)
         self.assertEqual(saved["segments"][0]["text"], "A decision.")
 
-    def test_system_tap_mixes_after_admission_and_releases_between_intervals(self):
+    def test_system_tap_feeds_separate_decoders_and_releases_between_intervals(self):
         microphone = b"\x11\x22" * (MAX_CHUNK // 2)
         mixed = b"\x33\x44" * (MAX_CHUNK // 2)
         first, second = Mock(), Mock()
-        first.mix.return_value = mixed, bytes(len(mixed)), len(mixed) // 2, True
+        system = b"\x55\x66" * (MAX_CHUNK // 2)
+        first.mix.return_value = mixed, system, len(system) // 2, True
         second.mix.return_value = (
             microphone,
             bytes(len(microphone)),
@@ -346,8 +350,10 @@ class MeetingsTests(unittest.TestCase):
             admission = self.controller.start(meeting, "system")
             factory.assert_not_called()
             self.begin_audio(meeting)
-            self.wait_for(lambda: feed.call_count == 1)
-            self.assertEqual(feed.call_args.args[1], mixed)
+            self.wait_for(lambda: feed.call_count == 2)
+            self.assertCountEqual(
+                [call.args[1] for call in feed.call_args_list], [microphone, system]
+            )
             self.assertTrue(self.controller.state()["active"]["systemAudio"])
 
             self.controller.release_media(admission["captureId"])
@@ -412,50 +418,92 @@ class MeetingsTests(unittest.TestCase):
         self.assertIsNone(controller.state()["interruptedId"])
         self.assertEqual(controller.get(meeting_id)["status"], "interrupted")
 
-    def test_native_source_label_revises_live_text_and_persists_without_audio(self):
+    def test_native_source_labels_keep_simultaneous_local_and_remote_turns(self):
         microphone = b"\x00\x08" * (MAX_CHUNK // 2)
+        system = b"\x00\x10" * (MAX_CHUNK // 2)
         tap = Mock()
-        tap.mix.side_effect = lambda pcm: (pcm, bytes(len(pcm)), len(pcm) // 2, False)
-        self.controller.system_audio = lambda: tap
-        self.controller.loopback = True
-        meeting_id = self.controller.create()["id"]
-        self.controller.start(meeting_id, "system")
-        token = TimedToken(300, 650, b"Local.")
-        fed = threading.Event()
+        tap.mix.return_value = bytes(len(system)), system, len(system) // 2, True
+        controller = self.controller
+        controller.system_audio = lambda: tap
+        controller.loopback = True
+        meeting_id = controller.create()["id"]
+        remote_voice = Mock()
+        progressed = threading.Event()
+        allow_labels = threading.Event()
 
-        def decode(live, chunk, **_options):
-            live.samples += len(chunk) // 2
-            live.publish(LiveResult("Local.", "", False, live.samples / RATE, (token,)))
-            fed.set()
+        def analyze_remote(_pcm):
+            if not allow_labels.wait(5):
+                raise TimeoutError("Meeting checkpoint did not arrive")
+            return [Voice(0, 7000, 1)]
 
-        self.controller.media_ready(meeting_id)
-        self.wait_for(
-            lambda: self.controller.state()["active"]["status"] == "recording"
+        remote_voice.voices.side_effect = analyze_remote
+
+        def decoder(text, expected):
+            def open_session(_language, publish):
+                live = FakeLive(publish)
+                tokens = (TimedToken(300, 650, text.encode()),)
+
+                def feed(chunk, **_options):
+                    self.assertEqual(chunk, expected)
+                    live.samples += len(chunk) // 2
+                    publish(LiveResult(text, text, False, live.samples / RATE, tokens))
+                    if expected == system:
+                        progressed.set()
+
+                live.feed = feed
+                live.finish = lambda **_: LiveResult(
+                    text, text, True, live.samples / RATE, tokens
+                )
+                return live
+
+            return nullcontext(open_session)
+
+        controller.backend = lambda: SimpleNamespace(
+            reserve_live=lambda **_: decoder("Remote.", system),
+            isolated_decoder=lambda _cancel, **_: decoder("Local.", microphone),
+            verified_library=object(),
         )
-        pcm = base64.b64encode(microphone).decode()
+        encoded = base64.b64encode(microphone).decode()
         with (
-            patch.object(FakeLive, "feed", decode),
-            patch.object(
-                FakeLive,
-                "finish",
-                return_value=LiveResult("Local.", "Local.", True, 6, (token,)),
+            patch.object(controller, "speakers_ready", return_value=True),
+            patch.object(controller.speaker_assets, "verify"),
+            patch(
+                "clarify.desktop.meeting_source_labels.Sortformer.open",
+                return_value=nullcontext(remote_voice),
             ),
         ):
-            self.controller.feed(meeting_id, pcm)
-            self.assertTrue(fed.wait(1))
-            self.assertEqual(self.controller.state()["partial"], "Local.")
-            self.assertEqual(self.controller.state().get("partialTurns", []), [])
-            for _ in range(74):
-                fed.clear()
-                self.controller.feed(meeting_id, pcm)
-                self.assertTrue(fed.wait(1))
-            self.wait_for(lambda: bool(self.controller.state().get("partialTurns")))
-            self.assertEqual(self.controller.state()["active"]["status"], "recording")
-            self.assertEqual(self.controller.state()["partialTurns"][0]["speaker"], -1)
-            self.controller.stop(meeting_id)
-            self.wait_for(lambda: self.controller.state()["active"] is None)
-        self.assertEqual(self.controller.get(meeting_id)["segments"][0]["speaker"], -1)
-        self.assertEqual(self.controller.state()["partialTurns"], [])
+            controller.start(meeting_id, "system")
+            controller.media_ready(meeting_id)
+            self.wait_for(lambda: controller.state()["active"]["status"] == "recording")
+            try:
+                for _ in range(75):
+                    progressed.clear()
+                    controller.feed(meeting_id, encoded)
+                    self.assertTrue(progressed.wait(1))
+                self.assertEqual(
+                    [row["speaker"] for row in controller.state()["partialTurns"]],
+                    [LOCAL_MICROPHONE, SYSTEM_AUDIO],
+                )
+                controller.stop(meeting_id)
+                self.wait_for(
+                    lambda: bool(controller.store.get(meeting_id)["segments"])
+                )
+                checkpoint = controller.store.get(meeting_id)["segments"]
+                self.assertEqual(
+                    [row["speaker"] for row in checkpoint],
+                    [LOCAL_MICROPHONE, SYSTEM_AUDIO],
+                )
+            finally:
+                allow_labels.set()
+            self.wait_for(lambda: controller.state()["active"] is None)
+        turns = controller.get(meeting_id)["segments"]
+        self.assertEqual(
+            [
+                (turn["text"], turn["speaker"], turn["start"], turn["end"])
+                for turn in turns
+            ],
+            [("Local.", LOCAL_MICROPHONE, 0.3, 0.65), ("Remote.", 1, 0.3, 0.65)],
+        )
         self.assertFalse(list(self.path.parent.rglob("*.wav")))
 
     def test_windows_system_labels_follow_live_tokens_and_reject_late_results(self):
@@ -763,7 +811,7 @@ class MeetingsTests(unittest.TestCase):
                     LiveResult(mixed, mixed, False, self.samples / RATE, main_tokens)
                 )
 
-            def finish(self):
+            def finish(self, **_options):
                 return LiveResult(mixed, mixed, True, self.samples / RATE, main_tokens)
 
         def compute(_sep, _emb, decoder, _language, _budget, clip):
@@ -779,13 +827,34 @@ class MeetingsTests(unittest.TestCase):
                 for turn in (first, other)
             ]
 
+        class LocalMicrophone(FakeLive):
+            tokens = (TimedToken(600, 800, b"Local."),)
+
+            def feed(self, chunk, **_options):
+                self.samples += len(chunk) // 2
+                self.publish(self.result(final=False))
+
+            def finish(self, **_options):
+                return self.result(final=True)
+
+            def result(self, *, final):
+                return LiveResult(
+                    "Local.", "Local.", final, self.samples / RATE, self.tokens
+                )
+
         decoder = Mock(return_value=nullcontext(isolated_session))
+
+        def isolated(_cancel, *, live_tokens=False):
+            if live_tokens:
+                return nullcontext(lambda _language, publish: LocalMicrophone(publish))
+            return decoder(_cancel)
+
         controller.backend = lambda: SimpleNamespace(
             reserve_live=lambda **_options: nullcontext(
                 lambda _language, publish: Primary(publish)
             ),
             verified_library=object(),
-            isolated_decoder=decoder,
+            isolated_decoder=isolated,
         )
         meeting_id = controller.create()["id"]
         with (
@@ -815,12 +884,15 @@ class MeetingsTests(unittest.TestCase):
                 for i in range(30, 35):
                     controller.feed(meeting_id, packet, lease_id=lease)
                     self.wait_for(lambda: main_updates >= i + 1)
-                self.assertEqual(controller.state()["partial"], mixed)
+                self.assertEqual(controller.state()["partial"], f"Local. {mixed}")
                 self.assertFalse(controller.get(meeting_id)["segments"])
                 release.set()
                 self.wait_for(lambda: controller.state()["overlapRevision"] == 1)
                 self.assertEqual(controller.state()["active"]["status"], "recording")
-                self.assertEqual(controller.state()["projectedPartial"], [])
+                self.assertEqual(
+                    [row["text"] for row in controller.state()["projectedPartial"]],
+                    ["Local."],
+                )
                 live = controller.get(meeting_id)
                 self.assertEqual(live["segments"], [first, other])
                 self.assertEqual(
@@ -897,7 +969,12 @@ class MeetingsTests(unittest.TestCase):
             [row for row in saved["segments"] if row.get("overlap")], recovered
         )
         self.assertEqual(saved["speakers"], {1: "Participant A"})
-        self.assertTrue(saved["originalSegments"])
+        local_turns = [row for row in saved["segments"] if row.get("source") == "mic"]
+        original_local = [
+            row for row in saved["originalSegments"] if row.get("source") == "mic"
+        ]
+        self.assertTrue(local_turns)
+        self.assertEqual(local_turns, original_local)
         self.assertEqual(tap.close.call_count, 2)
         self.assertEqual(decoder.call_count, 2)
 

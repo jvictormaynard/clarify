@@ -220,10 +220,10 @@ Quit release audio capture and give the worker up to 90 seconds to process its
 backlog. Capture reports overload if the buffer fills or the recognizer exceeds
 an input or processing deadline. With more than two CPUs, combined capture uses
 two Nemotron sessions to keep overlapping turns in the transcript.
-On macOS 14.2 and later, the meeting controller opens a private Core Audio tap after model and
-microphone setup. It
-mixes both sources for recognition and keeps a bounded copy of each source in
-memory for attribution. The tap requires system audio permission.
+On macOS 14.2 and later, the meeting controller opens a private Core Audio tap
+after model and microphone setup. It uses the same two-session recognition path
+as Windows combined capture and keeps a bounded copy of each source in memory
+when voice labeling is enabled. The tap requires system audio permission.
 It captures only audio and leaves system playback active. The dock shows capture
 state when the workspace is hidden. Pause, stop, lost device, and system suspend
 release the streams. Desktop dictation and meeting capture have mutually exclusive
@@ -254,13 +254,12 @@ anonymous label after a short wait. This leaves the existing names on their
 original speaker IDs. The optional inference worker skips work under memory
 pressure and cannot delay finalization. Speaker continuity
 works with overlap recovery off and uses the existing model without a new
-download route. The microphone source has its own label
-when the system track is sufficiently quiet and available. Echo, simultaneous
-speech and other uncertain matches can leave text unassigned. On Windows,
-the microphone channel has a fixed local label in two-session capture. A
-separate Sortformer worker labels turns from the system channel in that mode
-and from the microphone in microphone-only capture.
-The worker starts at six seconds between windows and can reach 0.8 seconds
+download route. In two-session capture, both platforms label microphone
+turns as local. The system channel keeps a source label when the worker
+cannot assign a remote voice. On Windows, a separate Sortformer worker
+labels turns from the system channel in two-session capture and from the
+microphone in microphone-only capture. The worker starts at six seconds
+between windows and can reach 0.8 seconds
 when inference stays within budget. Capture or recognition backlog delays
 optional windows. Pause and Stop discard pending windows. After ASR saves
 the transcript, the speaker worker can make one bounded pass over an
@@ -269,12 +268,12 @@ transcript blocks. Clarify saves text and labels. User-assigned names apply
 only to their meeting.
 
 Optional Mac overlap recovery uses sub-second Sortformer updates to find
-two-speaker intervals. One warm worker runs the pinned MossFormer2 ONNX
+two-speaker intervals in the system channel. One warm worker runs the pinned MossFormer2 ONNX
 model and decodes each separated stream with its own Nemotron model handle.
 The worker accepts up to two clips at a time, including the clip in progress.
-When both slots are busy, the next interval stays in the mixed transcript.
+When both slots are busy, the transcript keeps the original system turn.
 Long overlaps can produce multiple short clips as capacity becomes available.
-The original recognition stream has its own model and queue. Pause and Stop
+The microphone and system recognition sessions have their own models and queues. Pause and Stop
 release the capture devices first. The worker can then finish accepted clips
 within a 20-second budget. Clarify retries archived text in a bounded memory
 buffer if the database write fails.
@@ -285,7 +284,7 @@ WeSpeaker comparisons to nearby clean turns match the separated tracks to
 these IDs. Weak matches stay unlabeled. The worker retains bounded PCM in
 memory and does not save voice vectors. The transcript can show recovered
 turns during capture. SQLite keeps the recovered text and labels alongside
-the original mixed transcript.
+the original transcript from both channels.
 
 Shortcut capture is owned by the Qt Settings controller, including the React
 dialog's capture state. Capture temporarily releases native hotkeys and input
