@@ -5,6 +5,25 @@ Notable user-facing changes are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-26
+
+Changes since the last public release, 0.17.0.
+
+### Added
+
+- Use Clarify on Apple Silicon Macs with cloud dictation, global shortcuts, and a menu bar icon.
+- Hear confirmation tones when dictation starts, stops, or is cancelled.
+
+### Changed
+
+- Use your own processing models or services. Keep the optional Clarify account for library and history sync.
+- Follow shorter first-run setup and dictation practice on Windows.
+
+### Fixed
+
+- On Macs that cannot install the local speech runtime, open the transcription service picker during first-run setup.
+- Show the social sign-in options enabled by the configured account service.
+
 ## [0.19.0] - 2026-11-25
 
 ### Added
@@ -580,7 +599,8 @@ Unpublished tag. Candidate validation failed before packaging; no executable or 
 
 - Local `.env` files and API keys are excluded from portable builds
 
-[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/jvictormaynard/clarify/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/jvictormaynard/clarify/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/jvictormaynard/clarify/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/jvictormaynard/clarify/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/jvictormaynard/clarify/compare/v0.16.2...v0.17.0
