@@ -4,7 +4,7 @@ pyinstaller>=6.21.0,<7
 ruff>=0.12,<1
 mypy>=1.16,<3
 pip-audit>=2.9,<3
-cyclonedx-bom>=7,<8
+cyclonedx-bom>=7,<10
 # Security floor for pip-audit's cache locking dependency.
 filelock>=4.2.1,<5
 # Security floor for pip-audit's MessagePack cache serializer.
